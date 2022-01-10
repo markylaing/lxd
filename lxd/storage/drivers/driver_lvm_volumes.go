@@ -789,7 +789,7 @@ func (d *lvm) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *mig
 		defer d.deactivateVolume(volDevPath)
 	}
 
-	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, op)
+	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
 }
 
 // BackupVolume copies a volume (and optionally its snapshots) to a specified target path.

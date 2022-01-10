@@ -1279,7 +1279,7 @@ func (d *ceph) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *mi
 		}
 		defer d.UnmountVolume(parentVol, false, op)
 
-		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, op)
+		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
 	} else if volSrcArgs.MigrationType.FSType != migration.MigrationFSType_RBD {
 		return ErrNotSupported
 	}

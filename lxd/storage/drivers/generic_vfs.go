@@ -144,9 +144,13 @@ func genericVFSRenameVolumeSnapshot(d Driver, snapVol Volume, newSnapshotName st
 }
 
 // genericVFSMigrateVolume is a generic MigrateVolume implementation for VFS-only drivers.
-func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
+func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
 	bwlimit := d.Config()["rsync.bwlimit"]
 	var rsyncArgs []string
+
+	if d.Info().RunningCopyFreeze && allowInconsistent {
+		return fmt.Errorf("driver %q does not allow inconsistent migrations", d.Info().Name)
+	}
 
 	// For VM volumes, exclude the generic root disk image file from being transferred via rsync, as it will
 	// be transferred later using a different method.
@@ -161,7 +165,7 @@ func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadW
 	}
 
 	// Define function to send a filesystem volume.
-	sendFSVol := func(vol Volume, conn io.ReadWriteCloser, mountPath string) error {
+	sendFSVol := func(vol Volume, conn io.ReadWriteCloser, mountPath string, allowInconsistent bool) error {
 		var wrapper *ioprogress.ProgressTracker
 		if volSrcArgs.TrackProgress {
 			wrapper = migration.ProgressTracker(op, "fs_progress", vol.name)
@@ -170,7 +174,12 @@ func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadW
 		path := shared.AddSlash(mountPath)
 
 		d.Logger().Debug("Sending filesystem volume", log.Ctx{"volName": vol.name, "path": path, "bwlimit": bwlimit, "rsyncArgs": rsyncArgs})
-		return rsync.Send(vol.name, path, conn, wrapper, volSrcArgs.MigrationType.Features, bwlimit, s.OS.ExecPath, rsyncArgs...)
+		err := rsync.Send(vol.name, path, conn, wrapper, volSrcArgs.MigrationType.Features, bwlimit, s.OS.ExecPath, rsyncArgs...)
+		if allowInconsistent && strings.Contains(err.Error(), "exit status 24") {
+			return nil
+		}
+
+		return err
 	}
 
 	// Define function to send a block volume.
@@ -222,7 +231,7 @@ func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadW
 		// Send snapshot to target (ensure local snapshot volume is mounted if needed).
 		err = snapshot.MountTask(func(mountPath string, op *operations.Operation) error {
 			if vol.contentType != ContentTypeBlock || vol.volType != VolumeTypeCustom {
-				err := sendFSVol(snapshot, conn, mountPath)
+				err := sendFSVol(snapshot, conn, mountPath, false)
 				if err != nil {
 					return err
 				}
@@ -245,7 +254,7 @@ func genericVFSMigrateVolume(d Driver, s *state.State, vol Volume, conn io.ReadW
 	// Send volume to target (ensure local volume is mounted if needed).
 	return vol.MountTask(func(mountPath string, op *operations.Operation) error {
 		if vol.contentType != ContentTypeBlock || vol.volType != VolumeTypeCustom {
-			err := sendFSVol(vol, conn, mountPath)
+			err := sendFSVol(vol, conn, mountPath, allowInconsistent)
 			if err != nil {
 				return err
 			}
