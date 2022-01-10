@@ -353,12 +353,13 @@ func createFromMigration(d *Daemon, r *http.Request, projectName string, req *ap
 		Dialer: websocket.Dialer{
 			TLSClientConfig: config,
 			NetDial:         shared.RFC3493Dialer},
-		Instance:     inst,
-		Secrets:      req.Source.Websockets,
-		Push:         push,
-		Live:         req.Source.Live,
-		InstanceOnly: instanceOnly,
-		Refresh:      req.Source.Refresh,
+		Instance:          inst,
+		Secrets:           req.Source.Websockets,
+		Push:              push,
+		Live:              req.Source.Live,
+		InstanceOnly:      instanceOnly,
+		Refresh:           req.Source.Refresh,
+		AllowInconsistent: req.Source.AllowInconsistent,
 	}
 
 	sink, err := newMigrationSink(&migrationArgs)

@@ -317,4 +317,8 @@ type InstanceSource struct {
 	// Source project name (for copy and local image)
 	// Example: blah
 	Project string `json:"project,omitempty" yaml:"project,omitempty"`
+
+	// Whether to allow for inconsistent copying (e.g. if a file is deleted from the source during the copy)
+	// Example: false
+	AllowInconsistent bool `json:"allow_inconsistent,omitempty" yaml:"allow_inconsistent,omitempty"`
 }

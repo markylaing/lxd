@@ -740,12 +740,13 @@ func (s *migrationSourceWs) Do(state *state.State, migrateOp *operations.Operati
 
 func newMigrationSink(args *MigrationSinkArgs) (*migrationSink, error) {
 	sink := migrationSink{
-		src:     migrationFields{instance: args.Instance, instanceOnly: args.InstanceOnly},
-		dest:    migrationFields{instanceOnly: args.InstanceOnly},
-		url:     args.Url,
-		dialer:  args.Dialer,
-		push:    args.Push,
-		refresh: args.Refresh,
+		src:               migrationFields{instance: args.Instance, instanceOnly: args.InstanceOnly},
+		dest:              migrationFields{instanceOnly: args.InstanceOnly},
+		url:               args.Url,
+		dialer:            args.Dialer,
+		push:              args.Push,
+		refresh:           args.Refresh,
+		allowInconsistent: args.AllowInconsistent,
 	}
 
 	if sink.push {

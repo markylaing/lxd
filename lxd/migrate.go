@@ -274,11 +274,12 @@ type migrationSink struct {
 	// fields are used since the client will connect to the sockets.
 	dest migrationFields
 
-	url          string
-	dialer       websocket.Dialer
-	allConnected chan struct{}
-	push         bool
-	refresh      bool
+	url               string
+	dialer            websocket.Dialer
+	allConnected      chan struct{}
+	push              bool
+	refresh           bool
+	allowInconsistent bool
 }
 
 type MigrationSinkArgs struct {
@@ -289,12 +290,13 @@ type MigrationSinkArgs struct {
 	Url     string
 
 	// Instance specific fields
-	Instance     instance.Instance
-	InstanceOnly bool
-	Idmap        *idmap.IdmapSet
-	Live         bool
-	Refresh      bool
-	Snapshots    []*migration.Snapshot
+	Instance          instance.Instance
+	InstanceOnly      bool
+	Idmap             *idmap.IdmapSet
+	Live              bool
+	Refresh           bool
+	AllowInconsistent bool
+	Snapshots         []*migration.Snapshot
 
 	// Storage specific fields
 	VolumeOnly bool
