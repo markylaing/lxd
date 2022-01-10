@@ -855,10 +855,10 @@ func (d *btrfs) RenameVolume(vol Volume, newVolName string, op *operations.Opera
 }
 
 // MigrateVolume sends a volume for migration.
-func (d *btrfs) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
+func (d *btrfs) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
 	// Handle simple rsync and block_and_rsync through generic.
 	if volSrcArgs.MigrationType.FSType == migration.MigrationFSType_RSYNC || volSrcArgs.MigrationType.FSType == migration.MigrationFSType_BLOCK_AND_RSYNC {
-		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
+		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, allowInconsistent, op)
 	} else if volSrcArgs.MigrationType.FSType != migration.MigrationFSType_BTRFS {
 		return ErrNotSupported
 	}

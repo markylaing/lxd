@@ -470,8 +470,8 @@ func (d *cephfs) RenameVolume(vol Volume, newVolName string, op *operations.Oper
 }
 
 // MigrateVolume streams the volume (with or without snapshots)
-func (d *cephfs) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
-	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
+func (d *cephfs) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
+	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, allowInconsistent, op)
 }
 
 // BackupVolume creates an exported version of a volume.

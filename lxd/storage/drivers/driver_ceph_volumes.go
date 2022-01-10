@@ -1236,7 +1236,7 @@ func (d *ceph) RenameVolume(vol Volume, newVolName string, op *operations.Operat
 }
 
 // MigrateVolume sends a volume for migration.
-func (d *ceph) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
+func (d *ceph) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
 	// If data is set, this request is coming from the clustering code.
 	// In this case, we only need to unmap and rename the rbd image to the specified storage volume name.
 	if volSrcArgs.Data != nil {
@@ -1257,7 +1257,7 @@ func (d *ceph) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *mi
 
 			if vol.IsVMBlock() {
 				fsVol := vol.NewVMBlockFilesystemVolume()
-				err = d.MigrateVolume(fsVol, conn, volSrcArgs, op)
+				err = d.MigrateVolume(fsVol, conn, volSrcArgs, allowInconsistent, op)
 				if err != nil {
 					return err
 				}
@@ -1279,14 +1279,14 @@ func (d *ceph) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *mi
 		}
 		defer d.UnmountVolume(parentVol, false, op)
 
-		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
+		return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, allowInconsistent, op)
 	} else if volSrcArgs.MigrationType.FSType != migration.MigrationFSType_RBD {
 		return ErrNotSupported
 	}
 
 	if vol.IsVMBlock() {
 		fsVol := vol.NewVMBlockFilesystemVolume()
-		err := d.MigrateVolume(fsVol, conn, volSrcArgs, op)
+		err := d.MigrateVolume(fsVol, conn, volSrcArgs, allowInconsistent, op)
 		if err != nil {
 			return err
 		}

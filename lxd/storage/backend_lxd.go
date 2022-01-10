@@ -1960,7 +1960,7 @@ func (b *lxdBackend) MigrateInstance(inst instance.Instance, conn io.ReadWriteCl
 	volStorageName := project.Instance(inst.Project(), args.Name)
 
 	vol := b.newVolume(volType, contentType, volStorageName, rootDiskConf)
-	err = b.driver.MigrateVolume(vol, conn, args, op)
+	err = b.driver.MigrateVolume(vol, conn, args, false, op)
 	if err != nil {
 		return err
 	}
@@ -3150,7 +3150,7 @@ func (b *lxdBackend) MigrateCustomVolume(projectName string, conn io.ReadWriteCl
 	// Volume config not needed to send a volume so set to nil.
 	vol := b.newVolume(drivers.VolumeTypeCustom, contentType, volStorageName, nil)
 
-	err = b.driver.MigrateVolume(vol, conn, args, op)
+	err = b.driver.MigrateVolume(vol, conn, args, false, op)
 	if err != nil {
 		return err
 	}

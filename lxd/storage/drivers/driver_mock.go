@@ -163,7 +163,7 @@ func (d *mock) RenameVolume(vol Volume, newVolName string, op *operations.Operat
 }
 
 // MigrateVolume sends a volume for migration.
-func (d *mock) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
+func (d *mock) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
 	return nil
 }
 

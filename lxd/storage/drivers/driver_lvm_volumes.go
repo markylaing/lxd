@@ -776,7 +776,7 @@ func (d *lvm) RenameVolume(vol Volume, newVolName string, op *operations.Operati
 }
 
 // MigrateVolume sends a volume for migration.
-func (d *lvm) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, op *operations.Operation) error {
+func (d *lvm) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *migration.VolumeSourceArgs, allowInconsistent bool, op *operations.Operation) error {
 	// Before doing a generic volume migration, we need to ensure volume (or snap volume parent) is activated
 	// to avoid failing with warnings about changing the origin of the snapshot when trying to activate it.
 	parent, _, _ := shared.InstanceGetParentAndSnapshotName(vol.Name())
@@ -789,7 +789,7 @@ func (d *lvm) MigrateVolume(vol Volume, conn io.ReadWriteCloser, volSrcArgs *mig
 		defer d.deactivateVolume(volDevPath)
 	}
 
-	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, false, op)
+	return genericVFSMigrateVolume(d, d.state, vol, conn, volSrcArgs, allowInconsistent, op)
 }
 
 // BackupVolume copies a volume (and optionally its snapshots) to a specified target path.
