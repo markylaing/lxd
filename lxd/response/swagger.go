@@ -5,7 +5,7 @@ import "github.com/lxc/lxd/shared/api"
 // Operation
 //
 // swagger:response Operation
-type SwaggerOperation struct {
+type swaggerOperation struct {
 	// Empty sync response
 	// in: body
 	Body struct {
@@ -28,7 +28,7 @@ type SwaggerOperation struct {
 // Empty sync response
 //
 // swagger:response EmptySyncResponse
-type SwaggerEmptySyncResponse struct {
+type swaggerEmptySyncResponse struct {
 	// Empty sync response
 	// in: body
 	Body struct {
@@ -46,7 +46,7 @@ type SwaggerEmptySyncResponse struct {
 // Bad Request
 //
 // swagger:response BadRequest
-type SwaggerBadRequest struct {
+type swaggerBadRequest struct {
 	// Bad Request
 	// in: body
 	Body struct {
@@ -64,7 +64,7 @@ type SwaggerBadRequest struct {
 // Forbidden
 //
 // swagger:response Forbidden
-type SwaggerForbidden struct {
+type swaggerForbidden struct {
 	// Bad Request
 	// in: body
 	Body struct {
@@ -82,7 +82,7 @@ type SwaggerForbidden struct {
 // Precondition Failed
 //
 // swagger:response PreconditionFailed
-type SwaggerPreconditionFailed struct {
+type swaggerPreconditionFailed struct {
 	// Internal server Error
 	// in: body
 	Body struct {
@@ -100,7 +100,7 @@ type SwaggerPreconditionFailed struct {
 // Internal Server Error
 //
 // swagger:response InternalServerError
-type SwaggerInternalServerError struct {
+type swaggerInternalServerError struct {
 	// Internal server Error
 	// in: body
 	Body struct {
@@ -118,7 +118,7 @@ type SwaggerInternalServerError struct {
 // Not found
 //
 // swagger:response NotFound
-type SwaggerNotFound struct {
+type swaggerNotFound struct {
 	// Not found
 	// in: body
 	Body struct {
