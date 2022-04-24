@@ -25,7 +25,7 @@ import (
 // Operation
 //
 // swagger:response Operation
-type swaggerOperation struct {
+type SwaggerOperation struct {
 	// Empty sync response
 	// in: body
 	Body struct {
@@ -48,7 +48,7 @@ type swaggerOperation struct {
 // Empty sync response
 //
 // swagger:response EmptySyncResponse
-type swaggerEmptySyncResponse struct {
+type SwaggerEmptySyncResponse struct {
 	// Empty sync response
 	// in: body
 	Body struct {
@@ -66,7 +66,7 @@ type swaggerEmptySyncResponse struct {
 // Bad Request
 //
 // swagger:response BadRequest
-type swaggerBadRequest struct {
+type SwaggerBadRequest struct {
 	// Bad Request
 	// in: body
 	Body struct {
@@ -84,7 +84,7 @@ type swaggerBadRequest struct {
 // Forbidden
 //
 // swagger:response Forbidden
-type swaggerForbidden struct {
+type SwaggerForbidden struct {
 	// Bad Request
 	// in: body
 	Body struct {
@@ -102,7 +102,7 @@ type swaggerForbidden struct {
 // Precondition Failed
 //
 // swagger:response PreconditionFailed
-type swaggerPreconditionFailed struct {
+type SwaggerPreconditionFailed struct {
 	// Internal server Error
 	// in: body
 	Body struct {
@@ -120,7 +120,7 @@ type swaggerPreconditionFailed struct {
 // Internal Server Error
 //
 // swagger:response InternalServerError
-type swaggerInternalServerError struct {
+type SwaggerInternalServerError struct {
 	// Internal server Error
 	// in: body
 	Body struct {
@@ -138,7 +138,7 @@ type swaggerInternalServerError struct {
 // Not found
 //
 // swagger:response NotFound
-type swaggerNotFound struct {
+type SwaggerNotFound struct {
 	// Not found
 	// in: body
 	Body struct {
