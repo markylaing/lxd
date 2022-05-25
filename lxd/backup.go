@@ -140,7 +140,7 @@ func backupCreate(s *state.State, args db.InstanceBackup, sourceInst instance.In
 	tarWriter := instancewriter.NewInstanceTarWriter(tarPipeWriter, idmap)
 
 	// Setup tar writer go routine, with optional compression.
-	tarWriterRes := make(chan error, 0)
+	tarWriterRes := make(chan error)
 	var compressErr error
 
 	backupProgressWriter := &ioprogress.ProgressWriter{
@@ -419,7 +419,7 @@ func volumeBackupCreate(s *state.State, args db.StoragePoolVolumeBackup, project
 	tarWriter := instancewriter.NewInstanceTarWriter(tarPipeWriter, nil)
 
 	// Setup tar writer go routine, with optional compression.
-	tarWriterRes := make(chan error, 0)
+	tarWriterRes := make(chan error)
 	var compressErr error
 
 	go func(resCh chan<- error) {

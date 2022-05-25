@@ -1119,7 +1119,7 @@ func TaskIDs(pid int) (int64, int64, int64, int64, error) {
 
 		if !UIDFound {
 			m := reUID.FindStringSubmatch(line)
-			if m != nil && len(m) > 2 {
+			if len(m) > 2 {
 				// effective uid
 				result, err := strconv.ParseInt(m[2], 10, 64)
 				if err != nil {
@@ -1130,7 +1130,7 @@ func TaskIDs(pid int) (int64, int64, int64, int64, error) {
 				UIDFound = true
 			}
 
-			if m != nil && len(m) > 4 {
+			if len(m) > 4 {
 				// fsuid
 				result, err := strconv.ParseInt(m[4], 10, 64)
 				if err != nil {
@@ -1145,7 +1145,7 @@ func TaskIDs(pid int) (int64, int64, int64, int64, error) {
 
 		if !GIDFound {
 			m := reGID.FindStringSubmatch(line)
-			if m != nil && len(m) > 2 {
+			if len(m) > 2 {
 				// effective gid
 				result, err := strconv.ParseInt(m[2], 10, 64)
 				if err != nil {
@@ -1156,7 +1156,7 @@ func TaskIDs(pid int) (int64, int64, int64, int64, error) {
 				GIDFound = true
 			}
 
-			if m != nil && len(m) > 4 {
+			if len(m) > 4 {
 				// fsgid
 				result, err := strconv.ParseInt(m[4], 10, 64)
 				if err != nil {
@@ -1190,7 +1190,7 @@ func FindTGID(procFd int) (int, error) {
 	reTGID := regexp.MustCompile(`^Tgid:\s+([0-9]+)`)
 	for _, line := range strings.Split(string(status), "\n") {
 		m := reTGID.FindStringSubmatch(line)
-		if m != nil && len(m) > 1 {
+		if len(m) > 1 {
 			result, err := strconv.ParseUint(m[1], 10, 32)
 			if err != nil {
 				return -1, err
@@ -1535,7 +1535,7 @@ func (s *Server) HandleSetxattrSyscall(c Instance, siov *Iovec) int {
 		fmt.Sprintf("%d", args.flags),
 		fmt.Sprintf("%d", whiteout),
 		fmt.Sprintf("%d", args.size),
-		fmt.Sprintf("%s", args.value))
+		string(args.value))
 	if err != nil {
 		errno, err := strconv.Atoi(stderr)
 		if err != nil || errno == C.ENOANO {
@@ -1738,7 +1738,7 @@ func (s *Server) HandleSysinfoSyscall(c Instance, siov *Iovec) int {
 		return 0
 	}
 
-	instMetrics.Uptime = int64(time.Now().Sub(f.ModTime()).Seconds())
+	instMetrics.Uptime = int64(time.Since(f.ModTime()).Seconds())
 
 	// Get instance process count.
 	pids, err := cg.GetTotalProcesses()
@@ -1899,7 +1899,7 @@ func mountFlagsToOpts(flags C.ulong) string {
 		}
 
 		if opts == "" {
-			opts = fmt.Sprintf("%s", optOrArg)
+			opts = optOrArg
 		} else {
 			opts = fmt.Sprintf("%s,%s", opts, optOrArg)
 		}
@@ -2141,9 +2141,9 @@ func (s *Server) HandleMountSyscall(c Instance, siov *Iovec) int {
 			fmt.Sprintf("%d", args.gid),
 			fmt.Sprintf("%d", args.fsuid),
 			fmt.Sprintf("%d", args.fsgid),
-			fmt.Sprintf("%s", fuseSource),
-			fmt.Sprintf("%s", args.target),
-			fmt.Sprintf("%s", fuseOpts))
+			fuseSource,
+			args.target,
+			fuseOpts)
 	} else {
 		_, _, err = shared.RunCommandSplit(
 			nil,
@@ -2154,9 +2154,9 @@ func (s *Server) HandleMountSyscall(c Instance, siov *Iovec) int {
 			fmt.Sprintf("%d", args.pid),
 			fmt.Sprintf("%d", pidFdNr),
 			fmt.Sprintf("%d", 0),
-			fmt.Sprintf("%s", args.source),
-			fmt.Sprintf("%s", args.target),
-			fmt.Sprintf("%s", args.fstype),
+			args.source,
+			args.target,
+			args.fstype,
 			fmt.Sprintf("%d", args.flags),
 			string(args.idmapType),
 			fmt.Sprintf("%d", args.uid),
@@ -2167,7 +2167,7 @@ func (s *Server) HandleMountSyscall(c Instance, siov *Iovec) int {
 			fmt.Sprintf("%d", args.nsgid),
 			fmt.Sprintf("%d", args.nsfsuid),
 			fmt.Sprintf("%d", args.nsfsgid),
-			fmt.Sprintf("%s", args.data))
+			args.data)
 	}
 	if err != nil {
 		ctx["syscall_continue"] = "true"
@@ -2196,7 +2196,7 @@ func (s *Server) HandleBpfSyscall(c Instance, siov *Iovec) int {
 
 	if shared.IsFalseOrEmpty(c.ExpandedConfig()["security.syscalls.intercept.bpf.devices"]) {
 		ctx["syscall_continue"] = "true"
-		ctx["syscall_handler_reason"] = fmt.Sprintf("No bpf policy specified")
+		ctx["syscall_handler_reason"] = "No bpf policy specified"
 		C.seccomp_notify_update_response(siov.resp, 0, C.uint32_t(seccompUserNotifFlagContinue))
 		return 0
 	}
@@ -2204,7 +2204,7 @@ func (s *Server) HandleBpfSyscall(c Instance, siov *Iovec) int {
 	tgid, err := FindTGID(siov.procFd)
 	if err != nil || tgid == -1 {
 		ctx["syscall_continue"] = "true"
-		ctx["syscall_handler_reason"] = fmt.Sprintf("Could not find thread group leader ID")
+		ctx["syscall_handler_reason"] = "Could not find thread group leader ID"
 		C.seccomp_notify_update_response(siov.resp, 0, C.uint32_t(seccompUserNotifFlagContinue))
 		return 0
 	}
@@ -2355,9 +2355,7 @@ func MountSyscallFilter(config map[string]string) []string {
 
 	fsAllowed := strings.Split(config["security.syscalls.intercept.mount.allowed"], ",")
 	if len(fsAllowed) > 0 && fsAllowed[0] != "" {
-		for _, allowedfs := range fsAllowed {
-			fs = append(fs, allowedfs)
-		}
+		fs = append(fs, fsAllowed...)
 	}
 
 	return fs

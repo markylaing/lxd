@@ -229,7 +229,7 @@ func (c *cmdRecover) Run(cmd *cobra.Command, args []string) error {
 	fmt.Print("Starting recovery...\n")
 
 	// Send /internal/recover/import request to LXD.
-	reqImport := internalRecoverImportPost{
+	reqImport := internalRecoverImportPost{ //nolint:gosimple // gosimple recommends a type conversion here but that will be less clear.
 		Pools: reqValidate.Pools,
 	}
 

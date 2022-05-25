@@ -59,13 +59,10 @@ func (d *fanotify) load(ctx context.Context) error {
 	}
 
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				_ = unix.Close(d.fd)
-				fanotifyLoaded = false
-				return
-			}
+		for range ctx.Done() {
+			_ = unix.Close(d.fd)
+			fanotifyLoaded = false
+			return
 		}
 	}()
 

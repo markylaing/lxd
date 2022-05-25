@@ -365,7 +365,7 @@ func listenerInstance(epFd C.int, lAddr *deviceConfig.ProxyAddress, cAddr *devic
 
 	if proxy && cAddr.ConnType == "tcp" {
 		if lAddr.ConnType == "unix" {
-			_, _ = dstConn.Write([]byte(fmt.Sprintf("PROXY UNKNOWN\r\n")))
+			_, _ = dstConn.Write([]byte("PROXY UNKNOWN\r\n"))
 		} else {
 			cHost, cPort, err := net.SplitHostPort(srcConn.RemoteAddr().String())
 			if err != nil {
@@ -904,13 +904,11 @@ func unixRelayer(src *net.UnixConn, dst *net.UnixConn, ch chan error) {
 		}
 
 		// Close those fds we received
-		if fds != nil {
-			for _, fd := range fds {
-				err := unix.Close(fd)
-				if err != nil {
-					ch <- err
-					return
-				}
+		for _, fd := range fds {
+			err := unix.Close(fd)
+			if err != nil {
+				ch <- err
+				return
 			}
 		}
 	}
@@ -1006,13 +1004,11 @@ func getListenerFile(protocol string, addr string) (*os.File, error) {
 	}
 
 	file := &os.File{}
-	switch listener.(type) {
+	switch l := listener.(type) {
 	case *net.TCPListener:
-		tcpListener := listener.(*net.TCPListener)
-		file, err = tcpListener.File()
+		file, err = l.File()
 	case *net.UnixListener:
-		unixListener := listener.(*net.UnixListener)
-		file, err = unixListener.File()
+		file, err = l.File()
 	}
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get file from listener: %w", err)
