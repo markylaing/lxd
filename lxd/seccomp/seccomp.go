@@ -2,6 +2,447 @@
 
 package seccomp
 
+/*
+   #ifndef _GNU_SOURCE
+   #define _GNU_SOURCE 1
+   #endif
+   #include <elf.h>
+   #include <errno.h>
+   #include <fcntl.h>
+   #include <linux/seccomp.h>
+   #include <linux/types.h>
+   #include <linux/kdev_t.h>
+   #include <stdbool.h>
+   #include <stdio.h>
+   #include <stdint.h>
+   #include <stdlib.h>
+   #include <string.h>
+   #include <sys/mount.h>
+   #include <sys/socket.h>
+   #include <sys/stat.h>
+   #include <sys/syscall.h>
+   #include <sys/sysmacros.h>
+   #include <sys/types.h>
+   #include <unistd.h>
+
+   #include "../include/lxd_bpf.h"
+   #include "../include/lxd_seccomp.h"
+   #include "../include/memory_utils.h"
+   #include "../include/process_utils.h"
+   #include "../include/syscall_wrappers.h"
+
+   struct seccomp_notif_sizes expected_sizes;
+
+   struct seccomp_notify_proxy_msg {
+   	uint64_t __reserved;
+   	pid_t monitor_pid;
+   	pid_t init_pid;
+   	struct seccomp_notif_sizes sizes;
+   	uint64_t cookie_len;
+   	// followed by: seccomp_notif, seccomp_notif_resp, cookie
+   };
+
+   #define LXD_SCHED_PARAM_SIZE (sizeof(struct sched_param))
+   #define SECCOMP_PROXY_MSG_SIZE (sizeof(struct seccomp_notify_proxy_msg))
+   #define SECCOMP_NOTIFY_SIZE (sizeof(struct seccomp_notif))
+   #define SECCOMP_RESPONSE_SIZE (sizeof(struct seccomp_notif_resp))
+   #define SECCOMP_MSG_SIZE_MIN (SECCOMP_PROXY_MSG_SIZE + SECCOMP_NOTIFY_SIZE + SECCOMP_RESPONSE_SIZE)
+   #define SECCOMP_COOKIE_SIZE (64 * sizeof(char))
+   #define SECCOMP_MSG_SIZE_MAX (SECCOMP_MSG_SIZE_MIN + SECCOMP_COOKIE_SIZE)
+
+   static int seccomp_notify_get_sizes(struct seccomp_notif_sizes *sizes)
+   {
+   	if (syscall(SYS_seccomp, SECCOMP_GET_NOTIF_SIZES, 0, sizes) != 0)
+   		return -1;
+
+   	if (sizes->seccomp_notif != sizeof(struct seccomp_notif) ||
+   	    sizes->seccomp_notif_resp != sizeof(struct seccomp_notif_resp) ||
+   	    sizes->seccomp_data != sizeof(struct seccomp_data))
+   		return -1;
+
+   	return 0;
+   }
+
+   static int device_allowed(dev_t dev, mode_t mode)
+   {
+   	switch (mode & S_IFMT) {
+   	case S_IFCHR:
+   		if (dev == makedev(0, 0)) // whiteout
+   			return 0;
+   		else if (dev == makedev(5, 1)) // /dev/console
+   			return 0;
+   		else if (dev == makedev(1, 7)) // /dev/full
+   			return 0;
+   		else if (dev == makedev(1, 3)) // /dev/null
+   			return 0;
+   		else if (dev == makedev(1, 8)) // /dev/random
+   			return 0;
+   		else if (dev == makedev(5, 0)) // /dev/tty
+   			return 0;
+   		else if (dev == makedev(1, 9)) // /dev/urandom
+   			return 0;
+   		else if (dev == makedev(1, 5)) // /dev/zero
+   			return 0;
+   	}
+
+   	return -EPERM;
+   }
+
+   #include <linux/audit.h>
+
+   struct lxd_seccomp_data_arch {
+   	int arch;
+   	int nr_mknod;
+   	int nr_mknodat;
+   	int nr_setxattr;
+   	int nr_mount;
+   	int nr_bpf;
+   	int nr_sched_setscheduler;
+   	int nr_sysinfo;
+   };
+
+   #define LXD_SECCOMP_NOTIFY_MKNOD    0
+   #define LXD_SECCOMP_NOTIFY_MKNODAT  1
+   #define LXD_SECCOMP_NOTIFY_SETXATTR 2
+   #define LXD_SECCOMP_NOTIFY_MOUNT 3
+   #define LXD_SECCOMP_NOTIFY_BPF 4
+   #define LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER 5
+   #define LXD_SECCOMP_NOTIFY_SYSINFO 6
+
+   // ordered by likelihood of usage...
+   static const struct lxd_seccomp_data_arch seccomp_notify_syscall_table[] = {
+   	{ -1, LXD_SECCOMP_NOTIFY_MKNOD, LXD_SECCOMP_NOTIFY_MKNODAT, LXD_SECCOMP_NOTIFY_SETXATTR, LXD_SECCOMP_NOTIFY_MOUNT, LXD_SECCOMP_NOTIFY_BPF, LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER, LXD_SECCOMP_NOTIFY_SYSINFO},
+   #ifdef AUDIT_ARCH_X86_64
+   	{ AUDIT_ARCH_X86_64,      133, 259, 188, 165, 321, 144, 99 },
+   #endif
+   #ifdef AUDIT_ARCH_I386
+   	{ AUDIT_ARCH_I386,         14, 297, 226,  21, 357, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_AARCH64
+   	{ AUDIT_ARCH_AARCH64,      -1,  33,   5,  21, 386, 156, 179 },
+   #endif
+   #ifdef AUDIT_ARCH_ARM
+   	{ AUDIT_ARCH_ARM,          14, 324, 226,  21, 386, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_ARMEB
+   	{ AUDIT_ARCH_ARMEB,        14, 324, 226,  21, 386, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_S390
+   	{ AUDIT_ARCH_S390,         14, 290, 224,  21, 386, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_S390X
+   	{ AUDIT_ARCH_S390X,        14, 290, 224,  21, 351, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_PPC
+   	{ AUDIT_ARCH_PPC,          14, 288, 209,  21, 361, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_PPC64
+   	{ AUDIT_ARCH_PPC64,        14, 288, 209,  21, 361, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_PPC64LE
+   	{ AUDIT_ARCH_PPC64LE,      14, 288, 209,  21, 361, 156, 116 },
+   #endif
+   #ifdef AUDIT_ARCH_RISCV64
+   	{ AUDIT_ARCH_RISCV64,      -1,  33,   5,  40, 280, -1, 179 },
+   #endif
+   #ifdef AUDIT_ARCH_SPARC
+   	{ AUDIT_ARCH_SPARC,        14, 286, 169, 167, 349, 243, 214 },
+   #endif
+   #ifdef AUDIT_ARCH_SPARC64
+   	{ AUDIT_ARCH_SPARC64,      14, 286, 169, 167, 349, 243, 214 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPS
+   	{ AUDIT_ARCH_MIPS,         14, 290, 224,  21,  -1, 141, 4116 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPSEL
+   	{ AUDIT_ARCH_MIPSEL,       14, 290, 224,  21,  -1, 141, 4116 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPS64
+   	{ AUDIT_ARCH_MIPS64,      131, 249, 180, 160,  -1, 141, 5097 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPS64N32
+   	{ AUDIT_ARCH_MIPS64N32,   131, 253, 180, 160,  -1, 141, 4116 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPSEL64
+   	{ AUDIT_ARCH_MIPSEL64,    131, 249, 180, 160,  -1, 141, 5097 },
+   #endif
+   #ifdef AUDIT_ARCH_MIPSEL64N32
+   	{ AUDIT_ARCH_MIPSEL64N32, 131, 253, 180, 160,  -1, 141, 4116 },
+   #endif
+   };
+
+   static int seccomp_notify_get_syscall(struct seccomp_notif *req,
+   				      struct seccomp_notif_resp *resp)
+   {
+   	resp->id = req->id;
+   	resp->flags = req->flags;
+   	resp->val = 0;
+   	resp->error = 0;
+
+   	for (size_t i = 0; i < (sizeof(seccomp_notify_syscall_table) /
+   				sizeof(seccomp_notify_syscall_table[0]));
+   	     i++) {
+   		const struct lxd_seccomp_data_arch *entry = &seccomp_notify_syscall_table[i];
+
+   		if (entry->arch != req->data.arch)
+   			continue;
+
+   		if (entry->nr_mknod == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_MKNOD;
+
+   		if (entry->nr_mknodat == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_MKNODAT;
+
+   		if (entry->nr_setxattr == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_SETXATTR;
+
+   		if (entry->nr_mount == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_MOUNT;
+
+   		if (entry->nr_bpf == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_BPF;
+
+   		if (entry->nr_sched_setscheduler == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER;
+
+   		if (entry->nr_sysinfo == req->data.nr)
+   			return LXD_SECCOMP_NOTIFY_SYSINFO;
+
+   		break;
+   	}
+
+   	errno = EINVAL;
+   	return -EINVAL;
+   }
+
+   static void seccomp_notify_update_response(struct seccomp_notif_resp *resp,
+   					   int new_neg_errno, uint32_t flags)
+   {
+   	resp->error = new_neg_errno;
+   	resp->flags |= flags;
+   }
+
+   static void prepare_seccomp_iovec(struct iovec *iov,
+   				  struct seccomp_notify_proxy_msg *msg,
+   				  struct seccomp_notif *notif,
+   				  struct seccomp_notif_resp *resp, char *cookie)
+   {
+   	iov[0].iov_base = msg;
+   	iov[0].iov_len = SECCOMP_PROXY_MSG_SIZE;
+
+   	iov[1].iov_base = notif;
+   	iov[1].iov_len = SECCOMP_NOTIFY_SIZE;
+
+   	iov[2].iov_base = resp;
+   	iov[2].iov_len = SECCOMP_RESPONSE_SIZE;
+
+   	iov[3].iov_base = cookie;
+   	iov[3].iov_len = SECCOMP_COOKIE_SIZE;
+   }
+
+   // We use the BPF_DEVCG_DEV_CHAR macro as a cheap way to detect whether the kernel has
+   // the correct headers available to be compiled for bpf support. Since cgo doesn't have
+   // a good way of letting us probe for structs or enums the alternative would be to vendor
+   // bpf.h similar to what we do for seccomp itself. But that's annoying since bpf.h is quite
+   // large. So users that want bpf interception support should make sure to have the relevant
+   // header available at build time.
+   static inline int pidfd_getfd(int pidfd, int fd, int flags)
+   {
+   	return syscall(__NR_pidfd_getfd, pidfd, fd, flags);
+   }
+
+   #define ptr_to_u64(p) ((__aligned_u64)((uintptr_t)(p)))
+
+   static inline int bpf(int cmd, union bpf_attr *attr, size_t size)
+   {
+   	return syscall(__NR_bpf, cmd, attr, size);
+   }
+
+   static int handle_bpf_syscall(pid_t pid_target, int notify_fd, int mem_fd,
+   			      int tgid, struct seccomp_notify_proxy_msg *msg,
+   			      struct seccomp_notif *req, struct seccomp_notif_resp *resp,
+   			      int *bpf_cmd, int *bpf_prog_type, int *bpf_attach_type)
+   {
+   	__do_close int pidfd = -EBADF, bpf_target_fd = -EBADF, bpf_attach_fd = -EBADF,
+   		       bpf_prog_fd = -EBADF;
+   	__do_free struct bpf_insn *insn = NULL;
+   	char log_buf[4096] = {};
+   	char license[128] = {};
+   	size_t insn_size = 0;
+   	union bpf_attr attr = {}, new_attr = {};
+   	unsigned int attr_len = sizeof(attr);
+   	struct seccomp_notif_addfd addfd = {};
+   	int ret;
+   	int cmd;
+
+   	*bpf_cmd		= -EINVAL;
+   	*bpf_prog_type		= -EINVAL;
+   	*bpf_attach_type	= -EINVAL;
+
+   	if (attr_len < req->data.args[2])
+   		return -EFBIG;
+   	attr_len = req->data.args[2];
+
+   	*bpf_cmd = req->data.args[0];
+   	switch (req->data.args[0]) {
+   	case BPF_PROG_LOAD:
+   		cmd = BPF_PROG_LOAD;
+   		break;
+   	case BPF_PROG_ATTACH:
+   		cmd = BPF_PROG_ATTACH;
+   		break;
+   	case BPF_PROG_DETACH:
+   		cmd = BPF_PROG_DETACH;
+   		break;
+   	default:
+   		return -EINVAL;
+   	}
+
+   	ret = pread(mem_fd, &attr, attr_len, req->data.args[1]);
+   	if (ret < 0)
+   		return -errno;
+
+   	*bpf_prog_type = attr.prog_type;
+
+   	pidfd = lxd_pidfd_open(tgid, 0);
+   	if (pidfd < 0)
+   		return -errno;
+
+   	if (ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_ID_VALID, &req->id))
+   		return -errno;
+
+   	switch (cmd) {
+   	case BPF_PROG_LOAD:
+   		if (attr.prog_type != BPF_PROG_TYPE_CGROUP_DEVICE)
+   			return -EINVAL;
+
+   		// bpf is currently limited to 1 million instructions. Don't
+   		// allow the container to allocate more than that.
+   		if (attr.insn_cnt > 1000000)
+   			return -EINVAL;
+
+   		insn_size = sizeof(struct bpf_insn) * attr.insn_cnt;
+
+   		insn = malloc(insn_size);
+   		if (!insn)
+   			return -ENOMEM;
+
+   		ret = pread(mem_fd, insn, insn_size, attr.insns);
+   		if (ret < 0)
+   			return -errno;
+   		if (ret != insn_size)
+   			return -EIO;
+
+   		memcpy(&new_attr, &attr, sizeof(attr));
+
+   		if (attr.log_size > sizeof(log_buf))
+   			new_attr.log_size = sizeof(log_buf);
+
+   		if (new_attr.log_size > 0)
+   			new_attr.log_buf = ptr_to_u64(log_buf);
+
+   		if (attr.license && pread(mem_fd, license, sizeof(license), attr.license) < 0)
+   			return -errno;
+
+   		new_attr.insns		= ptr_to_u64(insn);
+   		new_attr.license	= ptr_to_u64(license);
+   		bpf_prog_fd = bpf(cmd, &new_attr, sizeof(new_attr));
+   		if (bpf_prog_fd < 0) {
+   			int saved_errno = errno;
+
+   			if ((new_attr.log_size) > 0 && (pwrite(mem_fd, log_buf, new_attr.log_size,
+   							       attr.log_buf) != new_attr.log_size))
+   				errno = saved_errno;
+   			return -errno;
+   		}
+
+   		addfd.srcfd	= bpf_prog_fd;
+   		addfd.id	= req->id;
+   		addfd.flags	= 0;
+   		ret = ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_ADDFD, &addfd);
+   		if (ret < 0)
+   			return -errno;
+
+   		resp->val = ret;
+   		ret = 0;
+   		break;
+   	case BPF_PROG_ATTACH:
+   		if (attr.attach_type != BPF_CGROUP_DEVICE)
+   			return -EINVAL;
+
+   		*bpf_attach_type = attr.attach_type;
+
+   		bpf_target_fd = pidfd_getfd(pidfd, attr.target_fd, 0);
+   		if (bpf_target_fd < 0)
+   			return -errno;
+
+   		bpf_attach_fd = pidfd_getfd(pidfd, attr.attach_bpf_fd, 0);
+   		if (bpf_attach_fd < 0)
+   			return -errno;
+
+   		if (tgid != pid_target) {
+   			// Make sure that the file descriptor table is shared
+   			// so we can be sure that we're talking about the same
+   			// open files.
+   			if (!filetable_shared(tgid, pid_target))
+   				return -EINVAL;
+
+   			// Make sure that the threadgroup leader hasn't been
+   			// recycled in the meantime so we're not accidentally
+   			// looking at a different threadgroup with the same
+   			// open files.
+   			if (!process_still_alive(pidfd))
+   				return -EINVAL;
+   		}
+
+   		attr.target_fd		= bpf_target_fd;
+   		attr.attach_bpf_fd	= bpf_attach_fd;
+   		ret = bpf(cmd, &attr, attr_len);
+   		break;
+   	case BPF_PROG_DETACH:
+   		if (attr.attach_type != BPF_CGROUP_DEVICE)
+   			return -EINVAL;
+
+   		*bpf_attach_type = attr.attach_type;
+
+   		bpf_target_fd = pidfd_getfd(pidfd, attr.target_fd, 0);
+   		if (bpf_target_fd < 0)
+   			return -errno;
+
+   		bpf_attach_fd = pidfd_getfd(pidfd, attr.attach_bpf_fd, 0);
+   		if (bpf_attach_fd < 0)
+   			return -errno;
+
+   		if (tgid != pid_target) {
+   			// Make sure that the file descriptor table is shared
+   			// so we can be sure that we're talking about the same
+   			// open files.
+   			if (!filetable_shared(tgid, pid_target))
+   				return -EINVAL;
+
+   			// Make sure that the threadgroup leader hasn't been
+   			// recycled in the meantime so we're not accidentally
+   			// looking at a different threadgroup with the same
+   			// open files.
+   			if (!process_still_alive(pidfd))
+   				return -EINVAL;
+   		}
+
+   		attr.target_fd		= bpf_target_fd;
+   		attr.attach_bpf_fd	= bpf_attach_fd;
+   		ret = bpf(cmd, &attr, attr_len);
+   		break;
+   	}
+
+   	return ret;
+   }
+
+   #ifndef MS_LAZYTIME
+   #define MS_LAZYTIME (1<<25)
+   #endif
+*/
+import "C"
+
 import (
 	"context"
 	"fmt"
@@ -34,447 +475,6 @@ import (
 	"github.com/canonical/lxd/shared/netutils"
 	"github.com/canonical/lxd/shared/osarch"
 )
-
-/*
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#include <elf.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <linux/seccomp.h>
-#include <linux/types.h>
-#include <linux/kdev_t.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mount.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/syscall.h>
-#include <sys/sysmacros.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#include "../include/lxd_bpf.h"
-#include "../include/lxd_seccomp.h"
-#include "../include/memory_utils.h"
-#include "../include/process_utils.h"
-#include "../include/syscall_wrappers.h"
-
-struct seccomp_notif_sizes expected_sizes;
-
-struct seccomp_notify_proxy_msg {
-	uint64_t __reserved;
-	pid_t monitor_pid;
-	pid_t init_pid;
-	struct seccomp_notif_sizes sizes;
-	uint64_t cookie_len;
-	// followed by: seccomp_notif, seccomp_notif_resp, cookie
-};
-
-#define LXD_SCHED_PARAM_SIZE (sizeof(struct sched_param))
-#define SECCOMP_PROXY_MSG_SIZE (sizeof(struct seccomp_notify_proxy_msg))
-#define SECCOMP_NOTIFY_SIZE (sizeof(struct seccomp_notif))
-#define SECCOMP_RESPONSE_SIZE (sizeof(struct seccomp_notif_resp))
-#define SECCOMP_MSG_SIZE_MIN (SECCOMP_PROXY_MSG_SIZE + SECCOMP_NOTIFY_SIZE + SECCOMP_RESPONSE_SIZE)
-#define SECCOMP_COOKIE_SIZE (64 * sizeof(char))
-#define SECCOMP_MSG_SIZE_MAX (SECCOMP_MSG_SIZE_MIN + SECCOMP_COOKIE_SIZE)
-
-static int seccomp_notify_get_sizes(struct seccomp_notif_sizes *sizes)
-{
-	if (syscall(SYS_seccomp, SECCOMP_GET_NOTIF_SIZES, 0, sizes) != 0)
-		return -1;
-
-	if (sizes->seccomp_notif != sizeof(struct seccomp_notif) ||
-	    sizes->seccomp_notif_resp != sizeof(struct seccomp_notif_resp) ||
-	    sizes->seccomp_data != sizeof(struct seccomp_data))
-		return -1;
-
-	return 0;
-}
-
-static int device_allowed(dev_t dev, mode_t mode)
-{
-	switch (mode & S_IFMT) {
-	case S_IFCHR:
-		if (dev == makedev(0, 0)) // whiteout
-			return 0;
-		else if (dev == makedev(5, 1)) // /dev/console
-			return 0;
-		else if (dev == makedev(1, 7)) // /dev/full
-			return 0;
-		else if (dev == makedev(1, 3)) // /dev/null
-			return 0;
-		else if (dev == makedev(1, 8)) // /dev/random
-			return 0;
-		else if (dev == makedev(5, 0)) // /dev/tty
-			return 0;
-		else if (dev == makedev(1, 9)) // /dev/urandom
-			return 0;
-		else if (dev == makedev(1, 5)) // /dev/zero
-			return 0;
-	}
-
-	return -EPERM;
-}
-
-#include <linux/audit.h>
-
-struct lxd_seccomp_data_arch {
-	int arch;
-	int nr_mknod;
-	int nr_mknodat;
-	int nr_setxattr;
-	int nr_mount;
-	int nr_bpf;
-	int nr_sched_setscheduler;
-	int nr_sysinfo;
-};
-
-#define LXD_SECCOMP_NOTIFY_MKNOD    0
-#define LXD_SECCOMP_NOTIFY_MKNODAT  1
-#define LXD_SECCOMP_NOTIFY_SETXATTR 2
-#define LXD_SECCOMP_NOTIFY_MOUNT 3
-#define LXD_SECCOMP_NOTIFY_BPF 4
-#define LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER 5
-#define LXD_SECCOMP_NOTIFY_SYSINFO 6
-
-// ordered by likelihood of usage...
-static const struct lxd_seccomp_data_arch seccomp_notify_syscall_table[] = {
-	{ -1, LXD_SECCOMP_NOTIFY_MKNOD, LXD_SECCOMP_NOTIFY_MKNODAT, LXD_SECCOMP_NOTIFY_SETXATTR, LXD_SECCOMP_NOTIFY_MOUNT, LXD_SECCOMP_NOTIFY_BPF, LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER, LXD_SECCOMP_NOTIFY_SYSINFO},
-#ifdef AUDIT_ARCH_X86_64
-	{ AUDIT_ARCH_X86_64,      133, 259, 188, 165, 321, 144, 99 },
-#endif
-#ifdef AUDIT_ARCH_I386
-	{ AUDIT_ARCH_I386,         14, 297, 226,  21, 357, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_AARCH64
-	{ AUDIT_ARCH_AARCH64,      -1,  33,   5,  21, 386, 156, 179 },
-#endif
-#ifdef AUDIT_ARCH_ARM
-	{ AUDIT_ARCH_ARM,          14, 324, 226,  21, 386, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_ARMEB
-	{ AUDIT_ARCH_ARMEB,        14, 324, 226,  21, 386, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_S390
-	{ AUDIT_ARCH_S390,         14, 290, 224,  21, 386, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_S390X
-	{ AUDIT_ARCH_S390X,        14, 290, 224,  21, 351, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_PPC
-	{ AUDIT_ARCH_PPC,          14, 288, 209,  21, 361, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_PPC64
-	{ AUDIT_ARCH_PPC64,        14, 288, 209,  21, 361, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_PPC64LE
-	{ AUDIT_ARCH_PPC64LE,      14, 288, 209,  21, 361, 156, 116 },
-#endif
-#ifdef AUDIT_ARCH_RISCV64
-	{ AUDIT_ARCH_RISCV64,      -1,  33,   5,  40, 280, -1, 179 },
-#endif
-#ifdef AUDIT_ARCH_SPARC
-	{ AUDIT_ARCH_SPARC,        14, 286, 169, 167, 349, 243, 214 },
-#endif
-#ifdef AUDIT_ARCH_SPARC64
-	{ AUDIT_ARCH_SPARC64,      14, 286, 169, 167, 349, 243, 214 },
-#endif
-#ifdef AUDIT_ARCH_MIPS
-	{ AUDIT_ARCH_MIPS,         14, 290, 224,  21,  -1, 141, 4116 },
-#endif
-#ifdef AUDIT_ARCH_MIPSEL
-	{ AUDIT_ARCH_MIPSEL,       14, 290, 224,  21,  -1, 141, 4116 },
-#endif
-#ifdef AUDIT_ARCH_MIPS64
-	{ AUDIT_ARCH_MIPS64,      131, 249, 180, 160,  -1, 141, 5097 },
-#endif
-#ifdef AUDIT_ARCH_MIPS64N32
-	{ AUDIT_ARCH_MIPS64N32,   131, 253, 180, 160,  -1, 141, 4116 },
-#endif
-#ifdef AUDIT_ARCH_MIPSEL64
-	{ AUDIT_ARCH_MIPSEL64,    131, 249, 180, 160,  -1, 141, 5097 },
-#endif
-#ifdef AUDIT_ARCH_MIPSEL64N32
-	{ AUDIT_ARCH_MIPSEL64N32, 131, 253, 180, 160,  -1, 141, 4116 },
-#endif
-};
-
-static int seccomp_notify_get_syscall(struct seccomp_notif *req,
-				      struct seccomp_notif_resp *resp)
-{
-	resp->id = req->id;
-	resp->flags = req->flags;
-	resp->val = 0;
-	resp->error = 0;
-
-	for (size_t i = 0; i < (sizeof(seccomp_notify_syscall_table) /
-				sizeof(seccomp_notify_syscall_table[0]));
-	     i++) {
-		const struct lxd_seccomp_data_arch *entry = &seccomp_notify_syscall_table[i];
-
-		if (entry->arch != req->data.arch)
-			continue;
-
-		if (entry->nr_mknod == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_MKNOD;
-
-		if (entry->nr_mknodat == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_MKNODAT;
-
-		if (entry->nr_setxattr == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_SETXATTR;
-
-		if (entry->nr_mount == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_MOUNT;
-
-		if (entry->nr_bpf == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_BPF;
-
-		if (entry->nr_sched_setscheduler == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_SCHED_SETSCHEDULER;
-
-		if (entry->nr_sysinfo == req->data.nr)
-			return LXD_SECCOMP_NOTIFY_SYSINFO;
-
-		break;
-	}
-
-	errno = EINVAL;
-	return -EINVAL;
-}
-
-static void seccomp_notify_update_response(struct seccomp_notif_resp *resp,
-					   int new_neg_errno, uint32_t flags)
-{
-	resp->error = new_neg_errno;
-	resp->flags |= flags;
-}
-
-static void prepare_seccomp_iovec(struct iovec *iov,
-				  struct seccomp_notify_proxy_msg *msg,
-				  struct seccomp_notif *notif,
-				  struct seccomp_notif_resp *resp, char *cookie)
-{
-	iov[0].iov_base = msg;
-	iov[0].iov_len = SECCOMP_PROXY_MSG_SIZE;
-
-	iov[1].iov_base = notif;
-	iov[1].iov_len = SECCOMP_NOTIFY_SIZE;
-
-	iov[2].iov_base = resp;
-	iov[2].iov_len = SECCOMP_RESPONSE_SIZE;
-
-	iov[3].iov_base = cookie;
-	iov[3].iov_len = SECCOMP_COOKIE_SIZE;
-}
-
-// We use the BPF_DEVCG_DEV_CHAR macro as a cheap way to detect whether the kernel has
-// the correct headers available to be compiled for bpf support. Since cgo doesn't have
-// a good way of letting us probe for structs or enums the alternative would be to vendor
-// bpf.h similar to what we do for seccomp itself. But that's annoying since bpf.h is quite
-// large. So users that want bpf interception support should make sure to have the relevant
-// header available at build time.
-static inline int pidfd_getfd(int pidfd, int fd, int flags)
-{
-	return syscall(__NR_pidfd_getfd, pidfd, fd, flags);
-}
-
-#define ptr_to_u64(p) ((__aligned_u64)((uintptr_t)(p)))
-
-static inline int bpf(int cmd, union bpf_attr *attr, size_t size)
-{
-	return syscall(__NR_bpf, cmd, attr, size);
-}
-
-static int handle_bpf_syscall(pid_t pid_target, int notify_fd, int mem_fd,
-			      int tgid, struct seccomp_notify_proxy_msg *msg,
-			      struct seccomp_notif *req, struct seccomp_notif_resp *resp,
-			      int *bpf_cmd, int *bpf_prog_type, int *bpf_attach_type)
-{
-	__do_close int pidfd = -EBADF, bpf_target_fd = -EBADF, bpf_attach_fd = -EBADF,
-		       bpf_prog_fd = -EBADF;
-	__do_free struct bpf_insn *insn = NULL;
-	char log_buf[4096] = {};
-	char license[128] = {};
-	size_t insn_size = 0;
-	union bpf_attr attr = {}, new_attr = {};
-	unsigned int attr_len = sizeof(attr);
-	struct seccomp_notif_addfd addfd = {};
-	int ret;
-	int cmd;
-
-	*bpf_cmd		= -EINVAL;
-	*bpf_prog_type		= -EINVAL;
-	*bpf_attach_type	= -EINVAL;
-
-	if (attr_len < req->data.args[2])
-		return -EFBIG;
-	attr_len = req->data.args[2];
-
-	*bpf_cmd = req->data.args[0];
-	switch (req->data.args[0]) {
-	case BPF_PROG_LOAD:
-		cmd = BPF_PROG_LOAD;
-		break;
-	case BPF_PROG_ATTACH:
-		cmd = BPF_PROG_ATTACH;
-		break;
-	case BPF_PROG_DETACH:
-		cmd = BPF_PROG_DETACH;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	ret = pread(mem_fd, &attr, attr_len, req->data.args[1]);
-	if (ret < 0)
-		return -errno;
-
-	*bpf_prog_type = attr.prog_type;
-
-	pidfd = lxd_pidfd_open(tgid, 0);
-	if (pidfd < 0)
-		return -errno;
-
-	if (ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_ID_VALID, &req->id))
-		return -errno;
-
-	switch (cmd) {
-	case BPF_PROG_LOAD:
-		if (attr.prog_type != BPF_PROG_TYPE_CGROUP_DEVICE)
-			return -EINVAL;
-
-		// bpf is currently limited to 1 million instructions. Don't
-		// allow the container to allocate more than that.
-		if (attr.insn_cnt > 1000000)
-			return -EINVAL;
-
-		insn_size = sizeof(struct bpf_insn) * attr.insn_cnt;
-
-		insn = malloc(insn_size);
-		if (!insn)
-			return -ENOMEM;
-
-		ret = pread(mem_fd, insn, insn_size, attr.insns);
-		if (ret < 0)
-			return -errno;
-		if (ret != insn_size)
-			return -EIO;
-
-		memcpy(&new_attr, &attr, sizeof(attr));
-
-		if (attr.log_size > sizeof(log_buf))
-			new_attr.log_size = sizeof(log_buf);
-
-		if (new_attr.log_size > 0)
-			new_attr.log_buf = ptr_to_u64(log_buf);
-
-		if (attr.license && pread(mem_fd, license, sizeof(license), attr.license) < 0)
-			return -errno;
-
-		new_attr.insns		= ptr_to_u64(insn);
-		new_attr.license	= ptr_to_u64(license);
-		bpf_prog_fd = bpf(cmd, &new_attr, sizeof(new_attr));
-		if (bpf_prog_fd < 0) {
-			int saved_errno = errno;
-
-			if ((new_attr.log_size) > 0 && (pwrite(mem_fd, log_buf, new_attr.log_size,
-							       attr.log_buf) != new_attr.log_size))
-				errno = saved_errno;
-			return -errno;
-		}
-
-		addfd.srcfd	= bpf_prog_fd;
-		addfd.id	= req->id;
-		addfd.flags	= 0;
-		ret = ioctl(notify_fd, SECCOMP_IOCTL_NOTIF_ADDFD, &addfd);
-		if (ret < 0)
-			return -errno;
-
-		resp->val = ret;
-		ret = 0;
-		break;
-	case BPF_PROG_ATTACH:
-		if (attr.attach_type != BPF_CGROUP_DEVICE)
-			return -EINVAL;
-
-		*bpf_attach_type = attr.attach_type;
-
-		bpf_target_fd = pidfd_getfd(pidfd, attr.target_fd, 0);
-		if (bpf_target_fd < 0)
-			return -errno;
-
-		bpf_attach_fd = pidfd_getfd(pidfd, attr.attach_bpf_fd, 0);
-		if (bpf_attach_fd < 0)
-			return -errno;
-
-		if (tgid != pid_target) {
-			// Make sure that the file descriptor table is shared
-			// so we can be sure that we're talking about the same
-			// open files.
-			if (!filetable_shared(tgid, pid_target))
-				return -EINVAL;
-
-			// Make sure that the threadgroup leader hasn't been
-			// recycled in the meantime so we're not accidentally
-			// looking at a different threadgroup with the same
-			// open files.
-			if (!process_still_alive(pidfd))
-				return -EINVAL;
-		}
-
-		attr.target_fd		= bpf_target_fd;
-		attr.attach_bpf_fd	= bpf_attach_fd;
-		ret = bpf(cmd, &attr, attr_len);
-		break;
-	case BPF_PROG_DETACH:
-		if (attr.attach_type != BPF_CGROUP_DEVICE)
-			return -EINVAL;
-
-		*bpf_attach_type = attr.attach_type;
-
-		bpf_target_fd = pidfd_getfd(pidfd, attr.target_fd, 0);
-		if (bpf_target_fd < 0)
-			return -errno;
-
-		bpf_attach_fd = pidfd_getfd(pidfd, attr.attach_bpf_fd, 0);
-		if (bpf_attach_fd < 0)
-			return -errno;
-
-		if (tgid != pid_target) {
-			// Make sure that the file descriptor table is shared
-			// so we can be sure that we're talking about the same
-			// open files.
-			if (!filetable_shared(tgid, pid_target))
-				return -EINVAL;
-
-			// Make sure that the threadgroup leader hasn't been
-			// recycled in the meantime so we're not accidentally
-			// looking at a different threadgroup with the same
-			// open files.
-			if (!process_still_alive(pidfd))
-				return -EINVAL;
-		}
-
-		attr.target_fd		= bpf_target_fd;
-		attr.attach_bpf_fd	= bpf_attach_fd;
-		ret = bpf(cmd, &attr, attr_len);
-		break;
-	}
-
-	return ret;
-}
-
-#ifndef MS_LAZYTIME
-#define MS_LAZYTIME (1<<25)
-#endif
-*/
-import "C"
 
 const lxdSeccompNotifyMknod = C.LXD_SECCOMP_NOTIFY_MKNOD
 const lxdSeccompNotifyMknodat = C.LXD_SECCOMP_NOTIFY_MKNODAT

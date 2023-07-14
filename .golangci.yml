@@ -4,9 +4,6 @@ issues:
   - path: 'lxd/seccomp/cgo\.go'
     linters:
       - gci
-  - path: 'lxd/seccomp/seccomp\.go'
-    linters:
-      - gci
   - path: 'lxd/main_forkuevent\.go'
     linters:
       - gci
