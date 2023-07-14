@@ -18,6 +18,7 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/cancel"
 	"github.com/canonical/lxd/shared/ioprogress"
+	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/tcp"
 	"github.com/canonical/lxd/shared/units"
 	"github.com/canonical/lxd/shared/ws"
@@ -262,7 +263,10 @@ func (r *ProtocolLXD) tryRebuildInstance(instanceName string, req api.InstanceRe
 			rop.handlerLock.Unlock()
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -282,7 +286,10 @@ func (r *ProtocolLXD) tryRebuildInstance(instanceName string, req api.InstanceRe
 		if !success {
 			rop.err = remoteOperationError("Failed instance rebuild", errors)
 			if op != nil {
-				_ = op.Cancel()
+				err := op.Cancel()
+				if err != nil {
+					logger.Warn("Failed to cancel remote operation after instance rebuild failure", logger.Ctx{"error": err})
+				}
 			}
 		}
 
@@ -647,7 +654,10 @@ func (r *ProtocolLXD) tryCreateInstance(req api.InstancesPost, urls []string, op
 			rop.handlerLock.Unlock()
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -668,7 +678,10 @@ func (r *ProtocolLXD) tryCreateInstance(req api.InstancesPost, urls []string, op
 		if !success {
 			rop.err = remoteOperationError("Failed instance creation", errors)
 			if op != nil {
-				_ = op.Cancel()
+				err := op.Cancel()
+				if err != nil {
+					logger.Warn("Failed to cancel operation after instance creation failure", logger.Ctx{"error": err})
+				}
 			}
 		}
 
@@ -1003,7 +1016,10 @@ func (r *ProtocolLXD) tryMigrateInstance(source InstanceServer, name string, req
 			rop.targetOp = op
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -1478,11 +1494,13 @@ func (r *ProtocolLXD) rawSFTPConn(apiURL *url.URL) (net.Conn, error) {
 		return nil, err
 	}
 
-	remoteTCP, _ := tcp.ExtractConn(conn)
-	if remoteTCP != nil {
+	remoteTCP, err := tcp.ExtractConn(conn)
+	if err != nil {
+		logger.Warn("Failed setting TCP timeouts on remote connection", logger.Ctx{"err": err})
+	} else {
 		err = tcp.SetTimeouts(remoteTCP, 0)
 		if err != nil {
-			return nil, err
+			logger.Warn("Failed setting TCP timeouts on remote connection", logger.Ctx{"err": err})
 		}
 	}
 
@@ -1536,8 +1554,15 @@ func (r *ProtocolLXD) GetInstanceFileSFTP(instanceName string) (*sftp.Client, er
 
 	go func() {
 		// Wait for the client to be done before closing the connection.
-		_ = client.Wait()
-		_ = conn.Close()
+		err := client.Wait()
+		if err != nil {
+			logger.Warn("SFTP client error", logger.Ctx{"error": err})
+		}
+
+		err = conn.Close()
+		if err != nil {
+			logger.Warn("Failed to close SFTP connection", logger.Ctx{"error": err})
+		}
 	}()
 
 	return client, nil
@@ -1893,7 +1918,10 @@ func (r *ProtocolLXD) tryMigrateInstanceSnapshot(source InstanceServer, instance
 			rop.targetOp = op
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -2319,8 +2347,7 @@ func (r *ProtocolLXD) ConsoleInstance(instanceName string, console api.InstanceC
 	go func(consoleDisconnect <-chan bool) {
 		<-consoleDisconnect
 		msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Detaching from console")
-		// We don't care if this fails. This is just for convenience.
-		_ = controlConn.WriteMessage(websocket.CloseMessage, msg)
+		_ = controlConn.WriteMessage(websocket.CloseMessage, msg) //nolint:errcheck // We don't care if this fails. This is just for convenience.
 		_ = controlConn.Close()
 	}(args.ConsoleDisconnect)
 
@@ -2400,8 +2427,7 @@ func (r *ProtocolLXD) ConsoleInstanceDynamic(instanceName string, console api.In
 	go func(consoleDisconnect <-chan bool) {
 		<-consoleDisconnect
 		msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Detaching from console")
-		// We don't care if this fails. This is just for convenience.
-		_ = controlConn.WriteMessage(websocket.CloseMessage, msg)
+		_ = controlConn.WriteMessage(websocket.CloseMessage, msg) //nolint:errcheck // We don't care if this fails. This is just for convenience.
 		_ = controlConn.Close()
 	}(args.ConsoleDisconnect)
 

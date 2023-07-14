@@ -11,6 +11,7 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/cancel"
 	"github.com/canonical/lxd/shared/ioprogress"
+	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/units"
 )
 
@@ -403,7 +404,10 @@ func (r *ProtocolLXD) tryMigrateStoragePoolVolume(source InstanceServer, pool st
 			}
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -465,7 +469,10 @@ func (r *ProtocolLXD) tryCreateStoragePoolVolume(pool string, req api.StorageVol
 			}
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
+	"github.com/canonical/lxd/shared/logger"
 )
 
 // Event handling functions
@@ -29,7 +30,11 @@ func (r *ProtocolLXD) getEvents(allProjects bool) (*EventListener, error) {
 		ctxCancel: cancel,
 	}
 
-	connInfo, _ := r.GetConnectionInfo()
+	connInfo, err := r.GetConnectionInfo()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get connection info: %w", err)
+	}
+
 	if connInfo.Project == "" {
 		return nil, fmt.Errorf("Unexpected empty project in connection info")
 	}
@@ -46,7 +51,6 @@ func (r *ProtocolLXD) getEvents(allProjects bool) (*EventListener, error) {
 
 	// Setup a new connection with LXD
 	var url string
-	var err error
 	if allProjects {
 		url, err = r.setQueryAttributes("/events?all-projects=true")
 	} else {
@@ -192,6 +196,10 @@ func (r *ProtocolLXD) SendEvent(event api.Event) error {
 		deadline = time.Now().Add(5 * time.Second)
 	}
 
-	_ = eventConn.SetWriteDeadline(deadline)
+	err := eventConn.SetWriteDeadline(deadline)
+	if err != nil {
+		logger.Warn("Failed to set websocket write deadline", logger.Ctx{"error": err})
+	}
+
 	return eventConn.WriteJSON(event)
 }

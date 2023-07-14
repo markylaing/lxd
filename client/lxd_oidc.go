@@ -221,7 +221,10 @@ func (o *oidcClient) authenticate(issuer string, clientID string, audience strin
 
 	fmt.Printf("Code: %s\n\n", resp.UserCode)
 
-	u, _ := url.Parse(resp.VerificationURIComplete)
+	u, err := url.Parse(resp.VerificationURIComplete)
+	if err != nil {
+		return fmt.Errorf("Failed to parse OIDC verification URI: %w", err)
+	}
 
 	err = httpbakery.OpenWebBrowser(u)
 	if err != nil {

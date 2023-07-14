@@ -16,6 +16,7 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/cancel"
 	"github.com/canonical/lxd/shared/ioprogress"
+	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/units"
 )
 
@@ -636,7 +637,10 @@ func (r *ProtocolLXD) tryCopyImage(req api.ImagesPost, urls []string) (RemoteOpe
 			rop.handlerLock.Unlock()
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -738,7 +742,11 @@ func (r *ProtocolLXD) CopyImage(source ImageServer, image api.Image, args *Image
 
 		exportOp, err := source.ExportImage(image.Fingerprint, req)
 		if err != nil {
-			_ = tokenOp.Cancel()
+			err := tokenOp.Cancel()
+			if err != nil {
+				logger.Warn("Failed to cancel token operation", logger.Ctx{"error": err})
+			}
+
 			return nil, err
 		}
 
@@ -750,7 +758,11 @@ func (r *ProtocolLXD) CopyImage(source ImageServer, image api.Image, args *Image
 		// Forward targetOp to remote op
 		go func() {
 			rop.err = rop.targetOp.Wait()
-			_ = tokenOp.Cancel()
+			err := tokenOp.Cancel()
+			if err != nil {
+				logger.Warn("Failed to cancel token operation", logger.Ctx{"error": err})
+			}
+
 			close(rop.chDone)
 		}()
 
@@ -836,7 +848,10 @@ func (r *ProtocolLXD) CopyImage(source ImageServer, image api.Image, args *Image
 			rop.handlerLock.Unlock()
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()

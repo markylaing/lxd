@@ -15,6 +15,7 @@ import (
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/cancel"
 	"github.com/canonical/lxd/shared/ioprogress"
+	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/units"
 	"github.com/canonical/lxd/shared/ws"
 )
@@ -194,7 +195,10 @@ func (r *ProtocolLXD) tryCreateContainer(req api.ContainersPost, urls []string) 
 			rop.targetOp = op
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -556,7 +560,10 @@ func (r *ProtocolLXD) tryMigrateContainer(source InstanceServer, name string, re
 			rop.targetOp = op
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -1230,7 +1237,10 @@ func (r *ProtocolLXD) tryMigrateContainerSnapshot(source InstanceServer, contain
 			rop.targetOp = op
 
 			for _, handler := range rop.handlers {
-				_, _ = rop.targetOp.AddHandler(handler)
+				_, err = rop.targetOp.AddHandler(handler)
+				if err != nil {
+					logger.Warn("Failed to add handler to remote operation", logger.Ctx{"error": err})
+				}
 			}
 
 			err = rop.targetOp.Wait()
@@ -1571,8 +1581,7 @@ func (r *ProtocolLXD) ConsoleContainer(containerName string, console api.Contain
 	go func(consoleDisconnect <-chan bool) {
 		<-consoleDisconnect
 		msg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Detaching from console")
-		// We don't care if this fails. This is just for convenience.
-		_ = controlConn.WriteMessage(websocket.CloseMessage, msg)
+		_ = controlConn.WriteMessage(websocket.CloseMessage, msg) //nolint:errcheck // We don't care if this fails. This is just for convenience.
 		_ = controlConn.Close()
 	}(args.ConsoleDisconnect)
 
