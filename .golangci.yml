@@ -1,3 +1,76 @@
+issues:
+  # Ignore gci for all CGO files.
+  exclude-rules:
+  - path: 'lxd/seccomp/cgo\.go'
+    linters:
+      - gci
+  - path: 'lxd/seccomp/seccomp\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkuevent\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forknet\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_checkfeature\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkproxy\.go'
+    linters:
+      - gci
+  - path: 'lxd/cgo\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkfile\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_nsexec\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkexec\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forksyscall\.go'
+    linters:
+      - gci
+  - path: 'lxd/storage/quota/cgo\.go'
+    linters:
+      - gci
+  - path: 'lxd/storage/quota/projectquota\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkcoresched\.go'
+    linters:
+      - gci
+  - path: 'lxd/main_forkmount\.go'
+    linters:
+      - gci
+  - path: 'lxd/devices\.go'
+    linters:
+      - gci
+  - path: 'shared/cgo\.go'
+    linters:
+      - gci
+  - path: 'shared/linux/socket_linux_cgo\.go'
+    linters:
+      - gci
+  - path: 'shared/idmap/shift_linux\.go'
+    linters:
+      - gci
+  - path: 'shared/idmap/cgo\.go'
+    linters:
+      - gci
+  - path: 'shared/netutils/cgo\.go'
+    linters:
+      - gci
+  - path: 'shared/netutils/network_linux_cgo\.go'
+    linters:
+      - gci
+  - path: 'lxc-to-lxd/main.go'
+    linters:
+      - gci
+
 linters:
   enable:
     - gofmt
