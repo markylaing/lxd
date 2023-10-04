@@ -14,6 +14,8 @@ test_tls_restrictions() {
   # Apply restrictions
   lxc config trust show "${FINGERPRINT}" | sed -e "s/restricted: false/restricted: true/" | lxc config trust edit "${FINGERPRINT}"
 
+  lxc_remote monitor localhost: --type logging
+
   # Confirm no project visible when none listed
   [ "$(lxc_remote project list localhost: --format csv | wc -l)" = 0 ]
 
