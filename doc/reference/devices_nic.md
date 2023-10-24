@@ -466,6 +466,7 @@ A bridge also lets you use MAC filtering and I/O limits, which cannot be applied
 
 `ipvlan` is similar to `macvlan`, with the difference being that the forked device has IPs statically assigned to it and inherits the parent's MAC address on the network.
 
+(maas-integration)=
 ## MAAS integration
 
 If you're using MAAS to manage the physical network under your LXD host and want to attach your instances directly to a MAAS-managed network, LXD can be configured to interact with MAAS so that it can track your instances.
