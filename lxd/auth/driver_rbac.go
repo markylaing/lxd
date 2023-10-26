@@ -851,6 +851,38 @@ func (r *rbac) relationToPermission(object Object, entitlement Entitlement) (Per
 		case EntitlementCanView:
 			return PermissionView, nil
 		}
+
+	case ObjectTypeDeployment:
+		switch entitlement {
+		case EntitlementCanEdit:
+			return PermissionManageDeployments, nil
+		case EntitlementCanView:
+			return PermissionView, nil
+		}
+
+	case ObjectTypeDeploymentShape:
+		switch entitlement {
+		case EntitlementCanEdit:
+			return PermissionManageDeploymentShapes, nil
+		case EntitlementCanView:
+			return PermissionView, nil
+		}
+
+	case ObjectTypeDeploymentKey:
+		switch entitlement {
+		case EntitlementCanEdit:
+			return PermissionManageDeploymentKeys, nil
+		case EntitlementCanView:
+			return PermissionView, nil
+		}
+
+	case ObjectTypeDeploymentShapeInstance:
+		switch entitlement {
+		case EntitlementCanEdit:
+			return PermissionManageDeploymentShapeInstances, nil
+		case EntitlementCanView:
+			return PermissionView, nil
+		}
 	}
 
 	return "", fmt.Errorf("Could not map object %q and entitlement %q to an RBAC permission", object, entitlement)
