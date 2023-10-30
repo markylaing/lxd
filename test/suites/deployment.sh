@@ -34,7 +34,7 @@ test_simple_deployment() {
     lxc deployment create dep4 \
         --description "Test description for dep4" \
         --governor-webhook-url http://0.0.0.0/scale \
-        foo=bar foo.bar=baz
+        user.foo=bar user.bar=baz
 
     # Creating deployment from stdin.
     cat <<EOF | lxc deployment create dep5
@@ -52,11 +52,11 @@ EOF
     lxc deployment list --format csv | grep dep4
 
     # Showing a deployment
-    lxc deployment show dep4 | grep -q 'foo: bar'
+    lxc deployment show dep4 | grep -q 'user.foo: bar'
     lxc deployment show dep4 | grep -q 'governor_webhook_url: http://0.0.0.0/scale'
 
     # Getting a deployment key value / property
-    lxc deployment get dep4 foo | grep -q 'bar'
+    lxc deployment get dep4 user.foo | grep -q 'bar'
     lxc deployment get dep4 governor_webhook_url --property | grep -q 'http://0.0.0.0/scale'
 
     # Setting/Unsetting a deployment key value / property
@@ -89,7 +89,7 @@ test_deployment_shape() {
     lxc deployment create dep1
 
     # Create shapes
-    lxc deployment shape create dep1 shape1
+    ! lxc deployment shape create dep1 shape1 || false # Scaling values cannot both be zero.
     lxc deployment shape create dep1 shape2 \
         --description "This is a test description for shape2" \
         --scaling-min 2 \
@@ -130,6 +130,7 @@ EOF
     # Editing a shape
     cat <<EOF | lxc deployment shape edit dep1 shape3
 description: New description for shape3
+scaling_maximum: 8
 config:
   new.user.foo: blah2
   new.user.foo.bar: blah3
@@ -144,7 +145,7 @@ EOF
     lxc deployment shape list dep1 --format csv | grep new-shape
 
     # deleting a shape
-    lxc deployment shape delete dep1 shape1
+    ! lxc deployment shape delete dep1 shape1 || false # This shape was never created.
     ! lxc deployment shape delete depNotFound shape1 || false # deployment not found
     ! lxc deployment shape delete dep1 shapeNotFound || false # shape not found
     lxc deployment shape delete dep1 shape2
@@ -153,7 +154,7 @@ EOF
     # Creating a shape from an image
     ensure_import_testimage
 
-    lxc deployment shape create dep1 shape1 --from-image testimage
+    lxc deployment shape create dep1 shape1 --from-image testimage --scaling-max 1
     lxc deployment shape show dep1 shape1 | grep -e 'type: image' -e 'alias: testimage' -e 'protocol: simplestreams'
     ! lxc deployment shape create dep1 shape1 --from-image wrongimage || false # image not found
 
@@ -185,7 +186,7 @@ description: Test LXD Profile for a test deployment shape
 name: example-profile
 EOF
 
-    lxc deployment shape create dep1 shape2 --from-profile test-profile
+    lxc deployment shape create dep1 shape2 --from-profile test-profile --scaling-max 1
     lxc deployment shape show dep1 shape2 | awk '
 BEGIN { found=0; inside=0; }
 /^devices:/ { inside=1; }
@@ -195,7 +196,7 @@ inside && /eth0:/ && /name: eth0/ && /nictype: bridged/ && /parent: lxdbr0/ && /
 
     # Creating a shape from an image and an instance profile
     # while specifying that the shape must create vm instances (and not containers that are set by default)
-    lxc deployment shape create dep1 complete-shape --from-profile test-profile --from-image testimage --vm
+    lxc deployment shape create dep1 complete-shape --from-profile test-profile --from-image testimage --vm --scaling-max 1
     lxc deployment shape show dep1 complete-shape | awk '
 BEGIN { found=0; inside=0; }
 /^instance_template:/ { inside=1; }

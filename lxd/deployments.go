@@ -12,7 +12,6 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/deployments"
@@ -29,69 +28,69 @@ import (
 var deploymentsCmd = APIEndpoint{
 	Path: "deployments",
 
-	Get:  APIEndpointAction{Handler: deploymentsGet, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanView)},
-	Post: APIEndpointAction{Handler: deploymentsPost, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanEdit)},
+	Get:  APIEndpointAction{Handler: deploymentsGet, AccessHandler: allowAuthenticated},
+	Post: APIEndpointAction{Handler: deploymentsPost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}",
 
-	Delete: APIEndpointAction{Handler: deploymentDelete, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanEdit, "deploymentName")},
-	Get:    APIEndpointAction{Handler: deploymentGet, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanView, "deploymentName")},
-	Put:    APIEndpointAction{Handler: deploymentPut, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanEdit, "deploymentName")},
-	Patch:  APIEndpointAction{Handler: deploymentPut, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanEdit, "deploymentName")},
-	Post:   APIEndpointAction{Handler: deploymentPost, AccessHandler: allowPermission(auth.ObjectTypeDeployment, auth.EntitlementCanEdit, "deploymentName")},
+	Delete: APIEndpointAction{Handler: deploymentDelete, AccessHandler: allowAuthenticated},
+	Get:    APIEndpointAction{Handler: deploymentGet, AccessHandler: allowAuthenticated},
+	Put:    APIEndpointAction{Handler: deploymentPut, AccessHandler: allowAuthenticated},
+	Patch:  APIEndpointAction{Handler: deploymentPut, AccessHandler: allowAuthenticated},
+	Post:   APIEndpointAction{Handler: deploymentPost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentKeysCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/keys",
 
-	Get:  APIEndpointAction{Handler: deploymentKeysGet, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanView, "deploymentName")},
-	Post: APIEndpointAction{Handler: deploymentKeysPost, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanEdit, "deploymentName")},
+	Get:  APIEndpointAction{Handler: deploymentKeysGet, AccessHandler: allowAuthenticated},
+	Post: APIEndpointAction{Handler: deploymentKeysPost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentKeyCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/keys/{deploymentKeyName}",
 
-	Delete: APIEndpointAction{Handler: deploymentKeyDelete, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanEdit, "deploymentName", "deploymentKeyName")},
-	Get:    APIEndpointAction{Handler: deploymentKeyGet, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanView, "deploymentName", "deploymentKeyName")},
-	Put:    APIEndpointAction{Handler: deploymentKeyPut, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanEdit, "deploymentName", "deploymentKeyName")},
-	Post:   APIEndpointAction{Handler: deploymentKeyPost, AccessHandler: allowPermission(auth.ObjectTypeDeploymentKey, auth.EntitlementCanEdit, "deploymentName", "deploymentKeyName")},
+	Delete: APIEndpointAction{Handler: deploymentKeyDelete, AccessHandler: allowAuthenticated},
+	Get:    APIEndpointAction{Handler: deploymentKeyGet, AccessHandler: allowAuthenticated},
+	Put:    APIEndpointAction{Handler: deploymentKeyPut, AccessHandler: allowAuthenticated},
+	Post:   APIEndpointAction{Handler: deploymentKeyPost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentShapesCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/shapes",
 
-	Get:  APIEndpointAction{Handler: deploymentShapesGet, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanView, "deploymentName")},
-	Post: APIEndpointAction{Handler: deploymentShapesPost, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanEdit, "deploymentName")},
+	Get:  APIEndpointAction{Handler: deploymentShapesGet, AccessHandler: allowAuthenticated},
+	Post: APIEndpointAction{Handler: deploymentShapesPost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentShapeCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/shapes/{deploymentShapeName}",
 
-	Delete: APIEndpointAction{Handler: deploymentShapeDelete, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName")},
-	Get:    APIEndpointAction{Handler: deploymentShapeGet, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanView, "deploymentName", "deploymentShapeName")},
-	Put:    APIEndpointAction{Handler: deploymentShapePut, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName")},
-	Post:   APIEndpointAction{Handler: deploymentShapePost, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShape, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName")},
+	Delete: APIEndpointAction{Handler: deploymentShapeDelete, AccessHandler: allowAuthenticated},
+	Get:    APIEndpointAction{Handler: deploymentShapeGet, AccessHandler: allowAuthenticated},
+	Put:    APIEndpointAction{Handler: deploymentShapePut, AccessHandler: allowAuthenticated},
+	Post:   APIEndpointAction{Handler: deploymentShapePost, AccessHandler: allowAuthenticated},
 }
 
 var deploymentShapeInstancesCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/shapes/{deploymentShapeName}/instances",
 
-	Get:  APIEndpointAction{Handler: deploymentInstancesGet, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShapeInstance, auth.EntitlementCanView, "deploymentName", "deploymentShapeName")},
-	Post: APIEndpointAction{Handler: deploymentInstancesPost, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShapeInstance, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName")},
+	Get:  APIEndpointAction{Handler: deploymentInstancesGet, AccessHandler: allowAuthenticated},
+	Post: APIEndpointAction{Handler: deploymentInstancesPost, AccessHandler: allowAuthenticated},
 }
 
 var deployedShapeInstancesCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/shapes/{deploymentShapeName}/instances/{name}",
 
-	Delete: APIEndpointAction{Handler: deploymentInstanceDelete, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShapeInstance, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName", "name")},
+	Delete: APIEndpointAction{Handler: deploymentInstanceDelete, AccessHandler: allowAuthenticated},
 }
 
 var deployedShapeInstancesStateCmd = APIEndpoint{
 	Path: "deployments/{deploymentName}/shapes/{deploymentShapeName}/instances/{name}/state",
 
-	Put: APIEndpointAction{Handler: deploymentInstanceState, AccessHandler: allowPermission(auth.ObjectTypeDeploymentShapeInstance, auth.EntitlementCanEdit, "deploymentName", "deploymentShapeName", "name")},
+	Put: APIEndpointAction{Handler: deploymentInstanceState, AccessHandler: allowAuthenticated},
 }
 
 // API endpoints.
@@ -1092,7 +1091,7 @@ func deploymentKeyPost(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	lc := lifecycle.DeploymentKeyRenamed.Event(projectName, deploymentName, deploymentKeyName, request.CreateRequestor(r), logger.Ctx{"old_name": deploymentName})
+	lc := lifecycle.DeploymentKeyRenamed.Event(projectName, deploymentName, deploymentKeyName, request.CreateRequestor(r), logger.Ctx{"old_name": deploymentKeyName})
 	s.Events.SendLifecycle(projectName, lc)
 
 	return response.SyncResponseLocation(true, nil, lc.Source)

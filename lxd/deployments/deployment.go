@@ -3,6 +3,7 @@ package deployments
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/canonical/lxd/lxd/db"
@@ -329,7 +330,22 @@ func (d *Deployment) RenameDeploymentKey(newName string) error {
 	}
 
 	err = d.state.DB.Cluster.Transaction(d.state.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
-		return tx.RenameDeploymentKey(ctx, d.id, newName)
+		keys, err := tx.GetDeploymentKeys(ctx, db.DeploymentKeyFilter{
+			ProjectName:       &d.projectName,
+			DeploymentName:    &d.info.Name,
+			DeploymentKeyName: &d.keyInfo.Name,
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(keys) == 0 {
+			return api.StatusErrorf(http.StatusNotFound, "No keys with that name")
+		} else if len(keys) > 1 {
+			return api.StatusErrorf(http.StatusTeapot, "Something strange is afoot")
+		}
+
+		return tx.RenameDeploymentKey(ctx, keys[0].ID, newName)
 	})
 	if err != nil {
 		return err
