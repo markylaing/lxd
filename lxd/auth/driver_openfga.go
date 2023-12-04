@@ -708,12 +708,12 @@ func (f *fga) RenameProfile(ctx context.Context, projectName string, oldProfileN
 }
 
 // AddStoragePoolVolume adds a new storage volume tuple to the OpenFGA server, relating it to its parent project.
-func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string) error {
+func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string, storageVolumeLocation string) error {
 	writes := []client.ClientTupleKey{
 		{
 			User:     ObjectProject(projectName).String(),
 			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName).String(),
+			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -721,12 +721,12 @@ func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, stor
 }
 
 // DeleteStoragePoolVolume removes a storage volume tuple from the OpenFGA server.
-func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string) error {
+func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string, storageVolumeLocation string) error {
 	deletions := []client.ClientTupleKey{
 		{
 			User:     ObjectProject(projectName).String(),
 			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName).String(),
+			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -734,12 +734,12 @@ func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, s
 }
 
 // RenameStoragePoolVolume deletes the old storage volume tuple from the OpenFGA server, and creates the new one.
-func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, oldStorageVolumeName string, newStorageVolumeName string) error {
+func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, oldStorageVolumeName string, newStorageVolumeName string, storageVolumeLocation string) error {
 	writes := []client.ClientTupleKey{
 		{
 			User:     ObjectProject(projectName).String(),
 			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, newStorageVolumeName).String(),
+			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, newStorageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -747,7 +747,7 @@ func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, s
 		{
 			User:     ObjectProject(projectName).String(),
 			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, oldStorageVolumeName).String(),
+			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, oldStorageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
