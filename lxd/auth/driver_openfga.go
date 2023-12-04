@@ -116,10 +116,6 @@ func (f *fga) configure(opts Opts) error {
 		return fmt.Errorf("Expected a string for configuration key %q, got: %T", "openfga.store.model_id", val)
 	}
 
-	if opts.resources == nil {
-		return fmt.Errorf("Missing resources for OpenFGA sync")
-	}
-
 	return nil
 }
 
@@ -195,7 +191,11 @@ func (f *fga) load(ctx context.Context, certificateCache *certificate.Cache, opt
 		return fmt.Errorf("Existing OpenFGA model does not equal new model")
 	}
 
-	return f.syncResources(ctx, *opts.resources)
+	if opts.resources != nil {
+		return f.syncResources(ctx, *opts.resources)
+	}
+
+	return nil
 }
 
 // CheckPermission retrieves user details from the request, then checks if the user is related to the given Object via
