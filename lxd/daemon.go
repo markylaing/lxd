@@ -1373,7 +1373,7 @@ func (d *Daemon) init() error {
 		} else {
 			err = d.setupOpenFGA(openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openFGAAuthorizationModelID, openfgaMaxWritesPerTransaction)
 			if err != nil {
-				logger.Error("Failed to configure OpenFGA. Reverting to default TLS authorization", logger.Ctx{"error": err})
+				return fmt.Errorf("Failed to configure OpenFGA: %w", err)
 			}
 		}
 	}
