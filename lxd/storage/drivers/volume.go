@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/canonical/lxd/lxd/locking"
 	"github.com/canonical/lxd/lxd/operations"
@@ -43,6 +44,11 @@ func (t VolumeType) IsInstance() bool {
 	}
 
 	return false
+}
+
+// Singular returns the singular version of the type name.
+func (t VolumeType) Singular() string {
+	return strings.TrimSuffix(string(t), "s")
 }
 
 // VolumeTypeBucket represents a bucket storage volume.
