@@ -34,25 +34,55 @@ var storagePoolBucketsCmd = APIEndpoint{
 var storagePoolBucketCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolBucketDelete, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
-	Get:    APIEndpointAction{Handler: storagePoolBucketGet, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanView, "poolName", "bucketName", "location")},
-	Patch:  APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
-	Put:    APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
+	Delete: APIEndpointAction{Handler: storagePoolBucketDelete, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolBucketGet, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var storagePoolBucketKeysCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}/keys",
 
-	Get:  APIEndpointAction{Handler: storagePoolBucketKeysGet, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanView, "poolName", "bucketName", "location")},
-	Post: APIEndpointAction{Handler: storagePoolBucketKeysPost, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
+	Get:  APIEndpointAction{Handler: storagePoolBucketKeysGet, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: storagePoolBucketKeysPost, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var storagePoolBucketKeyCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}/keys/{keyName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolBucketKeyDelete, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
-	Get:    APIEndpointAction{Handler: storagePoolBucketKeyGet, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanView, "poolName", "bucketName", "location")},
-	Put:    APIEndpointAction{Handler: storagePoolBucketKeyPut, AccessHandler: allowPermission(auth.ObjectTypeStorageBucket, auth.EntitlementCanEdit, "poolName", "bucketName", "location")},
+	Delete: APIEndpointAction{Handler: storagePoolBucketKeyDelete, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolBucketKeyGet, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: storagePoolBucketKeyPut, AccessHandler: storageBucketAccessHandler(auth.EntitlementCanEdit)},
+}
+
+func storageBucketAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		s := d.State()
+		poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		bucketName, err := url.PathUnescape(mux.Vars(r)["bucketName"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		location := request.QueryParam(r, "target")
+
+		projectName := request.ProjectParam(r)
+		projectName, err = project.StorageBucketProject(r.Context(), s.DB.Cluster, projectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectStorageBucket(projectName, poolName, bucketName, location), entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
 }
 
 // API endpoints
