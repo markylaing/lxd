@@ -812,7 +812,7 @@ func doAPI10PreNotifyTriggers(d *Daemon, clusterChanged map[string]string, newCl
 	}
 
 	if openFGAChanged {
-		apiURL, apiToken, storeID, modelID := newClusterConfig.OpenFGA()
+		apiURL, apiToken, storeID, modelID, _ := newClusterConfig.OpenFGA()
 
 		// Write authorization model only if the modelID has not already been set and we have all other connection information.
 		if modelID == "" && apiURL != "" && apiToken != "" && storeID != "" {
@@ -1119,8 +1119,8 @@ func doApi10UpdateTriggers(d *Daemon, nodeChanged, clusterChanged map[string]str
 	}
 
 	if openFGAChanged {
-		openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openfgaAuthorizationModelID := d.globalConfig.OpenFGA()
-		err := d.setupOpenFGA(openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openfgaAuthorizationModelID)
+		openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openfgaAuthorizationModelID, maxWritesPerTransaction := d.globalConfig.OpenFGA()
+		err := d.setupOpenFGA(openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openfgaAuthorizationModelID, maxWritesPerTransaction)
 		if err != nil {
 			return err
 		}
