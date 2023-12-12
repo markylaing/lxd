@@ -18,6 +18,13 @@ import (
 	"github.com/canonical/lxd/shared/logger"
 )
 
+const (
+	// defaultMaxWritesPerTransaction determines the maximum number of writes that will be executed within a single
+	// transaction. Otherwise, the driver will turn off transactions and perform chunking. The default maximum number of
+	// writes per transaction on an OpenFGA server is 100.
+	defaultMaxWritesPerTransaction int64 = 100
+)
+
 // WriteOpenFGAAuthorizationModel writes the built-in authorization model to the OpenFGA server.
 func WriteOpenFGAAuthorizationModel(ctx context.Context, apiURL string, apiToken string, storeID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -63,10 +70,11 @@ type fga struct {
 	commonAuthorizer
 	tls *tls
 
-	apiURL      string
-	apiToken    string
-	storeID     string
-	authModelID string
+	apiURL                  string
+	apiToken                string
+	storeID                 string
+	authModelID             string
+	maxWritesPerTransaction int64
 
 	client *client.OpenFgaClient
 }
@@ -114,6 +122,16 @@ func (f *fga) configure(opts Opts) error {
 	f.authModelID, ok = val.(string)
 	if !ok {
 		return fmt.Errorf("Expected a string for configuration key %q, got: %T", "openfga.store.model_id", val)
+	}
+
+	val, ok = opts.config["openfga.max_writes_per_transaction"]
+	if !ok {
+		f.maxWritesPerTransaction = defaultMaxWritesPerTransaction
+	} else {
+		f.maxWritesPerTransaction, ok = val.(int64)
+		if !ok {
+			return fmt.Errorf("Expected an int for configuration key %q, got %T", "openfga.max_writes_per_transaction", val)
+		}
 	}
 
 	return nil
@@ -785,17 +803,24 @@ func (f *fga) updateTuples(ctx context.Context, writes []client.ClientTupleKey, 
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
+	timeout := 5 * time.Second
 	opts := client.ClientWriteOptions{
 		AuthorizationModelId: openfga.PtrString(f.authModelID),
-		Transaction: &client.TransactionOptions{
+	}
+
+	// Disable transactions only when the writes cannot be performed in a single transaction.
+	// Additionally, increase the timeout to 10 seconds
+	if int64(len(writes)+len(deletions)) >= f.maxWritesPerTransaction {
+		timeout = 10 * time.Second
+		opts.Transaction = &client.TransactionOptions{
 			Disable:             true,
 			MaxParallelRequests: 5,
 			MaxPerChunk:         50,
-		},
+		}
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	body := client.ClientWriteRequest{}
 
