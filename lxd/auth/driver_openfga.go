@@ -212,6 +212,7 @@ func (f *fga) load(ctx context.Context, certificateCache *certificate.Cache, opt
 	return nil
 }
 
+// StopService stops the OpenFGA authorizer service.
 func (f *fga) StopService(ctx context.Context) error {
 	// Cancel any background routine.
 	f.shutdownCancel()
