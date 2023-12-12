@@ -650,7 +650,15 @@ func storagePoolBucketDelete(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(fmt.Errorf("Failed deleting storage bucket: %w", err))
 	}
 
-	err = s.Authorizer.DeleteStorageBucket(r.Context(), bucketProjectName, poolName, bucketName)
+	// If pool is remote, the storage bucket object in the authorizer will not be keyed by location.
+	// If the pool is not remote and the bucket is not on this node the deletion will have failed above, therefore we are
+	// on the correct node and can use the server name as the location.
+	if pool.Driver().Info().Remote {
+		err = s.Authorizer.DeleteStorageBucket(r.Context(), bucketProjectName, poolName, bucketName, "")
+	} else {
+		err = s.Authorizer.DeleteStorageBucket(r.Context(), bucketProjectName, poolName, bucketName, s.ServerName)
+	}
+
 	if err != nil {
 		logger.Error("Failed to add storage bucket to authorizer", logger.Ctx{"name": bucketName, "pool": poolName, "project": bucketProjectName, "error": err})
 	}
