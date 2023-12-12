@@ -60,11 +60,81 @@ var storagePoolVolumesTypeCmd = APIEndpoint{
 var storagePoolVolumeTypeCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit, "poolName", "type", "volumeName", "location")},
-	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanView, "poolName", "type", "volumeName", "location")},
-	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit, "poolName", "type", "volumeName", "location")},
-	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit, "poolName", "type", "volumeName", "location")},
-	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit, "poolName", "type", "volumeName", "location")},
+	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
+}
+
+// storagePoolVolumeAccessHandler resolves the project and location of the storage volume before performing the permission check.
+func storagePoolVolumeAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		s := d.State()
+		poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		volumeTypeName, err := url.PathUnescape(mux.Vars(r)["type"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		volumeName, err := url.PathUnescape(mux.Vars(r)["volumeName"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		location := request.QueryParam(r, "target")
+
+		projectName := request.ProjectParam(r)
+		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+			dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), projectName)
+			if err != nil {
+				return err
+			}
+
+			apiProject, err := dbProject.ToAPI(ctx, tx.Tx())
+			if err != nil {
+				return err
+			}
+
+			projectName = project.StorageVolumeProjectFromRecord(apiProject, volumeType)
+
+			// For storage volume we also need to populate its location.
+			if location == "" {
+				storagePoolID, err := tx.GetStoragePoolID(ctx, poolName)
+				if err != nil {
+					return err
+				}
+
+				storageVolume, err := tx.GetStoragePoolVolume(ctx, storagePoolID, projectName, volumeType, volumeName, false)
+				if err != nil {
+					return err
+				}
+
+				location = storageVolume.Location
+			}
+
+			return nil
+		})
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectStorageVolume(projectName, poolName, volumeTypeName, volumeName, location), entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
 }
 
 // swagger:operation GET /1.0/storage-pools/{poolName}/volumes storage storage_pool_volumes_get
