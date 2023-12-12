@@ -47,7 +47,7 @@ The following server options control the {ref}`ACME <authentication-server-certi
 (server-options-candid-rbac)=
 ## Candid and RBAC configuration
 
-The following server options configure external user authentication, through {ref}`authentication-candid` or through {ref}`authentication-rbac`:
+The following server options configure external user authentication, through {ref}`authentication-candid` or through {ref}`authorization-rbac`:
 
 % Include content from [config_options.txt](config_options.txt)
 ```{include} config_options.txt
@@ -64,6 +64,17 @@ The following server options configure external user authentication through {ref
 ```{include} config_options.txt
     :start-after: <!-- config group server-oidc start -->
     :end-before: <!-- config group server-oidc end -->
+```
+
+(server-options-openfga)=
+## OpenFGA configuration
+
+The following server options configure external user authorization through {ref}`authorization-openfga`:
+
+% Include content from [config_options.txt](config_options.txt)
+```{include} config_options.txt
+    :start-after: <!-- config group server-openfga start -->
+    :end-before: <!-- config group server-openfga end -->
 ```
 
 (server-options-cluster)=
