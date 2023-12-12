@@ -1887,11 +1887,11 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 
 	leaderAddress, err := d.gateway.LeaderAddress()
 	if err != nil {
-		if errors.Is(err, cluster.ErrNodeIsNotClustered) {
-			isLeader = true
-		} else {
+		if !errors.Is(err, cluster.ErrNodeIsNotClustered) {
 			return err
 		}
+
+		isLeader = true
 	} else if leaderAddress == d.localConfig.ClusterAddress() {
 		isLeader = true
 	}
