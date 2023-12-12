@@ -752,7 +752,7 @@ func doApi10Update(d *Daemon, r *http.Request, req api.ServerPut, patch bool) re
 		}
 	})
 
-	err = doApi10PreNotifyTriggers(d, clusterChanged, newClusterConfig)
+	err = doAPI10PreNotifyTriggers(d, clusterChanged, newClusterConfig)
 	if err != nil {
 		return response.InternalError(fmt.Errorf("Failed to run pre-notify triggers for cluster config update: %w", err))
 	}
@@ -802,7 +802,7 @@ func doApi10Update(d *Daemon, r *http.Request, req api.ServerPut, patch bool) re
 	return response.EmptySyncResponse
 }
 
-func doApi10PreNotifyTriggers(d *Daemon, clusterChanged map[string]string, newClusterConfig *clusterConfig.Config) error {
+func doAPI10PreNotifyTriggers(d *Daemon, clusterChanged map[string]string, newClusterConfig *clusterConfig.Config) error {
 	openFGAChanged := false
 	for key := range clusterChanged {
 		switch key {
