@@ -2028,6 +2028,15 @@
 						}
 					},
 					{
+						"openfga.max_writes_per_transaction": {
+							"defaultdesc": 100,
+							"longdesc": "",
+							"scope": "global",
+							"shortdesc": "Maximum number of tuples to write to the OpenFGA server before disabling transactions",
+							"type": "int"
+						}
+					},
+					{
 						"openfga.store.id": {
 							"longdesc": "",
 							"scope": "global",

@@ -1847,6 +1847,14 @@ This value is required by some providers.
 
 ```
 
+```{config:option} openfga.max_writes_per_transaction server-openfga
+:defaultdesc: "100"
+:scope: "global"
+:shortdesc: "Maximum number of tuples to write to the OpenFGA server before disabling transactions"
+:type: "int"
+
+```
+
 ```{config:option} openfga.store.id server-openfga
 :scope: "global"
 :shortdesc: "ID of the OpenFGA permission store"
