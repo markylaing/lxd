@@ -42,11 +42,35 @@ var profilesCmd = APIEndpoint{
 var profileCmd = APIEndpoint{
 	Path: "profiles/{name}",
 
-	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: allowPermission(auth.ObjectTypeProfile, auth.EntitlementCanEdit, "name")},
-	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: allowPermission(auth.ObjectTypeProfile, auth.EntitlementCanView, "name")},
-	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: allowPermission(auth.ObjectTypeProfile, auth.EntitlementCanEdit, "name")},
-	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: allowPermission(auth.ObjectTypeProfile, auth.EntitlementCanEdit, "name")},
-	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: allowPermission(auth.ObjectTypeProfile, auth.EntitlementCanEdit, "name")},
+	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: profileAccessHandler(auth.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
+}
+
+// profileAccessHandler resolves the effective project of a profile before checking against the authorizer.
+func profileAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		s := d.State()
+		profileName, err := url.PathUnescape(mux.Vars(r)["name"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		projectName := request.ProjectParam(r)
+		actualProject, err := project.ProfileProject(s.DB.Cluster, projectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectProfile(actualProject.Name, profileName), entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
 }
 
 // swagger:operation GET /1.0/profiles profiles profiles_get
