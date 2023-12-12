@@ -89,7 +89,7 @@ func init() {
 // URLToEntityType parses a raw URL string and returns the entity type, the project, the location and the path arguments. The
 // returned project is set to "default" if it is not present (unless the entity type is TypeProject, in which case it is
 // set to the value of the path parameter). An error is returned if the URL is not recognised.
-func URLToEntityType(rawURL string) (int, string, string, []string, error) {
+func URLToEntityType(rawURL string) (entityType int, projectName string, location string, pathArguments []string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return -1, "", "", nil, fmt.Errorf("Failed to parse url %q into an entity type: %w", rawURL, err)
