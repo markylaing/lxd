@@ -18,6 +18,7 @@ import (
 	"github.com/canonical/lxd/shared/logger"
 )
 
+// WriteOpenFGAAuthorizationModel writes the built-in authorization model to the OpenFGA server.
 func WriteOpenFGAAuthorizationModel(ctx context.Context, apiURL string, apiToken string, storeID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -197,6 +198,8 @@ func (f *fga) load(ctx context.Context, certificateCache *certificate.Cache, opt
 	return f.syncResources(ctx, *opts.resources)
 }
 
+// CheckPermission retrieves user details from the request, then checks if the user is related to the given Object via
+// the given Entitlement. If this is true we return nil, otherwise we return an api.StatusError with http.StatusForbidden.
 func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Object, entitlement Entitlement) error {
 	logCtx := logger.Ctx{"object": object, "entitlement": entitlement, "url": r.URL.String(), "method": r.Method}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -244,6 +247,8 @@ func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Objec
 	return nil
 }
 
+// GetPermissionChecker returns a PermissionChecker that does not need to make further API calls to perform permission checks.
+// It does so by listing all objects of the given type that the user is related to via the given Entitlement.
 func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitlement Entitlement, objectType ObjectType) (PermissionChecker, error) {
 	allowFunc := func(b bool) func(Object) bool {
 		return func(Object) bool {
@@ -291,6 +296,8 @@ func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 	}, nil
 }
 
+// AddProject adds a project tuple to the OpenFGA server. We also add the default profile for this project, as it is
+// always created.
 func (f *fga) AddProject(ctx context.Context, _ int64, projectName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -308,6 +315,7 @@ func (f *fga) AddProject(ctx context.Context, _ int64, projectName string) error
 	return f.updateTuples(ctx, writes, nil)
 }
 
+// DeleteProject deletes the project and default profile tuples from the OpenFGA server.
 func (f *fga) DeleteProject(ctx context.Context, _ int64, projectName string) error {
 	// Only empty projects can be deleted, so we don't need to worry about any tuples with this project as a parent.
 	deletions := []client.ClientTupleKey{
@@ -327,6 +335,7 @@ func (f *fga) DeleteProject(ctx context.Context, _ int64, projectName string) er
 	return f.updateTuples(ctx, nil, deletions)
 }
 
+// RenameProject deletes the old project and default profile tuples and creates the new ones.
 func (f *fga) RenameProject(ctx context.Context, _ int64, oldName string, newName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -359,7 +368,7 @@ func (f *fga) RenameProject(ctx context.Context, _ int64, oldName string, newNam
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddCertificate is a no-op.
+// AddCertificate adds a new certificate tuple to the OpenFGA server.
 func (f *fga) AddCertificate(ctx context.Context, fingerprint string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -372,7 +381,7 @@ func (f *fga) AddCertificate(ctx context.Context, fingerprint string) error {
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteCertificate is a no-op.
+// DeleteCertificate deletes a certificate tuple from the OpenFGA server.
 func (f *fga) DeleteCertificate(ctx context.Context, fingerprint string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -385,7 +394,7 @@ func (f *fga) DeleteCertificate(ctx context.Context, fingerprint string) error {
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// AddStoragePool is a no-op.
+// AddStoragePool adds a new storage pool tuple to the OpenFGA server.
 func (f *fga) AddStoragePool(ctx context.Context, storagePoolName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -398,7 +407,7 @@ func (f *fga) AddStoragePool(ctx context.Context, storagePoolName string) error 
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteStoragePool is a no-op.
+// DeleteStoragePool deletes a storage pool tuple from the OpenFGA server.
 func (f *fga) DeleteStoragePool(ctx context.Context, storagePoolName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -411,7 +420,7 @@ func (f *fga) DeleteStoragePool(ctx context.Context, storagePoolName string) err
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// AddImage is a no-op.
+// AddImage adds a new image tuple to the OpenFGA server.
 func (f *fga) AddImage(ctx context.Context, projectName string, fingerprint string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -424,7 +433,7 @@ func (f *fga) AddImage(ctx context.Context, projectName string, fingerprint stri
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteImage is a no-op.
+// DeleteImage deletes an image tuple from the OpenFGA server.
 func (f *fga) DeleteImage(ctx context.Context, projectName string, fingerprint string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -437,7 +446,7 @@ func (f *fga) DeleteImage(ctx context.Context, projectName string, fingerprint s
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// AddImageAlias is a no-op.
+// AddImageAlias adds an image alias tuple to the OpenFGA server.
 func (f *fga) AddImageAlias(ctx context.Context, projectName string, imageAliasName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -450,7 +459,7 @@ func (f *fga) AddImageAlias(ctx context.Context, projectName string, imageAliasN
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteImageAlias is a no-op.
+// DeleteImageAlias deletes an image alias tuple from the OpenFGA server.
 func (f *fga) DeleteImageAlias(ctx context.Context, projectName string, imageAliasName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -463,7 +472,7 @@ func (f *fga) DeleteImageAlias(ctx context.Context, projectName string, imageAli
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// RenameImageAlias is a no-op.
+// RenameImageAlias deletes the old image alias tuple from the OpenFGA server and creates a new one.
 func (f *fga) RenameImageAlias(ctx context.Context, projectName string, oldAliasName string, newAliasName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -484,7 +493,7 @@ func (f *fga) RenameImageAlias(ctx context.Context, projectName string, oldAlias
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddInstance is a no-op.
+// AddInstance adds an instance tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddInstance(ctx context.Context, projectName string, instanceName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -497,7 +506,7 @@ func (f *fga) AddInstance(ctx context.Context, projectName string, instanceName 
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteInstance is a no-op.
+// DeleteInstance removes an instance tuple from the OpenFGA server.
 func (f *fga) DeleteInstance(ctx context.Context, projectName string, instanceName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -510,7 +519,7 @@ func (f *fga) DeleteInstance(ctx context.Context, projectName string, instanceNa
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// RenameInstance is a no-op.
+// RenameInstance deletes the old instance tuple from the OpenFGA server and creates a new one.
 func (f *fga) RenameInstance(ctx context.Context, projectName string, oldInstanceName string, newInstanceName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -531,7 +540,7 @@ func (f *fga) RenameInstance(ctx context.Context, projectName string, oldInstanc
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddNetwork is a no-op.
+// AddNetwork adds a new network tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddNetwork(ctx context.Context, projectName string, networkName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -544,7 +553,7 @@ func (f *fga) AddNetwork(ctx context.Context, projectName string, networkName st
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteNetwork is a no-op.
+// DeleteNetwork removes a network tuple from the OpenFGA server.
 func (f *fga) DeleteNetwork(ctx context.Context, projectName string, networkName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -557,7 +566,7 @@ func (f *fga) DeleteNetwork(ctx context.Context, projectName string, networkName
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// RenameNetwork is a no-op.
+// RenameNetwork removes the old network tuple from the OpenFGA server and creates a new one.
 func (f *fga) RenameNetwork(ctx context.Context, projectName string, oldNetworkName string, newNetworkName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -578,7 +587,7 @@ func (f *fga) RenameNetwork(ctx context.Context, projectName string, oldNetworkN
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddNetworkZone is a no-op.
+// AddNetworkZone adds a network zone tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddNetworkZone(ctx context.Context, projectName string, networkZoneName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -591,7 +600,7 @@ func (f *fga) AddNetworkZone(ctx context.Context, projectName string, networkZon
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteNetworkZone is a no-op.
+// DeleteNetworkZone removes a network zone tuple from the OpenFGA server.
 func (f *fga) DeleteNetworkZone(ctx context.Context, projectName string, networkZoneName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -604,7 +613,7 @@ func (f *fga) DeleteNetworkZone(ctx context.Context, projectName string, network
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// AddNetworkACL is a no-op.
+// AddNetworkACL adds a network ACL tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddNetworkACL(ctx context.Context, projectName string, networkACLName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -617,7 +626,7 @@ func (f *fga) AddNetworkACL(ctx context.Context, projectName string, networkACLN
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteNetworkACL is a no-op.
+// DeleteNetworkACL removes a network ACL tuple from the OpenFGA server.
 func (f *fga) DeleteNetworkACL(ctx context.Context, projectName string, networkACLName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -630,7 +639,7 @@ func (f *fga) DeleteNetworkACL(ctx context.Context, projectName string, networkA
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// RenameNetworkACL is a no-op.
+// RenameNetworkACL remove the old network ACL tuple from the OpenFGA server, and creates a new one.
 func (f *fga) RenameNetworkACL(ctx context.Context, projectName string, oldNetworkACLName string, newNetworkACLName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -651,7 +660,7 @@ func (f *fga) RenameNetworkACL(ctx context.Context, projectName string, oldNetwo
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddProfile is a no-op.
+// AddProfile adds a new profile tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddProfile(ctx context.Context, projectName string, profileName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -664,7 +673,7 @@ func (f *fga) AddProfile(ctx context.Context, projectName string, profileName st
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteProfile is a no-op.
+// DeleteProfile removes a profile tuple from the OpenFGA server.
 func (f *fga) DeleteProfile(ctx context.Context, projectName string, profileName string) error {
 	deletes := []client.ClientTupleKey{
 		{
@@ -677,7 +686,7 @@ func (f *fga) DeleteProfile(ctx context.Context, projectName string, profileName
 	return f.updateTuples(ctx, nil, deletes)
 }
 
-// RenameProfile is a no-op.
+// RenameProfile removes the old profile tuple from the OpenFGA server, and creates the new one.
 func (f *fga) RenameProfile(ctx context.Context, projectName string, oldProfileName string, newProfileName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -698,7 +707,7 @@ func (f *fga) RenameProfile(ctx context.Context, projectName string, oldProfileN
 	return f.updateTuples(ctx, writes, deletes)
 }
 
-// AddStoragePoolVolume is a no-op.
+// AddStoragePoolVolume adds a new storage volume tuple to the OpenFGA server, relating it to its parent project.
 func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -711,7 +720,7 @@ func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, stor
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteStoragePoolVolume is a no-op.
+// DeleteStoragePoolVolume removes a storage volume tuple from the OpenFGA server.
 func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -724,7 +733,7 @@ func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, s
 	return f.updateTuples(ctx, nil, deletions)
 }
 
-// RenameStoragePoolVolume is a no-op.
+// RenameStoragePoolVolume deletes the old storage volume tuple from the OpenFGA server, and creates the new one.
 func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, oldStorageVolumeName string, newStorageVolumeName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -745,7 +754,7 @@ func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, s
 	return f.updateTuples(ctx, writes, deletions)
 }
 
-// AddStorageBucket is a no-op.
+// AddStorageBucket creates a new storage bucket tuple in the OpenFGA server, relating it to its parent project.
 func (f *fga) AddStorageBucket(ctx context.Context, projectName string, storagePoolName string, storageBucketName string) error {
 	writes := []client.ClientTupleKey{
 		{
@@ -758,7 +767,7 @@ func (f *fga) AddStorageBucket(ctx context.Context, projectName string, storageP
 	return f.updateTuples(ctx, writes, nil)
 }
 
-// DeleteStorageBucket is a no-op.
+// DeleteStorageBucket removes a storage bucket tuple from the OpenFGA server.
 func (f *fga) DeleteStorageBucket(ctx context.Context, projectName string, storagePoolName string, storageBucketName string) error {
 	deletions := []client.ClientTupleKey{
 		{
@@ -909,7 +918,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 		return nil
 	}
 
-	// List the certificates we have added to OpenFGA already.
+	// List the certificates we have added to the OpenFGA server already.
 	options := client.ClientListObjectsOptions{AuthorizationModelId: openfga.PtrString(f.authModelID)}
 	certificatesResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
 		User:     ObjectServer().String(),
@@ -926,7 +935,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 		return err
 	}
 
-	// List the storage pools we have added to OpenFGA already.
+	// List the storage pools we have added to the OpenFGA server already.
 	storagePoolsResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
 		User:     ObjectServer().String(),
 		Relation: relationServer,
@@ -942,7 +951,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 		return err
 	}
 
-	// List the projects we have added to OpenFGA already.
+	// List the projects we have added to the OpenFGA server already.
 	projectsResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
 		User:     ObjectServer().String(),
 		Relation: relationServer,
@@ -992,6 +1001,6 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 		return err
 	}
 
-	// Perform any necessary writes and deletions against the OpenFGA server.
+	// Perform any necessary writes and deletions against the the OpenFGA server server.
 	return f.updateTuples(ctx, writes, deletions)
 }
