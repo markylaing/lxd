@@ -22,7 +22,7 @@ import (
 var storagePoolVolumeTypeStateCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}/state",
 
-	Get: APIEndpointAction{Handler: storagePoolVolumeTypeStateGet, AccessHandler: allowPermission(auth.ObjectTypeStorageVolume, auth.EntitlementCanView, "poolName", "type", "volumeName")},
+	Get: APIEndpointAction{Handler: storagePoolVolumeTypeStateGet, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanView)},
 }
 
 // swagger:operation GET /1.0/storage-pools/{poolName}/volumes/{type}/{volumeName}/state storage storage_pool_volume_type_state_get
