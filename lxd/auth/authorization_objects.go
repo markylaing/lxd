@@ -295,6 +295,7 @@ func ObjectProfile(projectName string, profileName string) Object {
 	return object
 }
 
+// ObjectStorageBucket returns an Object of ObjectType ObjectTypeStorageBucket using the given arguments.
 func ObjectStorageBucket(projectName string, poolName string, bucketName string, location string) Object {
 	var object Object
 	if location != "" {
@@ -306,6 +307,7 @@ func ObjectStorageBucket(projectName string, poolName string, bucketName string,
 	return object
 }
 
+// ObjectStorageVolume returns an Object of ObjectType ObjectTypeStorageVolume using the given arguments.
 func ObjectStorageVolume(projectName string, poolName string, volumeType string, volumeName string, location string) Object {
 	var object Object
 	if location != "" {
