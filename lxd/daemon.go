@@ -1872,10 +1872,10 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 		"openfga.store.model_id": authorizationModelID,
 	}
 
-	revert := revert.New()
-	defer revert.Fail()
+	reverter := revert.New()
+	defer reverter.Fail()
 
-	revert.Add(func() {
+	reverter.Add(func() {
 		// Reset to default authorizer.
 		d.authorizer, _ = auth.LoadAuthorizer(d.shutdownCtx, auth.DriverTLS, logger.Log, d.clientCerts)
 	})
@@ -2080,7 +2080,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 
 	d.authorizer = openfgaAuthorizer
 
-	revert.Success()
+	reverter.Success()
 	return nil
 }
 
