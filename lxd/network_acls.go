@@ -33,17 +33,41 @@ var networkACLsCmd = APIEndpoint{
 var networkACLCmd = APIEndpoint{
 	Path: "network-acls/{name}",
 
-	Delete: APIEndpointAction{Handler: networkACLDelete, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanEdit, "name")},
-	Get:    APIEndpointAction{Handler: networkACLGet, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanView, "name")},
-	Put:    APIEndpointAction{Handler: networkACLPut, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanEdit, "name")},
-	Patch:  APIEndpointAction{Handler: networkACLPut, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanEdit, "name")},
-	Post:   APIEndpointAction{Handler: networkACLPost, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanEdit, "name")},
+	Delete: APIEndpointAction{Handler: networkACLDelete, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkACLGet, AccessHandler: networkACLAccessHandler(auth.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: networkACLPost, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var networkACLLogCmd = APIEndpoint{
 	Path: "network-acls/{name}/log",
 
-	Get: APIEndpointAction{Handler: networkACLLogGet, AccessHandler: allowPermission(auth.ObjectTypeNetworkACL, auth.EntitlementCanView, "name")},
+	Get: APIEndpointAction{Handler: networkACLLogGet, AccessHandler: networkACLAccessHandler(auth.EntitlementCanView)},
+}
+
+// networkACLAccessHandler resolves the effective project of the network ACL before checking against the authorizer.
+func networkACLAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		s := d.State()
+		networkACLName, err := url.PathUnescape(mux.Vars(r)["name"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		projectName := request.ProjectParam(r)
+		actualProjectName, _, err := project.NetworkProject(s.DB.Cluster, projectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectNetworkACL(actualProjectName, networkACLName), entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
 }
 
 // API endpoints.
