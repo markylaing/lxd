@@ -99,25 +99,77 @@ var imageAliasesCmd = APIEndpoint{
 var imageAliasCmd = APIEndpoint{
 	Path: "images/aliases/{name:.*}",
 
-	Delete: APIEndpointAction{Handler: imageAliasDelete, AccessHandler: allowPermission(auth.ObjectTypeImageAlias, auth.EntitlementCanEdit, "name")},
+	Delete: APIEndpointAction{Handler: imageAliasDelete, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
 	Get:    APIEndpointAction{Handler: imageAliasGet, AllowUntrusted: true},
-	Patch:  APIEndpointAction{Handler: imageAliasPatch, AccessHandler: allowPermission(auth.ObjectTypeImageAlias, auth.EntitlementCanEdit, "name")},
-	Post:   APIEndpointAction{Handler: imageAliasPost, AccessHandler: allowPermission(auth.ObjectTypeImageAlias, auth.EntitlementCanEdit, "name")},
-	Put:    APIEndpointAction{Handler: imageAliasPut, AccessHandler: allowPermission(auth.ObjectTypeImageAlias, auth.EntitlementCanEdit, "name")},
+	Patch:  APIEndpointAction{Handler: imageAliasPatch, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: imageAliasPost, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: imageAliasPut, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
 }
 
-// imageAccessHandler expands the image fingerprint prefix before checking permission in the authorizer.
-func imageAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+// imageAliasAccessHandler resolves the image alias project before checking permissions.
+func imageAliasAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
-		fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+		s := d.State()
+		imageAliasName, err := url.PathUnescape(mux.Vars(r)["name"])
 		if err != nil {
 			return response.SmartError(err)
 		}
 
 		projectName := request.ProjectParam(r)
+		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+			projectHasImages, err := dbCluster.ProjectHasImages(ctx, tx.Tx(), projectName)
+			if err != nil {
+				return err
+			}
 
+			if !projectHasImages {
+				projectName = api.ProjectDefaultName
+			}
+
+			return nil
+		})
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImageAlias(projectName, imageAliasName), entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
+}
+
+// imageAccessHandler expands the image fingerprint prefix and resolves its project before checking permission in the
+// authorizer.
+func imageAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
-		_, image, err := s.DB.Cluster.GetImage(fingerprint, dbCluster.ImageFilter{Project: &projectName})
+		fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		var image *api.Image
+		projectName := request.ProjectParam(r)
+		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+			projectHasImages, err := dbCluster.ProjectHasImages(ctx, tx.Tx(), projectName)
+			if err != nil {
+				return err
+			}
+
+			if !projectHasImages {
+				projectName = api.ProjectDefaultName
+			}
+
+			_, image, err = tx.GetImageByFingerprintPrefix(ctx, fingerprint, dbCluster.ImageFilter{Project: &projectName})
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
 		if err != nil {
 			return response.SmartError(err)
 		}
