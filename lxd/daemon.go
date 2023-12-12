@@ -1319,7 +1319,7 @@ func (d *Daemon) init() error {
 	lokiURL, lokiUsername, lokiPassword, lokiCACert, lokiLabels, lokiLoglevel, lokiTypes := d.globalConfig.LokiServer()
 	oidcIssuer, oidcClientID, oidcAudience := d.globalConfig.OIDCServer()
 	syslogSocketEnabled := d.localConfig.SyslogSocket()
-	openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openFGAAuthorizationModelID := d.globalConfig.OpenFGA()
+	openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openFGAAuthorizationModelID, openfgaMaxWritesPerTransaction := d.globalConfig.OpenFGA()
 	instancePlacementScriptlet := d.globalConfig.InstancesPlacementScriptlet()
 
 	d.endpoints.NetworkUpdateTrustedProxy(d.globalConfig.HTTPSTrustedProxy())
@@ -1371,7 +1371,7 @@ func (d *Daemon) init() error {
 			// something went wrong the last time we tried to set it up).
 			logger.Warn("OpenFGA authorization driver is misconfigured, skipping...")
 		} else {
-			err = d.setupOpenFGA(openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openFGAAuthorizationModelID)
+			err = d.setupOpenFGA(openfgaAPIURL, openfgaAPIToken, openfgaStoreID, openFGAAuthorizationModelID, openfgaMaxWritesPerTransaction)
 			if err != nil {
 				logger.Error("Failed to configure OpenFGA. Reverting to default TLS authorization", logger.Ctx{"error": err})
 			}
@@ -1846,7 +1846,7 @@ func (d *Daemon) Stop(ctx context.Context, sig os.Signal) error {
 }
 
 // Setup OpenFGA.
-func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, authorizationModelID string) error {
+func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, authorizationModelID string, maxWritesPerTransaction int64) error {
 	var err error
 
 	if d.authorizer != nil {
@@ -1867,10 +1867,11 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 	}
 
 	config := map[string]any{
-		"openfga.api.url":        apiURL,
-		"openfga.api.token":      apiToken,
-		"openfga.store.id":       storeID,
-		"openfga.store.model_id": authorizationModelID,
+		"openfga.api.url":                    apiURL,
+		"openfga.api.token":                  apiToken,
+		"openfga.store.id":                   storeID,
+		"openfga.store.model_id":             authorizationModelID,
+		"openfga.max_writes_per_transaction": maxWritesPerTransaction,
 	}
 
 	reverter := revert.New()
