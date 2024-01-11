@@ -21,6 +21,7 @@ import (
 //go:generate mapper stmt -e certificate objects
 //go:generate mapper stmt -e certificate objects-by-ID
 //go:generate mapper stmt -e certificate objects-by-Fingerprint
+//go:generate mapper stmt -e certificate objects-by-Name-and-Type
 //go:generate mapper stmt -e certificate id
 //go:generate mapper stmt -e certificate create struct=Certificate
 //go:generate mapper stmt -e certificate delete-by-Fingerprint
@@ -86,6 +87,16 @@ func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificat
 	resp.Projects = make([]string, len(projects))
 	for i, p := range projects {
 		resp.Projects[i] = p.Name
+	}
+
+	groups, err := GetCertificateGroups(ctx, tx, cert.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Groups = make([]string, len(groups))
+	for i, g := range groups {
+		resp.Groups[i] = g.Name
 	}
 
 	return &resp, nil

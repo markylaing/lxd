@@ -32,7 +32,7 @@ ifeq "$(TAG_SQLITE3)" ""
 endif
 
 	CGO_ENABLED=0 go install -v -tags lxd-metadata ./lxd/lxd-metadata
-	CC="$(CC)" CGO_LDFLAGS_ALLOW="$(CGO_LDFLAGS_ALLOW)" go install -v -tags "$(TAG_SQLITE3)" $(DEBUG) ./...
+	CC="$(CC)" CGO_LDFLAGS_ALLOW="$(CGO_LDFLAGS_ALLOW)" go install -gcflags "all=-N -l" -v -tags "$(TAG_SQLITE3)" $(DEBUG) ./...
 	CGO_ENABLED=0 go install -v -tags netgo ./lxd-migrate
 	CGO_ENABLED=0 go install -v -tags agent,netgo ./lxd-agent
 	@echo "LXD built successfully"

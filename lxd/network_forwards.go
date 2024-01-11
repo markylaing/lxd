@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	clusterRequest "github.com/canonical/lxd/lxd/cluster/request"
 	"github.com/canonical/lxd/lxd/lifecycle"
 	"github.com/canonical/lxd/lxd/network"
@@ -23,17 +23,17 @@ import (
 var networkForwardsCmd = APIEndpoint{
 	Path: "networks/{networkName}/forwards",
 
-	Get:  APIEndpointAction{Handler: networkForwardsGet, AccessHandler: networkAccessHandler(auth.EntitlementCanView)},
-	Post: APIEndpointAction{Handler: networkForwardsPost, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
+	Get:  APIEndpointAction{Handler: networkForwardsGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Post: APIEndpointAction{Handler: networkForwardsPost, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var networkForwardCmd = APIEndpoint{
 	Path: "networks/{networkName}/forwards/{listenAddress}",
 
-	Delete: APIEndpointAction{Handler: networkForwardDelete, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: networkForwardGet, AccessHandler: networkAccessHandler(auth.EntitlementCanView)},
-	Put:    APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: networkForwardDelete, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: networkForwardGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Put:    APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // API endpoints

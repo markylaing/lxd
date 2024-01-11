@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,7 +21,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/canonical/lxd/lxd/archive"
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/backup"
 	lxdCluster "github.com/canonical/lxd/lxd/cluster"
 	"github.com/canonical/lxd/lxd/db"
@@ -47,28 +47,28 @@ var storagePoolVolumesCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes",
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(auth.ObjectTypeProject, auth.EntitlementCanCreateStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageStorageVolumes)},
 }
 
 var storagePoolVolumesTypeCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}",
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolVolumesTypePost, AccessHandler: allowPermission(auth.ObjectTypeProject, auth.EntitlementCanCreateStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesTypePost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageStorageVolumes)},
 }
 
 var storagePoolVolumeTypeCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanView)},
-	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
-	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: storagePoolVolumeAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
+	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
+	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
+	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // storagePoolVolumeAccessHandler resolves the project and location of the storage volume before performing the permission check.
-func storagePoolVolumeAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+func storagePoolVolumeAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
@@ -81,7 +81,7 @@ func storagePoolVolumeAccessHandler(entitlement auth.Entitlement) func(d *Daemon
 			return response.SmartError(err)
 		}
 
-		volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+		volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -128,7 +128,7 @@ func storagePoolVolumeAccessHandler(entitlement auth.Entitlement) func(d *Daemon
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectStorageVolume(projectName, poolName, volumeTypeName, volumeName, location), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectStorageVolume(projectName, poolName, volumeTypeName, volumeName, location), relation)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -379,7 +379,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 	// Convert volume type name to internal integer representation if requested.
 	var volumeType int
 	if volumeTypeName != "" {
-		volumeType, err = storagePools.VolumeTypeNameToDBType(volumeTypeName)
+		volumeType, err = db.VolumeTypeNameToDBType(volumeTypeName)
 		if err != nil {
 			return response.BadRequest(err)
 		}
@@ -517,7 +517,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 		return volA.Name < volB.Name
 	})
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeStorageVolume)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeStorageVolume)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -533,7 +533,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 			}
 
 			volumeName, _, _ := api.GetParentAndSnapshotName(vol.Name)
-			if !userHasPermission(auth.ObjectStorageVolume(vol.Project, poolName, dbVol.Type, volumeName, location)) {
+			if !userHasPermission(entitlement.ObjectStorageVolume(vol.Project, poolName, dbVol.Type, volumeName, location)) {
 				continue
 			}
 
@@ -562,7 +562,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 			location = dbVol.Location
 		}
 
-		if !userHasPermission(auth.ObjectStorageVolume(dbVol.Project, poolName, dbVol.Type, volumeName, location)) {
+		if !userHasPermission(entitlement.ObjectStorageVolume(dbVol.Project, poolName, dbVol.Type, volumeName, location)) {
 			continue
 		}
 
@@ -1228,7 +1228,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Check if user has access to effective storage target project
-		err := s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectProject(targetProjectName), auth.EntitlementCanCreateStorageVolumes)
+		err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(targetProjectName), entitlement.RelationCanManageStorageVolumes)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1386,7 +1386,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+	volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -1810,7 +1810,7 @@ func storagePoolVolumeGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+	volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -1925,7 +1925,7 @@ func storagePoolVolumePut(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+	volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -2099,7 +2099,7 @@ func storagePoolVolumePatch(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+	volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -2231,7 +2231,7 @@ func storagePoolVolumeDelete(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := storagePools.VolumeTypeNameToDBType(volumeTypeName)
+	volumeType, err := db.VolumeTypeNameToDBType(volumeTypeName)
 	if err != nil {
 		return response.BadRequest(err)
 	}

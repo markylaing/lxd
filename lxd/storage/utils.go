@@ -70,22 +70,6 @@ func ConfigDiff(oldConfig map[string]string, newConfig map[string]string) ([]str
 	return changedConfig, userOnly
 }
 
-// VolumeTypeNameToDBType converts a volume type string to internal volume type DB code.
-func VolumeTypeNameToDBType(volumeTypeName string) (int, error) {
-	switch volumeTypeName {
-	case db.StoragePoolVolumeTypeNameContainer:
-		return db.StoragePoolVolumeTypeContainer, nil
-	case db.StoragePoolVolumeTypeNameVM:
-		return db.StoragePoolVolumeTypeVM, nil
-	case db.StoragePoolVolumeTypeNameImage:
-		return db.StoragePoolVolumeTypeImage, nil
-	case db.StoragePoolVolumeTypeNameCustom:
-		return db.StoragePoolVolumeTypeCustom, nil
-	}
-
-	return -1, fmt.Errorf("Invalid storage volume type name")
-}
-
 // VolumeTypeToDBType converts volume type to internal volume type DB code.
 func VolumeTypeToDBType(volType drivers.VolumeType) (int, error) {
 	switch volType {
@@ -728,7 +712,7 @@ func InstanceContentType(inst instance.Instance) drivers.ContentType {
 // the volume.
 func VolumeUsedByProfileDevices(s *state.State, poolName string, projectName string, vol *api.StorageVolume, profileFunc func(profileID int64, profile api.Profile, project api.Project, usedByDevices []string) error) error {
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := VolumeTypeNameToDBType(vol.Type)
+	volumeType, err := db.VolumeTypeNameToDBType(vol.Type)
 	if err != nil {
 		return err
 	}
@@ -829,7 +813,7 @@ func VolumeUsedByProfileDevices(s *state.State, poolName string, projectName str
 // names that are using the volume.
 func VolumeUsedByInstanceDevices(s *state.State, poolName string, projectName string, vol *api.StorageVolume, expandDevices bool, instanceFunc func(inst db.InstanceArgs, project api.Project, usedByDevices []string) error) error {
 	// Convert the volume type name to our internal integer representation.
-	volumeType, err := VolumeTypeNameToDBType(vol.Type)
+	volumeType, err := db.VolumeTypeNameToDBType(vol.Type)
 	if err != nil {
 		return err
 	}

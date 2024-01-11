@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
+
+	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/canonical/lxd/lxd/certificate"
 	"github.com/canonical/lxd/shared/logger"
@@ -18,6 +21,9 @@ const (
 
 	// DriverOpenFGA provides fine-grained authorization. It is compatible with any authentication method.
 	DriverOpenFGA string = "openfga"
+
+	// DriverOpenFGAEmbedded provides fine-grained authorization built in to LXD. It is compatible with any authentication method.
+	DriverOpenFGAEmbedded string = "openfga-embedded"
 )
 
 // ErrUnknownDriver is the "Unknown driver" error.
@@ -29,8 +35,11 @@ var authorizers = map[string]func() authorizer{
 	DriverRBAC: func() authorizer {
 		return &rbac{
 			resources:   map[string]string{},
-			permissions: map[string]map[string][]Permission{},
+			permissions: map[string]map[string][]rbacPermission{},
 		}
+	},
+	DriverOpenFGAEmbedded: func() authorizer {
+		return &embeddedOpenFGA{}
 	},
 }
 
@@ -43,15 +52,15 @@ type authorizer interface {
 
 // PermissionChecker is a type alias for a function that returns whether a user has required permissions on an object.
 // It is returned by Authorizer.GetPermissionChecker.
-type PermissionChecker func(object Object) bool
+type PermissionChecker func(object entitlement.Object) bool
 
 // Authorizer is the primary external API for this package.
 type Authorizer interface {
 	Driver() string
 	StopService(ctx context.Context) error
 
-	CheckPermission(ctx context.Context, r *http.Request, object Object, entitlement Entitlement) error
-	GetPermissionChecker(ctx context.Context, r *http.Request, entitlement Entitlement, objectType ObjectType) (PermissionChecker, error)
+	CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, entitlement entitlement.Relation) error
+	GetPermissionChecker(ctx context.Context, r *http.Request, entitlement entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error)
 
 	AddProject(ctx context.Context, projectID int64, projectName string) error
 	DeleteProject(ctx context.Context, projectID int64, projectName string) error
@@ -100,25 +109,26 @@ type Authorizer interface {
 // Opts is used as part of the LoadAuthorizer function so that only the relevant configuration fields are passed into a
 // particular driver.
 type Opts struct {
-	config          map[string]any
-	projectsGetFunc func(ctx context.Context) (map[int64]string, error)
-	resourcesFunc   func() (*Resources, error)
+	config           map[string]any
+	projectsGetFunc  func(ctx context.Context) (map[int64]string, error)
+	resourcesFunc    func() (*Resources, error)
+	openfgaDatastore storage.OpenFGADatastore
 }
 
 // Resources represents a set of current API resources as Object slices for use when loading an Authorizer.
 type Resources struct {
-	CertificateObjects       []Object
-	StoragePoolObjects       []Object
-	ProjectObjects           []Object
-	ImageObjects             []Object
-	ImageAliasObjects        []Object
-	InstanceObjects          []Object
-	NetworkObjects           []Object
-	NetworkACLObjects        []Object
-	NetworkZoneObjects       []Object
-	ProfileObjects           []Object
-	StoragePoolVolumeObjects []Object
-	StorageBucketObjects     []Object
+	CertificateObjects       []entitlement.Object
+	StoragePoolObjects       []entitlement.Object
+	ProjectObjects           []entitlement.Object
+	ImageObjects             []entitlement.Object
+	ImageAliasObjects        []entitlement.Object
+	InstanceObjects          []entitlement.Object
+	NetworkObjects           []entitlement.Object
+	NetworkACLObjects        []entitlement.Object
+	NetworkZoneObjects       []entitlement.Object
+	ProfileObjects           []entitlement.Object
+	StoragePoolVolumeObjects []entitlement.Object
+	StorageBucketObjects     []entitlement.Object
 }
 
 // WithConfig can be passed into LoadAuthorizer to pass in driver specific configuration.
@@ -139,6 +149,13 @@ func WithProjectsGetFunc(f func(ctx context.Context) (map[int64]string, error)) 
 func WithResourcesFunc(f func() (*Resources, error)) func(*Opts) {
 	return func(o *Opts) {
 		o.resourcesFunc = f
+	}
+}
+
+// WithOpenFGADatastore should be passed into LoadAuthorizer when DriverOpenFGAEmbedded is used.
+func WithOpenFGADatastore(s storage.OpenFGADatastore) func(opts *Opts) {
+	return func(o *Opts) {
+		o.openfgaDatastore = s
 	}
 }
 

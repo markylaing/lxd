@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,7 +73,7 @@ func (s *Server) AddListener(projectName string, allProjects bool, projectPermis
 	}
 
 	if projectPermissionFunc == nil {
-		projectPermissionFunc = func(auth.Object) bool {
+		projectPermissionFunc = func(entitlement.Object) bool {
 			return true
 		}
 	}
@@ -188,7 +189,7 @@ func (s *Server) broadcast(event api.Event, eventSource EventSource) error {
 		}
 
 		// If the event is project specific, ensure we have permission to view it.
-		if event.Project != "" && !listener.projectPermissionFunc(auth.ObjectProject(event.Project)) {
+		if event.Project != "" && !listener.projectPermissionFunc(entitlement.ObjectProject(event.Project)) {
 			continue
 		}
 

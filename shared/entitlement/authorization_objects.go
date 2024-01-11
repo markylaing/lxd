@@ -1,14 +1,8 @@
-package auth
+package entitlement
 
 import (
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
-
-	"github.com/gorilla/mux"
-
-	"github.com/canonical/lxd/shared/version"
 )
 
 // Object is a string alias that represents an authorization object. These are formatted strings that
@@ -56,6 +50,11 @@ func (o Object) Elements() []string {
 	return elements
 }
 
+func (o Object) Ref() string {
+	_, ref, _ := strings.Cut(o.String(), objectTypeDelimiter)
+	return ref
+}
+
 func (o Object) projectAndElements() (string, []string) {
 	validator := objectValidators[o.Type()]
 	_, identifier, _ := strings.Cut(o.String(), objectTypeDelimiter)
@@ -79,7 +78,7 @@ func (o Object) validate() error {
 	objectType := o.Type()
 	v, ok := objectValidators[objectType]
 	if !ok {
-		return fmt.Errorf("Missing validator for object of type %q", objectType)
+		return fmt.Errorf("Invalid object type %q", objectType)
 	}
 
 	projectName, identifierElements := o.projectAndElements()
@@ -87,12 +86,8 @@ func (o Object) validate() error {
 		return fmt.Errorf("Authorization objects of type %q require a project", objectType)
 	}
 
-	if len(identifierElements) < v.minIdentifierElements {
-		return fmt.Errorf("Authorization objects of type %q require at least %d components to be uniquely identifiable", objectType, v.minIdentifierElements)
-	}
-
-	if len(identifierElements) > v.maxIdentifierElements {
-		return fmt.Errorf("Authorization objects of type %q require at most %d components to be uniquely identifiable", objectType, v.maxIdentifierElements)
+	if len(identifierElements) != v.nIdentifierElements {
+		return fmt.Errorf("Authorization objects of type %q require %d components to be uniquely identifiable", objectType, v.nIdentifierElements)
 	}
 
 	return nil
@@ -100,26 +95,26 @@ func (o Object) validate() error {
 
 // objectValidator contains fields that can be used to determine if a string is a valid Object.
 type objectValidator struct {
-	minIdentifierElements int
-	maxIdentifierElements int
-	requireProject        bool
+	nIdentifierElements int
+	requireProject      bool
 }
 
 var objectValidators = map[ObjectType]objectValidator{
-	ObjectTypeUser:          {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: false},
-	ObjectTypeServer:        {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: false},
-	ObjectTypeCertificate:   {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: false},
-	ObjectTypeStoragePool:   {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: false},
-	ObjectTypeProject:       {minIdentifierElements: 0, maxIdentifierElements: 0, requireProject: true},
-	ObjectTypeImage:         {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeImageAlias:    {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeInstance:      {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeNetwork:       {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeNetworkACL:    {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeNetworkZone:   {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeProfile:       {minIdentifierElements: 1, maxIdentifierElements: 1, requireProject: true},
-	ObjectTypeStorageBucket: {minIdentifierElements: 2, maxIdentifierElements: 3, requireProject: true},
-	ObjectTypeStorageVolume: {minIdentifierElements: 3, maxIdentifierElements: 4, requireProject: true},
+	ObjectTypeUser:          {nIdentifierElements: 1, requireProject: false},
+	ObjectTypeServer:        {nIdentifierElements: 1, requireProject: false},
+	ObjectTypeCertificate:   {nIdentifierElements: 1, requireProject: false},
+	ObjectTypeStoragePool:   {nIdentifierElements: 1, requireProject: false},
+	ObjectTypeProject:       {nIdentifierElements: 0, requireProject: true},
+	ObjectTypeImage:         {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeImageAlias:    {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeInstance:      {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeNetwork:       {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeNetworkACL:    {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeNetworkZone:   {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeProfile:       {nIdentifierElements: 1, requireProject: true},
+	ObjectTypeStorageBucket: {nIdentifierElements: 3, requireProject: true},
+	ObjectTypeStorageVolume: {nIdentifierElements: 4, requireProject: true},
+	ObjectTypeGroup:         {nIdentifierElements: 1, requireProject: false},
 }
 
 // NewObject returns an Object of the given type. The passed in arguments must be in the correct
@@ -129,18 +124,6 @@ func NewObject(objectType ObjectType, projectName string, identifierElements ...
 	v, ok := objectValidators[objectType]
 	if !ok {
 		return "", fmt.Errorf("Missing validator for object of type %q", objectType)
-	}
-
-	if v.requireProject && projectName == "" {
-		return "", fmt.Errorf("Authorization objects of type %q require a project", objectType)
-	}
-
-	if len(identifierElements) < v.minIdentifierElements {
-		return "", fmt.Errorf("Authorization objects of type %q require at least %d components to be uniquely identifiable", objectType, v.minIdentifierElements)
-	}
-
-	if len(identifierElements) > v.maxIdentifierElements {
-		return "", fmt.Errorf("Authorization objects of type %q require at most %d components to be uniquely identifiable", objectType, v.maxIdentifierElements)
 	}
 
 	builder := strings.Builder{}
@@ -160,68 +143,13 @@ func NewObject(objectType ObjectType, projectName string, identifierElements ...
 		}
 	}
 
-	return Object(builder.String()), nil
-}
-
-// ObjectFromRequest returns an object created from the request by evaluating the given mux vars.
-// Mux vars must be provided in the order that they are found in the endpoint path. If the object
-// requires a project name, this is taken from the project query parameter unless the URL begins
-// with /1.0/projects.
-func ObjectFromRequest(r *http.Request, objectType ObjectType, muxVars ...string) (Object, error) {
-	// Shortcut for server objects which don't require any arguments.
-	if objectType == ObjectTypeServer {
-		return ObjectServer(), nil
-	}
-
-	values, err := url.ParseQuery(r.URL.RawQuery)
+	object := Object(builder.String())
+	err := object.validate()
 	if err != nil {
 		return "", err
 	}
 
-	projectName := values.Get("project")
-	if projectName == "" {
-		projectName = "default"
-	}
-
-	location := values.Get("target")
-
-	muxValues := make([]string, 0, len(muxVars))
-	vars := mux.Vars(r)
-	for _, muxVar := range muxVars {
-		var err error
-		var muxValue string
-
-		if muxVar == "location" {
-			// Special handling for the location which is not present as a real mux var.
-			if location == "" {
-				continue
-			}
-
-			muxValue = location
-		} else {
-			muxValue, err = url.PathUnescape(vars[muxVar])
-			if err != nil {
-				return "", fmt.Errorf("Failed to unescape mux var %q for object type %q: %w", muxVar, objectType, err)
-			}
-
-			if muxValue == "" {
-				return "", fmt.Errorf("Mux var %q not found for object type %q", muxVar, objectType)
-			}
-		}
-
-		muxValues = append(muxValues, muxValue)
-	}
-
-	// If using projects API we want to pass in the mux var, not the query parameter.
-	if objectType == ObjectTypeProject && strings.HasPrefix(r.URL.Path, fmt.Sprintf("/%s/projects", version.APIVersion)) {
-		if len(muxValues) == 0 {
-			return "", fmt.Errorf("Missing project name path variable")
-		}
-
-		return ObjectProject(muxValues[0]), nil
-	}
-
-	return NewObject(objectType, projectName, muxValues...)
+	return object, nil
 }
 
 // ObjectFromString parses a string into an Object. It returns an error if the string is not valid.
@@ -237,6 +165,12 @@ func ObjectFromString(objectstr string) (Object, error) {
 
 func ObjectUser(userName string) Object {
 	object, _ := NewObject(ObjectTypeUser, "", userName)
+	return object
+}
+
+// ObjectGroup returns a new Object of type ObjectTypeGroup with the given group name.
+func ObjectGroup(groupName string) Object {
+	object, _ := NewObject(ObjectTypeGroup, "", groupName)
 	return object
 }
 
@@ -297,25 +231,13 @@ func ObjectProfile(projectName string, profileName string) Object {
 
 // ObjectStorageBucket returns an Object of ObjectType ObjectTypeStorageBucket using the given arguments.
 func ObjectStorageBucket(projectName string, poolName string, bucketName string, location string) Object {
-	var object Object
-	if location != "" {
-		object, _ = NewObject(ObjectTypeStorageBucket, projectName, poolName, bucketName, location)
-	} else {
-		object, _ = NewObject(ObjectTypeStorageBucket, projectName, poolName, bucketName)
-	}
-
+	object, _ := NewObject(ObjectTypeStorageBucket, projectName, poolName, bucketName, location)
 	return object
 }
 
 // ObjectStorageVolume returns an Object of ObjectType ObjectTypeStorageVolume using the given arguments.
 func ObjectStorageVolume(projectName string, poolName string, volumeType string, volumeName string, location string) Object {
-	var object Object
-	if location != "" {
-		object, _ = NewObject(ObjectTypeStorageVolume, projectName, poolName, volumeType, volumeName, location)
-	} else {
-		object, _ = NewObject(ObjectTypeStorageVolume, projectName, poolName, volumeType, volumeName)
-	}
-
+	object, _ := NewObject(ObjectTypeStorageVolume, projectName, poolName, volumeType, volumeName, location)
 	return object
 }
 

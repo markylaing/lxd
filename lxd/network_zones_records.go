@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	clusterRequest "github.com/canonical/lxd/lxd/cluster/request"
 	"github.com/canonical/lxd/lxd/lifecycle"
 	"github.com/canonical/lxd/lxd/network/zone"
@@ -22,17 +22,17 @@ import (
 var networkZoneRecordsCmd = APIEndpoint{
 	Path: "network-zones/{zone}/records",
 
-	Get:  APIEndpointAction{Handler: networkZoneRecordsGet, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanView)},
-	Post: APIEndpointAction{Handler: networkZoneRecordsPost, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanEdit)},
+	Get:  APIEndpointAction{Handler: networkZoneRecordsGet, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanView)},
+	Post: APIEndpointAction{Handler: networkZoneRecordsPost, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var networkZoneRecordCmd = APIEndpoint{
 	Path: "network-zones/{zone}/records/{name}",
 
-	Delete: APIEndpointAction{Handler: networkZoneRecordDelete, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: networkZoneRecordGet, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanView)},
-	Put:    APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: networkZoneRecordDelete, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: networkZoneRecordGet, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanView)},
+	Put:    APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // API endpoints.

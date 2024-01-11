@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -42,6 +43,26 @@ func (c *Cluster) GetNetworkACLs(project string) ([]string, error) {
 	}
 
 	return aclNames, nil
+}
+
+// GetNetworkACLIDsByNames returns a map of names to IDs of existing Network ACLs.
+func (c *ClusterTx) GetNetworkACLID(ctx context.Context, project string, aclName string) (int64, error) {
+	q := `SELECT id FROM networks_acls JOIN projects ON networks_acls.project_id = projects.id WHERE networks_acls.name = ? AND projects.name = ?	ORDER BY id`
+
+	row := c.Tx().QueryRowContext(ctx, q, aclName, project)
+	if row.Err() != nil && !errors.Is(row.Err(), sql.ErrNoRows) {
+		return 0, api.StatusErrorf(http.StatusNotFound, "Network ACL not found")
+	} else if row.Err() != nil {
+		return 0, row.Err()
+	}
+
+	var id int64
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
 }
 
 // GetNetworkACLIDsByNames returns a map of names to IDs of existing Network ACLs.

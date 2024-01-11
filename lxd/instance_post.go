@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/cluster"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
@@ -323,7 +323,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		if req.Pool != "" || req.Project != "" {
 			// Check if user has access to target project.
 			if req.Project != "" {
-				err := s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectProject(req.Project), auth.EntitlementCanCreateInstances)
+				err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(req.Project), entitlement.RelationCanManageInstances)
 				if err != nil {
 					return response.SmartError(err)
 				}

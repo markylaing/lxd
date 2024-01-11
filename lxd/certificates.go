@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,7 +17,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/certificate"
 	"github.com/canonical/lxd/lxd/cluster"
 	clusterConfig "github.com/canonical/lxd/lxd/cluster/config"
@@ -136,7 +136,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 	recursion := util.IsRecursionRequest(r)
 	s := d.State()
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeCertificate)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeCertificate)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -153,7 +153,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 
 			certResponses = make([]api.Certificate, 0, len(baseCerts))
 			for _, baseCert := range baseCerts {
-				if !userHasPermission(auth.ObjectCertificate(baseCert.Fingerprint)) {
+				if !userHasPermission(entitlement.ObjectCertificate(baseCert.Fingerprint)) {
 					continue
 				}
 
@@ -180,7 +180,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 	for _, certs := range trustedCertificates {
 		for _, cert := range certs {
 			fingerprint := shared.CertFingerprint(&cert)
-			if !userHasPermission(auth.ObjectCertificate(fingerprint)) {
+			if !userHasPermission(entitlement.ObjectCertificate(fingerprint)) {
 				continue
 			}
 
@@ -199,6 +199,7 @@ func updateCertificateCache(d *Daemon) {
 
 	newCerts := map[certificate.Type]map[string]x509.Certificate{}
 	newProjects := map[string][]string{}
+	newGroups := map[string][]string{}
 
 	var certs []*api.Certificate
 	var dbCerts []dbCluster.Certificate
@@ -242,10 +243,12 @@ func updateCertificateCache(d *Daemon) {
 			continue
 		}
 
-		newCerts[dbCert.Type][shared.CertFingerprint(cert)] = *cert
+		fingerprint := shared.CertFingerprint(cert)
+		newCerts[dbCert.Type][fingerprint] = *cert
 
 		if dbCert.Restricted {
-			newProjects[shared.CertFingerprint(cert)] = certs[i].Projects
+			newProjects[fingerprint] = certs[i].Projects
+			newGroups[fingerprint] = certs[i].Groups
 		}
 
 		// Add server certs to list of certificates to store in local database to allow cluster restart.
@@ -264,7 +267,7 @@ func updateCertificateCache(d *Daemon) {
 		// continue functioning, and hopefully the write will succeed on next update.
 	}
 
-	d.clientCerts.SetCertificatesAndProjects(newCerts, newProjects)
+	d.clientCerts.SetCertificatesProjectsAndGroups(newCerts, newProjects, newGroups)
 }
 
 // updateCertificateCacheFromLocal loads trusted server certificates from local database into memory.
@@ -545,7 +548,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 
 	// Handle requests by non-admin users.
 	var userCanCreateCertificates bool
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectServer(), auth.EntitlementCanCreateCertificates)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanManageCertificates)
 	if err == nil {
 		userCanCreateCertificates = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -843,7 +846,7 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	err = s.Authorizer.CheckPermission(ctx, r, auth.ObjectCertificate(cert.Fingerprint), auth.EntitlementCanView)
+	err = s.Authorizer.CheckPermission(ctx, r, entitlement.ObjectCertificate(cert.Fingerprint), entitlement.RelationCanView)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1007,7 +1010,7 @@ func doCertificateUpdate(d *Daemon, dbInfo api.Certificate, req api.CertificateP
 		}
 
 		var userCanEditCertificate bool
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectCertificate(dbInfo.Fingerprint), auth.EntitlementCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectCertificate(dbInfo.Fingerprint), entitlement.RelationCanEdit)
 		if err == nil {
 			userCanEditCertificate = true
 		} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -1018,18 +1021,25 @@ func doCertificateUpdate(d *Daemon, dbInfo api.Certificate, req api.CertificateP
 		// In order to prevent possible future security issues, the certificate information is
 		// reset in case a non-admin user is performing the update.
 		certProjects := req.Projects
+		certGroups := req.Groups
 		if !userCanEditCertificate {
 			if r.TLS == nil {
 				response.Forbidden(fmt.Errorf("Cannot update certificate information"))
 			}
 
 			// Ensure the user in not trying to change fields other than the certificate.
-			if dbInfo.Restricted != req.Restricted || dbInfo.Name != req.Name || len(dbInfo.Projects) != len(req.Projects) {
+			if dbInfo.Restricted != req.Restricted || dbInfo.Name != req.Name || len(dbInfo.Projects) != len(req.Projects) || len(dbInfo.Groups) != len(req.Groups) {
 				return response.Forbidden(fmt.Errorf("Only the certificate can be changed"))
 			}
 
 			for i := 0; i < len(dbInfo.Projects); i++ {
 				if dbInfo.Projects[i] != req.Projects[i] {
+					return response.Forbidden(fmt.Errorf("Only the certificate can be changed"))
+				}
+			}
+
+			for i := 0; i < len(dbInfo.Groups); i++ {
+				if dbInfo.Groups[i] != req.Groups[i] {
 					return response.Forbidden(fmt.Errorf("Only the certificate can be changed"))
 				}
 			}
@@ -1044,6 +1054,7 @@ func doCertificateUpdate(d *Daemon, dbInfo api.Certificate, req api.CertificateP
 			}
 
 			certProjects = dbInfo.Projects
+			certGroups = dbInfo.Groups
 
 			if req.Certificate != "" && dbInfo.Certificate != req.Certificate {
 				certBlock, _ := pem.Decode([]byte(dbInfo.Certificate))
@@ -1093,7 +1104,7 @@ func doCertificateUpdate(d *Daemon, dbInfo api.Certificate, req api.CertificateP
 		}
 
 		// Update the database record.
-		err = s.DB.UpdateCertificate(context.Background(), dbInfo.Fingerprint, dbCert, certProjects)
+		err = s.DB.UpdateCertificate(context.Background(), dbInfo.Fingerprint, dbCert, certProjects, certGroups)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1163,7 +1174,7 @@ func certificateDelete(d *Daemon, r *http.Request) response.Response {
 		}
 
 		var userCanEditCertificate bool
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectCertificate(certInfo.Fingerprint), auth.EntitlementCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectCertificate(certInfo.Fingerprint), entitlement.RelationCanEdit)
 		if err == nil {
 			userCanEditCertificate = true
 		} else if api.StatusErrorCheck(err, http.StatusForbidden) {

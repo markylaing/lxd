@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/lifecycle"
 	"github.com/canonical/lxd/lxd/network"
 	"github.com/canonical/lxd/lxd/project"
@@ -22,17 +22,17 @@ import (
 var networkPeersCmd = APIEndpoint{
 	Path: "networks/{networkName}/peers",
 
-	Get:  APIEndpointAction{Handler: networkPeersGet, AccessHandler: networkAccessHandler(auth.EntitlementCanView)},
-	Post: APIEndpointAction{Handler: networkPeersPost, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
+	Get:  APIEndpointAction{Handler: networkPeersGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Post: APIEndpointAction{Handler: networkPeersPost, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var networkPeerCmd = APIEndpoint{
 	Path: "networks/{networkName}/peers/{peerName}",
 
-	Delete: APIEndpointAction{Handler: networkPeerDelete, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: networkPeerGet, AccessHandler: networkAccessHandler(auth.EntitlementCanView)},
-	Put:    APIEndpointAction{Handler: networkPeerPut, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkPeerPut, AccessHandler: networkAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: networkPeerDelete, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: networkPeerGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Put:    APIEndpointAction{Handler: networkPeerPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkPeerPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // API endpoints

@@ -1,7 +1,7 @@
 package operationtype
 
 import (
-	"github.com/canonical/lxd/lxd/auth"
+	"github.com/canonical/lxd/shared/entitlement"
 )
 
 // Type is a numeric code indentifying the type of an Operation.
@@ -203,82 +203,82 @@ func (t Type) Description() string {
 	}
 }
 
-// Permission returns the auth.ObjectType and auth.Entitlement required to cancel the operation.
-func (t Type) Permission() (auth.ObjectType, auth.Entitlement) {
+// Permission returns the auth.ObjectType and auth.Relation required to cancel the operation.
+func (t Type) Permission() (entitlement.ObjectType, entitlement.Relation) {
 	switch t {
 	case BackupCreate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
 	case BackupRename:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
 	case BackupRestore:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
 	case BackupRemove:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
 	case ConsoleShow:
-		return auth.ObjectTypeInstance, auth.EntitlementCanAccessConsole
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanAccessConsole
 	case InstanceFreeze:
-		return auth.ObjectTypeInstance, auth.EntitlementCanUpdateState
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
 	case InstanceUnfreeze:
-		return auth.ObjectTypeInstance, auth.EntitlementCanUpdateState
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
 	case InstanceStart:
-		return auth.ObjectTypeInstance, auth.EntitlementCanUpdateState
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
 	case InstanceStop:
-		return auth.ObjectTypeInstance, auth.EntitlementCanUpdateState
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
 	case InstanceRestart:
-		return auth.ObjectTypeInstance, auth.EntitlementCanUpdateState
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
 	case CommandExec:
-		return auth.ObjectTypeInstance, auth.EntitlementCanExec
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanExec
 	case SnapshotCreate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageSnapshots
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
 	case SnapshotRename:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageSnapshots
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
 	case SnapshotTransfer:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageSnapshots
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
 	case SnapshotUpdate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageSnapshots
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
 	case SnapshotDelete:
-		return auth.ObjectTypeInstance, auth.EntitlementCanManageSnapshots
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
 
 	case InstanceCreate:
-		return auth.ObjectTypeProject, auth.EntitlementCanCreateInstances
+		return entitlement.ObjectTypeProject, entitlement.RelationCanManageInstances
 	case InstanceUpdate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case InstanceRename:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case InstanceMigrate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case InstanceLiveMigrate:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case InstanceDelete:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case InstanceRebuild:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 	case SnapshotRestore:
-		return auth.ObjectTypeInstance, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
 
 	case ImageDownload:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 	case ImageDelete:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 	case ImageToken:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 	case ImageRefresh:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 	case ImagesUpdate:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 	case ImagesSynchronize:
-		return auth.ObjectTypeImage, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
 
 	case CustomVolumeSnapshotsExpire:
-		return auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanEdit
 	case CustomVolumeBackupCreate:
-		return auth.ObjectTypeStorageVolume, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
 	case CustomVolumeBackupRemove:
-		return auth.ObjectTypeStorageVolume, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
 	case CustomVolumeBackupRename:
-		return auth.ObjectTypeStorageVolume, auth.EntitlementCanManageBackups
+		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
 	case CustomVolumeBackupRestore:
-		return auth.ObjectTypeStorageVolume, auth.EntitlementCanEdit
+		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanEdit
 	}
 
 	return "", ""

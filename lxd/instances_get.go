@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net"
 	"net/http"
 	"sort"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/cluster"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
@@ -306,7 +306,7 @@ func doInstancesGet(s *state.State, r *http.Request) (any, error) {
 		return nil, err
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeInstance)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeInstance)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +316,7 @@ func doInstancesGet(s *state.State, r *http.Request) (any, error) {
 		var filteredInstances []db.Instance
 
 		for _, inst := range instances {
-			if !userHasPermission(auth.ObjectInstance(inst.Project, inst.Name)) {
+			if !userHasPermission(entitlement.ObjectInstance(inst.Project, inst.Name)) {
 				continue
 			}
 

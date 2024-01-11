@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net"
 	"net/http"
 	"os"
@@ -34,8 +35,8 @@ import (
 
 var api10Cmd = APIEndpoint{
 	Get:   APIEndpointAction{Handler: api10Get, AllowUntrusted: true},
-	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: allowPermission(auth.ObjectTypeServer, auth.EntitlementCanEdit)},
-	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: allowPermission(auth.ObjectTypeServer, auth.EntitlementCanEdit)},
+	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
 }
 
 var api10 = []APIEndpoint{
@@ -124,6 +125,12 @@ var api10 = []APIEndpoint{
 	warningsCmd,
 	warningCmd,
 	metricsCmd,
+	groupsCmd,
+	groupCmd,
+	groupUserCmd,
+	groupEntitlementCmd,
+	entitlementsCmd,
+	entitlementsByObjectCmd,
 }
 
 // swagger:operation GET /1.0?public server server_get_untrusted
@@ -237,7 +244,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// If not authorized, return now.
-	err := s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectServer(), auth.EntitlementCanView)
+	err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanView)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -376,7 +383,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	fullSrv.AuthUserName = requestor.Username
 	fullSrv.AuthUserMethod = requestor.Protocol
 
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectServer(), auth.EntitlementCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanEdit)
 	if err == nil {
 		fullSrv.Config, err = daemonConfigRender(s)
 		if err != nil {

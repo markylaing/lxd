@@ -106,6 +106,241 @@ var updates = map[int]schema.Update{
 	67: updateFromV66,
 	68: updateFromV67,
 	69: updateFromV68,
+	70: updateFromV69,
+}
+
+func updateFromV69(ctx context.Context, tx *sql.Tx) error {
+	update := `
+CREATE TABLE oidc_users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	subject TEXT NOT NULL,
+	email TEXT NOT NULL,
+	UNIQUE (subject)
+);
+
+CREATE TABLE groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    UNIQUE (name)
+);
+
+CREATE TABLE idp_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE (name)
+);
+
+CREATE TABLE groups_idp_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    group_id INTEGER NOT NULL,
+    idp_group_id INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+    FOREIGN KEY (idp_group_id) REFERENCES idp_groups (id) ON DELETE CASCADE,
+    UNIQUE (group_id, idp_group_id)
+);
+
+CREATE TABLE certificates_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    certificate_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    FOREIGN KEY (certificate_id) REFERENCES certificates (id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+    UNIQUE (group_id, certificate_id)
+);
+
+CREATE TABLE oidc_users_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    oidc_user_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    FOREIGN KEY (oidc_user_id) REFERENCES oidc_users (id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+    UNIQUE (group_id, oidc_user_id)
+);
+
+CREATE TABLE entitlements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    relation TEXT NOT NULL,
+    object_type TEXT NOT NULL,
+    entity_id INTEGER,
+    object_ref TEXT NOT NULL,
+    UNIQUE (relation, object_type, entity_id),
+    UNIQUE (relation, object_type, object_ref)
+);
+
+CREATE TABLE groups_entitlements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    group_id INTEGER NOT NULL,
+    entitlement_id INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+    FOREIGN KEY (entitlement_id) REFERENCES entitlements (id) ON DELETE CASCADE,
+    UNIQUE (group_id, entitlement_id)
+);
+
+CREATE VIEW openfga_tuple_ref (user, relation, object_type, object_ref, entity_id) AS
+	-- Type-bound public access.
+	SELECT 'user:*', 'user', 'server', 'lxd', NULL  
+
+	-- Group entitlements.
+	UNION SELECT printf('group:%s#member', groups.name),
+		entitlements.relation,
+		entitlements.object_type,
+		entitlements.object_ref,
+		entitlements.entity_id
+		FROM entitlements 
+			JOIN groups_entitlements ON entitlements.id = groups_entitlements.entitlement_id 
+			JOIN groups on groups_entitlements.group_id = groups.id  
+
+	-- Server to project relations.
+	UNION SELECT 'server:lxd',
+		'server',
+		'project',
+		projects.name,
+		projects.id
+		FROM projects
+	
+	-- Server to group relations.
+	UNION SELECT 'server:lxd',
+		'server',
+		'group',
+		groups.name,
+		groups.id
+		FROM groups
+	
+	-- Server to certificate relations.
+	UNION SELECT 'server:lxd',
+		'server',
+		'certificate',
+		certificates.fingerprint,
+		certificates.id
+		FROM certificates
+
+	-- Server to storage pool relations.
+  	UNION SELECT 'server:lxd',
+		'server',
+		'storage_pool',
+		storage_pools.name,
+		storage_pools.id
+		FROM storage_pools
+
+	-- Project to image relations.
+	UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'image',
+		printf('%s/%s', projects.name, images.fingerprint),
+		images.id
+		FROM images JOIN projects ON project_id=projects.id
+	
+	-- Project to image alias relations.
+	UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'image_alias',
+		printf('%s/%s', projects.name, replace(images_aliases.name, '/', '%2F')),
+		images_aliases.id
+		FROM images_aliases JOIN projects ON project_id=projects.id
+    
+	-- Project to instance relations.
+	UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'instance',
+		printf('%s/%s', projects.name, instances.name),
+		instances.id
+    	FROM instances JOIN projects ON project_id=projects.id 
+	
+	-- Project to network relations.
+	UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'network',
+		printf('%s/%s', projects.name, networks.name),
+		networks.id
+    FROM networks JOIN projects ON project_id=projects.id 
+    
+    -- Project to network ACL relations.
+    UNION SELECT printf('project:%s', projects.name),
+         'project',
+         'network_acl',
+         printf('%s/%s', projects.name, networks_acls.name),
+         networks_acls.id
+    FROM networks_acls JOIN projects ON project_id=projects.id 
+    
+    -- Project to network zone relations.
+    UNION SELECT printf('project:%s', projects.name),
+         'project',
+  		 'network_zone',
+  		 printf('%s/%s', projects.name, replace(networks_zones.name, '/', '%2F')),
+  		 networks_zones.id
+    FROM networks_zones JOIN projects ON project_id=projects.id 
+    
+    -- Project to profile relations.
+    UNION SELECT printf('project:%s', projects.name),
+         'project',
+         'profile',
+         printf('%s/%s', projects.name, profiles.name),
+         profiles.id
+    FROM profiles JOIN projects ON project_id=projects.id 
+    
+    -- Project to storage volume relations.
+    UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'storage_volume',
+		printf('%s/%s/%s/%s/%s', 
+			projects.name,
+			storage_pools.name,
+			-- Use case statement to resolve type to name.
+			CASE storage_volumes.type
+				WHEN 0 THEN 'container' 
+         	    WHEN 1 THEN 'image' 
+         	    WHEN 2 THEN 'custom' 
+         	    WHEN 3 THEN 'virtual-machine' 
+			END,
+			storage_volumes.name,
+			coalesce(nodes.name, '')
+		),
+		storage_volumes.id
+    	FROM storage_volumes 
+        	JOIN projects ON project_id=projects.id 
+        	JOIN storage_pools ON storage_pool_id=storage_pools.id 
+    	    LEFT JOIN nodes ON node_id=nodes.id
+    
+    -- Project to storage bucket relations.	
+	UNION SELECT printf('project:%s', projects.name),
+		'project',
+		'storage_bucket',
+		printf('%s/%s/%s/%s', 
+			projects.name, 
+			storage_pools.name, 
+			replace(storage_buckets.name, '/', '%2F'),
+			coalesce(nodes.name, '')
+		),
+		storage_buckets.id
+	FROM storage_buckets 
+        JOIN projects ON project_id=projects.id 
+        JOIN storage_pools ON storage_pool_id=storage_pools.id 
+        LEFT JOIN nodes ON node_id=nodes.id;
+
+-- Before creating an entitlement, check that the entity_id is valid for the object_type.
+CREATE TRIGGER entitlements_check_entity
+  BEFORE INSERT ON entitlements
+  WHEN NEW.entity_id IS NOT NULL AND (SELECT COUNT(*) FROM openfga_tuple_ref WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id) = 0
+  BEGIN
+    SELECT RAISE(FAIL,
+    "No entity exists with the given type and ID");
+  END;
+
+-- When creating a new entitlement, set the object_ref to exactly what is in the openfga_tuple_ref view.
+CREATE TRIGGER entitlements_set_object_ref
+  AFTER INSERT ON entitlements
+  WHEN NEW.entity_id IS NOT NULL
+  BEGIN
+    UPDATE entitlements SET object_ref = (SELECT object_ref FROM openfga_tuple_ref WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id) WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id; 
+  END;
+`
+	_, err := tx.ExecContext(ctx, update)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // updateFromV68 fixes unique index for record name to make it zone specific.

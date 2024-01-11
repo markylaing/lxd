@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,7 +15,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/cluster"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
@@ -36,21 +36,21 @@ var profilesCmd = APIEndpoint{
 	Path: "profiles",
 
 	Get:  APIEndpointAction{Handler: profilesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(auth.ObjectTypeProject, auth.EntitlementCanCreateProfiles)},
+	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageProfiles)},
 }
 
 var profileCmd = APIEndpoint{
 	Path: "profiles/{name}",
 
-	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: profileAccessHandler(auth.EntitlementCanView)},
-	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
-	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: profileAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: profileAccessHandler(entitlement.RelationCanView)},
+	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
+	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
+	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // profileAccessHandler resolves the effective project of a profile before checking against the authorizer.
-func profileAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.Request) response.Response {
+func profileAccessHandler(relation entitlement.Relation) func(*Daemon, *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		profileName, err := url.PathUnescape(mux.Vars(r)["name"])
@@ -64,7 +64,7 @@ func profileAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.Requ
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectProfile(actualProject.Name, profileName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProfile(actualProject.Name, profileName), relation)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -175,7 +175,7 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 	recursion := util.IsRecursionRequest(r)
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeProfile)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeProfile)
 	if err != nil {
 		return response.InternalError(err)
 	}
@@ -193,7 +193,7 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 		apiProfiles := make([]*api.Profile, 0, len(profiles))
 		for _, profile := range profiles {
-			if !userHasPermission(auth.ObjectProfile(p.Name, profile.Name)) {
+			if !userHasPermission(entitlement.ObjectProfile(p.Name, profile.Name)) {
 				continue
 			}
 

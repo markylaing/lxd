@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"math"
 	"math/rand"
@@ -64,50 +65,50 @@ var imagesCmd = APIEndpoint{
 var imageCmd = APIEndpoint{
 	Path: "images/{fingerprint}",
 
-	Delete: APIEndpointAction{Handler: imageDelete, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: imageDelete, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
 	Get:    APIEndpointAction{Handler: imageGet, AllowUntrusted: true},
-	Patch:  APIEndpointAction{Handler: imagePatch, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: imagePut, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: imagePatch, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
+	Put:    APIEndpointAction{Handler: imagePut, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var imageExportCmd = APIEndpoint{
 	Path: "images/{fingerprint}/export",
 
 	Get:  APIEndpointAction{Handler: imageExport, AllowUntrusted: true},
-	Post: APIEndpointAction{Handler: imageExportPost, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: imageExportPost, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var imageSecretCmd = APIEndpoint{
 	Path: "images/{fingerprint}/secret",
 
-	Post: APIEndpointAction{Handler: imageSecret, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: imageSecret, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var imageRefreshCmd = APIEndpoint{
 	Path: "images/{fingerprint}/refresh",
 
-	Post: APIEndpointAction{Handler: imageRefresh, AccessHandler: imageAccessHandler(auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: imageRefresh, AccessHandler: imageAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var imageAliasesCmd = APIEndpoint{
 	Path: "images/aliases",
 
 	Get:  APIEndpointAction{Handler: imageAliasesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: imageAliasesPost, AccessHandler: allowPermission(auth.ObjectTypeProject, auth.EntitlementCanCreateImageAliases)},
+	Post: APIEndpointAction{Handler: imageAliasesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageImageAliases)},
 }
 
 var imageAliasCmd = APIEndpoint{
 	Path: "images/aliases/{name:.*}",
 
-	Delete: APIEndpointAction{Handler: imageAliasDelete, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: imageAliasDelete, AccessHandler: imageAliasAccessHandler(entitlement.RelationCanEdit)},
 	Get:    APIEndpointAction{Handler: imageAliasGet, AllowUntrusted: true},
-	Patch:  APIEndpointAction{Handler: imageAliasPatch, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
-	Post:   APIEndpointAction{Handler: imageAliasPost, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: imageAliasPut, AccessHandler: imageAliasAccessHandler(auth.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: imageAliasPatch, AccessHandler: imageAliasAccessHandler(entitlement.RelationCanEdit)},
+	Post:   APIEndpointAction{Handler: imageAliasPost, AccessHandler: imageAliasAccessHandler(entitlement.RelationCanEdit)},
+	Put:    APIEndpointAction{Handler: imageAliasPut, AccessHandler: imageAliasAccessHandler(entitlement.RelationCanEdit)},
 }
 
 // imageAliasAccessHandler resolves the image alias project before checking permissions.
-func imageAliasAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+func imageAliasAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		imageAliasName, err := url.PathUnescape(mux.Vars(r)["name"])
@@ -132,7 +133,7 @@ func imageAliasAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *ht
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImageAlias(projectName, imageAliasName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectImageAlias(projectName, imageAliasName), relation)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -143,7 +144,7 @@ func imageAliasAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *ht
 
 // imageAccessHandler expands the image fingerprint prefix and resolves its project before checking permission in the
 // authorizer.
-func imageAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+func imageAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
@@ -174,7 +175,7 @@ func imageAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Re
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImage(projectName, image.Fingerprint), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectImage(projectName, image.Fingerprint), relation)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -996,7 +997,7 @@ func imagesPost(d *Daemon, r *http.Request) response.Response {
 	projectName := request.ProjectParam(r)
 
 	var userCanCreateImages bool
-	err := s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectProject(projectName), auth.EntitlementCanCreateImages)
+	err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(projectName), entitlement.RelationCanManageImages)
 	if err == nil {
 		userCanCreateImages = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -1392,7 +1393,7 @@ func doImagesGet(ctx context.Context, tx *db.ClusterTx, recursion bool, projectN
 			continue
 		}
 
-		if !image.Public && !hasPermission(auth.ObjectImage(projectName, fingerprint)) {
+		if !image.Public && !hasPermission(entitlement.ObjectImage(projectName, fingerprint)) {
 			continue
 		}
 
@@ -1636,7 +1637,7 @@ func imagesGet(d *Daemon, r *http.Request) response.Response {
 
 	s := d.State()
 
-	hasPermission, authorizationErr := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeImage)
+	hasPermission, authorizationErr := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeImage)
 	if authorizationErr != nil && !api.StatusErrorCheck(authorizationErr, http.StatusForbidden) {
 		return response.SmartError(authorizationErr)
 	}
@@ -2887,7 +2888,7 @@ func imageGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	var userCanViewImage bool
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImage(projectName, info.Fingerprint), auth.EntitlementCanView)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectImage(projectName, info.Fingerprint), entitlement.RelationCanView)
 	if err == nil {
 		userCanViewImage = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -3300,7 +3301,7 @@ func imageAliasesGet(d *Daemon, r *http.Request) response.Response {
 	recursion := util.IsRecursionRequest(r)
 
 	s := d.State()
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeImageAlias)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeImageAlias)
 	if err != nil {
 		return response.InternalError(fmt.Errorf("Failed to get a permission checker: %w", err))
 	}
@@ -3320,7 +3321,7 @@ func imageAliasesGet(d *Daemon, r *http.Request) response.Response {
 		}
 
 		for _, name := range names {
-			if !userHasPermission(auth.ObjectImageAlias(projectName, name)) {
+			if !userHasPermission(entitlement.ObjectImageAlias(projectName, name)) {
 				continue
 			}
 
@@ -3441,7 +3442,7 @@ func imageAliasGet(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
 	var userCanViewImageAlias bool
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImageAlias(projectName, name), auth.EntitlementCanView)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectImageAlias(projectName, name), entitlement.RelationCanView)
 	if err == nil {
 		userCanViewImageAlias = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -3878,7 +3879,7 @@ func imageExport(d *Daemon, r *http.Request) response.Response {
 	}
 
 	var userCanViewImage bool
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectImage(projectName, imgInfo.Fingerprint), auth.EntitlementCanView)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectImage(projectName, imgInfo.Fingerprint), entitlement.RelationCanView)
 	if err == nil {
 		userCanViewImage = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {

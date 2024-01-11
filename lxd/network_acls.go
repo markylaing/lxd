@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	clusterRequest "github.com/canonical/lxd/lxd/cluster/request"
 	"github.com/canonical/lxd/lxd/lifecycle"
 	"github.com/canonical/lxd/lxd/network/acl"
@@ -27,27 +27,27 @@ var networkACLsCmd = APIEndpoint{
 	Path: "network-acls",
 
 	Get:  APIEndpointAction{Handler: networkACLsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: networkACLsPost, AccessHandler: allowPermission(auth.ObjectTypeProject, auth.EntitlementCanCreateNetworkACLs)},
+	Post: APIEndpointAction{Handler: networkACLsPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageNetworkACLs)},
 }
 
 var networkACLCmd = APIEndpoint{
 	Path: "network-acls/{name}",
 
-	Delete: APIEndpointAction{Handler: networkACLDelete, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
-	Get:    APIEndpointAction{Handler: networkACLGet, AccessHandler: networkACLAccessHandler(auth.EntitlementCanView)},
-	Put:    APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
-	Post:   APIEndpointAction{Handler: networkACLPost, AccessHandler: networkACLAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: networkACLDelete, AccessHandler: networkACLAccessHandler(entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: networkACLGet, AccessHandler: networkACLAccessHandler(entitlement.RelationCanView)},
+	Put:    APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(entitlement.RelationCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkACLPut, AccessHandler: networkACLAccessHandler(entitlement.RelationCanEdit)},
+	Post:   APIEndpointAction{Handler: networkACLPost, AccessHandler: networkACLAccessHandler(entitlement.RelationCanEdit)},
 }
 
 var networkACLLogCmd = APIEndpoint{
 	Path: "network-acls/{name}/log",
 
-	Get: APIEndpointAction{Handler: networkACLLogGet, AccessHandler: networkACLAccessHandler(auth.EntitlementCanView)},
+	Get: APIEndpointAction{Handler: networkACLLogGet, AccessHandler: networkACLAccessHandler(entitlement.RelationCanView)},
 }
 
 // networkACLAccessHandler resolves the effective project of the network ACL before checking against the authorizer.
-func networkACLAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.Request) response.Response {
+func networkACLAccessHandler(relation entitlement.Relation) func(*Daemon, *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		networkACLName, err := url.PathUnescape(mux.Vars(r)["name"])
@@ -61,7 +61,7 @@ func networkACLAccessHandler(entitlement auth.Entitlement) func(*Daemon, *http.R
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectNetworkACL(actualProjectName, networkACLName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectNetworkACL(actualProjectName, networkACLName), relation)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -180,7 +180,7 @@ func networkACLsGet(d *Daemon, r *http.Request) response.Response {
 		return response.InternalError(err)
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanView, auth.ObjectTypeNetworkACL)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeNetworkACL)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -188,7 +188,7 @@ func networkACLsGet(d *Daemon, r *http.Request) response.Response {
 	resultString := []string{}
 	resultMap := []api.NetworkACL{}
 	for _, aclName := range aclNames {
-		if !userHasPermission(auth.ObjectNetworkACL(projectName, aclName)) {
+		if !userHasPermission(entitlement.ObjectNetworkACL(projectName, aclName)) {
 			continue
 		}
 

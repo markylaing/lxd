@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/cluster"
 	clusterRequest "github.com/canonical/lxd/lxd/cluster/request"
 	"github.com/canonical/lxd/lxd/db"
@@ -36,16 +36,16 @@ var storagePoolsCmd = APIEndpoint{
 	Path: "storage-pools",
 
 	Get:  APIEndpointAction{Handler: storagePoolsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolsPost, AccessHandler: allowPermission(auth.ObjectTypeServer, auth.EntitlementCanCreateStoragePools)},
+	Post: APIEndpointAction{Handler: storagePoolsPost, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanManageStoragePools)},
 }
 
 var storagePoolCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolDelete, AccessHandler: allowPermission(auth.ObjectTypeStoragePool, auth.EntitlementCanEdit, "poolName")},
-	Get:    APIEndpointAction{Handler: storagePoolGet, AccessHandler: allowPermission(auth.ObjectTypeStoragePool, auth.EntitlementCanView, "poolName")},
-	Patch:  APIEndpointAction{Handler: storagePoolPatch, AccessHandler: allowPermission(auth.ObjectTypeStoragePool, auth.EntitlementCanEdit, "poolName")},
-	Put:    APIEndpointAction{Handler: storagePoolPut, AccessHandler: allowPermission(auth.ObjectTypeStoragePool, auth.EntitlementCanEdit, "poolName")},
+	Delete: APIEndpointAction{Handler: storagePoolDelete, AccessHandler: allowPermission(entitlement.ObjectTypeStoragePool, entitlement.RelationCanEdit, "poolName")},
+	Get:    APIEndpointAction{Handler: storagePoolGet, AccessHandler: allowPermission(entitlement.ObjectTypeStoragePool, entitlement.RelationCanView, "poolName")},
+	Patch:  APIEndpointAction{Handler: storagePoolPatch, AccessHandler: allowPermission(entitlement.ObjectTypeStoragePool, entitlement.RelationCanEdit, "poolName")},
+	Put:    APIEndpointAction{Handler: storagePoolPut, AccessHandler: allowPermission(entitlement.ObjectTypeStoragePool, entitlement.RelationCanEdit, "poolName")},
 }
 
 // swagger:operation GET /1.0/storage-pools storage storage_pools_get
@@ -150,7 +150,7 @@ func storagePoolsGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	hasEditPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, auth.EntitlementCanEdit, auth.ObjectTypeStoragePool)
+	hasEditPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanEdit, entitlement.ObjectTypeStoragePool)
 	if err != nil {
 		return response.InternalError(err)
 	}
@@ -175,7 +175,7 @@ func storagePoolsGet(d *Daemon, r *http.Request) response.Response {
 			poolAPI := pool.ToAPI()
 			poolAPI.UsedBy = project.FilterUsedBy(s.Authorizer, r, poolUsedBy)
 
-			if !hasEditPermission(auth.ObjectStoragePool(poolName)) {
+			if !hasEditPermission(entitlement.ObjectStoragePool(poolName)) {
 				// Don't allow non-admins to see pool config as sensitive info can be stored there.
 				poolAPI.Config = nil
 			}
@@ -611,7 +611,7 @@ func storagePoolGet(d *Daemon, r *http.Request) response.Response {
 	poolAPI := pool.ToAPI()
 	poolAPI.UsedBy = project.FilterUsedBy(s.Authorizer, r, poolUsedBy)
 
-	err = s.Authorizer.CheckPermission(r.Context(), r, auth.ObjectStoragePool(poolName), auth.EntitlementCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectStoragePool(poolName), entitlement.RelationCanEdit)
 	if err != nil && api.StatusErrorCheck(err, http.StatusForbidden) {
 		// Don't allow non-admins to see pool config as sensitive info can be stored there.
 		poolAPI.Config = nil

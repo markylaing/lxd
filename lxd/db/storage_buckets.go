@@ -34,6 +34,43 @@ type StorageBucket struct {
 	PoolName string
 }
 
+func (c *ClusterTx) GetStoragePoolBucketID(ctx context.Context, poolName string, bucketName string, projectName string, nodeName string) (int64, error) {
+	var q string
+	args := []any{bucketName, poolName, projectName}
+	if nodeName == "" {
+		q = `
+SELECT storage_buckets.id FROM storage_buckets 
+	JOIN storage_pools ON storage_buckets.storage_pool_id = storage_pools.id
+	JOIN projects ON storage_buckets.project_id = projects.id
+	WHERE storage_buckets.name = ? AND storage_pools.name = ? AND projects.name = ? AND storage_buckets.node_id IS NULL
+`
+	} else {
+		q = `
+SELECT storage_buckets.id FROM storage_buckets 
+	JOIN storage_pools ON storage_buckets.storage_pool_id = storage_pools.id
+	JOIN projects ON storage_buckets.project_id = projects.id
+	JOIN nodes ON storage_buckets.node_id = nodes.id
+	WHERE storage_buckets.name = ? AND storage_pools.name = ? AND projects.name = ? AND nodes.name = ?
+`
+		args = append(args, nodeName)
+	}
+
+	row := c.Tx().QueryRowContext(ctx, q, args...)
+	if row.Err() != nil && !errors.Is(row.Err(), sql.ErrNoRows) {
+		return 0, api.StatusErrorf(http.StatusNotFound, "Storage bucket not found")
+	} else if row.Err() != nil {
+		return 0, row.Err()
+	}
+
+	var id int64
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
 // GetStoragePoolBuckets returns all storage buckets.
 // If there are no buckets, it returns an empty list and no error.
 // Accepts filters for narrowing down the results returned. If memberSpecific is true, then the search is

@@ -66,6 +66,12 @@ type CertificatePut struct {
 	//
 	// API extension: certificate_self_renewal
 	Certificate string `json:"certificate" yaml:"certificate"`
+
+	// List of groups the certificate is a member of
+	// Example: ["project-default-operators"]
+	//
+	// API extension: permission_management
+	Groups []string `json:"groups" yaml:"groups"`
 }
 
 // Certificate represents a LXD certificate

@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -1431,27 +1432,27 @@ func FilterUsedBy(authorizer auth.Authorizer, r *http.Request, entries []string)
 			continue
 		}
 
-		var object auth.Object
+		var object entitlement.Object
 		switch entityType {
 		case cluster.TypeImage:
-			object = auth.ObjectImage(projectName, pathArgs[0])
+			object = entitlement.ObjectImage(projectName, pathArgs[0])
 		case cluster.TypeInstance:
-			object = auth.ObjectInstance(projectName, pathArgs[0])
+			object = entitlement.ObjectInstance(projectName, pathArgs[0])
 		case cluster.TypeNetwork:
-			object = auth.ObjectNetwork(projectName, pathArgs[0])
+			object = entitlement.ObjectNetwork(projectName, pathArgs[0])
 		case cluster.TypeProfile:
-			object = auth.ObjectProfile(projectName, pathArgs[0])
+			object = entitlement.ObjectProfile(projectName, pathArgs[0])
 		case cluster.TypeStoragePool:
-			object = auth.ObjectStoragePool(pathArgs[0])
+			object = entitlement.ObjectStoragePool(pathArgs[0])
 		case cluster.TypeStorageVolume:
-			object = auth.ObjectStorageVolume(projectName, pathArgs[0], pathArgs[1], pathArgs[2], location)
+			object = entitlement.ObjectStorageVolume(projectName, pathArgs[0], pathArgs[1], pathArgs[2], location)
 		case cluster.TypeStorageBucket:
-			object = auth.ObjectStorageBucket(projectName, pathArgs[0], pathArgs[1], location)
+			object = entitlement.ObjectStorageBucket(projectName, pathArgs[0], pathArgs[1], location)
 		default:
 			continue
 		}
 
-		err = authorizer.CheckPermission(r.Context(), r, object, auth.EntitlementCanView)
+		err = authorizer.CheckPermission(r.Context(), r, object, entitlement.RelationCanView)
 		if err != nil {
 			continue
 		}
@@ -1484,7 +1485,7 @@ func projectHasRestriction(project *api.Project, restrictionKey string, blockVal
 func CheckClusterTargetRestriction(authorizer auth.Authorizer, r *http.Request, project *api.Project, targetFlag string) error {
 	if projectHasRestriction(project, "restricted.cluster.target", "block") && targetFlag != "" {
 		// Allow server administrators to move instances around even when restricted (node evacuation, ...)
-		err := authorizer.CheckPermission(r.Context(), r, auth.ObjectServer(), auth.EntitlementCanOverrideClusterTargetRestriction)
+		err := authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanOverrideClusterTargetRestriction)
 		if err != nil && api.StatusErrorCheck(err, http.StatusForbidden) {
 			return api.StatusErrorf(http.StatusForbidden, "This project doesn't allow cluster member targeting")
 		} else if err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -111,6 +112,25 @@ func (c *Cluster) GetNetworkZoneKeys() (map[string]string, error) {
 	}
 
 	return secrets, nil
+}
+
+func (c *ClusterTx) GetNetworkZoneID(ctx context.Context, name string) (int64, error) {
+	q := `SELECT id FROM networks_zones JOIN projects ON projects.id=networks_zones.project_id WHERE networks_zones.name = ?`
+
+	row := c.tx.QueryRowContext(ctx, q, name)
+	if row.Err() != nil && !errors.Is(row.Err(), sql.ErrNoRows) {
+		return 0, api.StatusErrorf(http.StatusNotFound, "Network zone not found")
+	} else if row.Err() != nil {
+		return 0, row.Err()
+	}
+
+	var id int64
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
 }
 
 // GetNetworkZone returns the Network zone with the given name.

@@ -3,13 +3,13 @@ package operations
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/db/operationtype"
 	"github.com/canonical/lxd/lxd/events"
 	"github.com/canonical/lxd/lxd/request"
@@ -104,8 +104,8 @@ type Operation struct {
 	readonly    bool
 	canceler    *cancel.HTTPRequestCanceller
 	description string
-	objectType  auth.ObjectType
-	entitlement auth.Entitlement
+	objectType  entitlement.ObjectType
+	entitlement entitlement.Relation
 	dbOpType    operationtype.Type
 	requestor   *api.EventLifecycleRequestor
 	logger      logger.Logger
@@ -661,8 +661,8 @@ func (op *Operation) SetCanceler(canceler *cancel.HTTPRequestCanceller) {
 	op.canceler = canceler
 }
 
-// Permission returns the operations auth.ObjectType and auth.Entitlement.
-func (op *Operation) Permission() (auth.ObjectType, auth.Entitlement) {
+// Permission returns the operations auth.ObjectType and auth.Relation.
+func (op *Operation) Permission() (entitlement.ObjectType, entitlement.Relation) {
 	return op.objectType, op.entitlement
 }
 

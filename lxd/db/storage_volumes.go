@@ -239,6 +239,44 @@ func (c *ClusterTx) GetStoragePoolVolumes(ctx context.Context, poolID int64, mem
 	return volumes, nil
 }
 
+func (c *ClusterTx) GetStoragePoolVolumeID(ctx context.Context, poolName string, volumeType int, volumeName string, projectName string, nodeName string) (int64, error) {
+	var q string
+	args := []any{volumeName, volumeType, poolName, projectName}
+	if nodeName == "" {
+		q = `
+SELECT storage_volumes.id FROM storage_volumes 
+	JOIN storage_pools ON storage_volumes.storage_pool_id = storage_pools.id
+	JOIN projects ON storage_volumes.project_id = projects.id
+	WHERE storage_volumes.name = ? AND storage_volumes.type = ? AND storage_pools.name = ? AND projects.name = ? AND storage_volumes.node_id IS NULL
+`
+	} else {
+		q = `
+SELECT storage_volumes.id FROM storage_volumes 
+	JOIN storage_pools ON storage_volumes.storage_pool_id = storage_pools.id
+	JOIN projects ON storage_volumes.project_id = projects.id
+	JOIN nodes ON storage_volumes.node_id = nodes.id
+	WHERE storage_volumes.name = ? AND storage_volumes.type = ? AND storage_pools.name = ? AND projects.name = ? AND nodes.name = ?
+`
+		args = append(args, nodeName)
+	}
+
+	row := c.Tx().QueryRowContext(ctx, q, args...)
+	if row.Err() != nil && !errors.Is(row.Err(), sql.ErrNoRows) {
+		return 0, api.StatusErrorf(http.StatusNotFound, "Storage volume not found")
+	} else if row.Err() != nil {
+		return 0, row.Err()
+	}
+
+	var id int64
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+
+}
+
 // GetStoragePoolVolume returns the storage volume attached to a given storage pool.
 func (c *ClusterTx) GetStoragePoolVolume(ctx context.Context, poolID int64, projectName string, volumeType int, volumeName string, memberSpecific bool) (*StorageVolume, error) {
 	filters := []StorageVolumeFilter{{
@@ -983,4 +1021,20 @@ func (c *ClusterTx) UpdateStorageVolumeNode(ctx context.Context, projectName str
 	}
 
 	return nil
+}
+
+// VolumeTypeNameToDBType converts a volume type string to internal volume type DB code.
+func VolumeTypeNameToDBType(volumeTypeName string) (int, error) {
+	switch volumeTypeName {
+	case StoragePoolVolumeTypeNameContainer:
+		return StoragePoolVolumeTypeContainer, nil
+	case StoragePoolVolumeTypeNameVM:
+		return StoragePoolVolumeTypeVM, nil
+	case StoragePoolVolumeTypeNameImage:
+		return StoragePoolVolumeTypeImage, nil
+	case StoragePoolVolumeTypeNameCustom:
+		return StoragePoolVolumeTypeCustom, nil
+	}
+
+	return -1, fmt.Errorf("Invalid storage volume type name")
 }

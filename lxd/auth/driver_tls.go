@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 
 	"github.com/canonical/lxd/lxd/certificate"
@@ -25,8 +26,8 @@ func (t *tls) load(ctx context.Context, certificateCache *certificate.Cache, opt
 	return nil
 }
 
-// CheckPermission returns an error if the user does not have the given Entitlement on the given Object.
-func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object Object, entitlement Entitlement) error {
+// CheckPermission returns an error if the user does not have the given Relation on the given Object.
+func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, relation entitlement.Relation) error {
 	details, err := t.requestDetails(r)
 	if err != nil {
 		return api.StatusErrorf(http.StatusForbidden, "Failed to extract request details: %v", err)
@@ -44,12 +45,12 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object Objec
 		return nil
 	}
 
-	certType, isNotRestricted, projectNames, err := t.certificateDetails(details.username())
+	certType, isNotRestricted, projectNames, _, err := t.certificateDetails(details.username())
 	if err != nil {
 		return err
 	}
 
-	if isNotRestricted || (certType == certificate.TypeMetrics && entitlement == EntitlementCanViewMetrics) {
+	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
 		return nil
 	}
 
@@ -60,14 +61,14 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object Objec
 
 	// Check server level object types
 	switch object.Type() {
-	case ObjectTypeServer:
-		if entitlement == EntitlementCanView || entitlement == EntitlementCanViewResources || entitlement == EntitlementCanViewMetrics {
+	case entitlement.ObjectTypeServer:
+		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
 			return nil
 		}
 
 		return api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
-	case ObjectTypeStoragePool, ObjectTypeCertificate:
-		if entitlement == EntitlementCanView {
+	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
+		if relation == entitlement.RelationCanView {
 			return nil
 		}
 
@@ -84,9 +85,9 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object Objec
 }
 
 // GetPermissionChecker returns a function that can be used to check whether a user has the required entitlement on an authorization object.
-func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, entitlement Entitlement, objectType ObjectType) (PermissionChecker, error) {
-	allowFunc := func(b bool) func(Object) bool {
-		return func(Object) bool {
+func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relation entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error) {
+	allowFunc := func(b bool) func(entitlement.Object) bool {
+		return func(entitlement.Object) bool {
 			return b
 		}
 	}
@@ -108,12 +109,12 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 		return allowFunc(true), nil
 	}
 
-	certType, isNotRestricted, projectNames, err := t.certificateDetails(details.username())
+	certType, isNotRestricted, projectNames, _, err := t.certificateDetails(details.username())
 	if err != nil {
 		return nil, err
 	}
 
-	if isNotRestricted || (certType == certificate.TypeMetrics && entitlement == EntitlementCanViewMetrics) {
+	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
 		return allowFunc(true), nil
 	}
 
@@ -124,14 +125,14 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 
 	// Check server level object types
 	switch objectType {
-	case ObjectTypeServer:
-		if entitlement == EntitlementCanView || entitlement == EntitlementCanViewResources || entitlement == EntitlementCanViewMetrics {
+	case entitlement.ObjectTypeServer:
+		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
 			return allowFunc(true), nil
 		}
 
 		return nil, api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
-	case ObjectTypeStoragePool, ObjectTypeCertificate:
-		if entitlement == EntitlementCanView {
+	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
+		if relation == entitlement.RelationCanView {
 			return allowFunc(true), nil
 		}
 
@@ -139,44 +140,49 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 	}
 
 	// Error if user does not have access to the project (unless we're getting projects, where we want to filter the results).
-	if !shared.ValueInSlice(details.projectName, projectNames) && objectType != ObjectTypeProject {
+	if !shared.ValueInSlice(details.projectName, projectNames) && objectType != entitlement.ObjectTypeProject {
 		return nil, api.StatusErrorf(http.StatusForbidden, "User does not have permissions for project %q", details.projectName)
 	}
 
 	// Filter objects by project.
-	return func(object Object) bool {
+	return func(object entitlement.Object) bool {
 		return shared.ValueInSlice(object.Project(), projectNames)
 	}, nil
 }
 
 // certificateDetails returns the certificate type, a boolean indicating if the certificate is *not* restricted, a slice of
 // project names for this certificate, or an error if the certificate could not be found.
-func (t *tls) certificateDetails(fingerprint string) (certificate.Type, bool, []string, error) {
-	certs, projects := t.certificates.GetCertificatesAndProjects()
+func (t *tls) certificateDetails(fingerprint string) (certificate.Type, bool, []string, []string, error) {
+	return certificateDetails(t.certificates, fingerprint)
+}
+
+func certificateDetails(cache *certificate.Cache, fingerprint string) (certificate.Type, bool, []string, []string, error) {
+	certs, projects, groups := cache.GetCertificatesProjectsAndGroups()
 	clientCerts := certs[certificate.TypeClient]
 	_, ok := clientCerts[fingerprint]
 	if ok {
-		projectNames, ok := projects[fingerprint]
-		if !ok {
+		projectNames, hasProjects := projects[fingerprint]
+		groupNames, hasGroups := groups[fingerprint]
+		if !hasProjects && !hasGroups {
 			// Certificate is not restricted.
-			return certificate.TypeClient, true, nil, nil
+			return certificate.TypeClient, true, nil, nil, nil
 		}
 
-		return certificate.TypeClient, false, projectNames, nil
+		return certificate.TypeClient, false, projectNames, groupNames, nil
 	}
 
 	// If not a client cert, could be a metrics cert. Only need to check one entitlement.
 	metricCerts := certs[certificate.TypeMetrics]
 	_, ok = metricCerts[fingerprint]
 	if ok {
-		return certificate.TypeMetrics, false, nil, nil
+		return certificate.TypeMetrics, false, nil, nil, nil
 	}
 
 	// If we're in a CA environment, it's possible for a certificate to be trusted despite not being present in the trust store.
 	// We rely on the validation of the certificate (and its potential revocation) having been done in CheckTrustState.
 	if shared.PathExists(shared.VarPath("server.ca")) {
-		return certificate.TypeClient, true, nil, nil
+		return certificate.TypeClient, true, nil, nil, nil
 	}
 
-	return -1, false, nil, api.StatusErrorf(http.StatusForbidden, "Client certificate not found")
+	return -1, false, nil, nil, api.StatusErrorf(http.StatusForbidden, "Client certificate not found")
 }

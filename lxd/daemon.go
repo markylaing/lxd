@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"net"
 	"net/http"
@@ -254,7 +255,7 @@ func allowAuthenticated(d *Daemon, r *http.Request) response.Response {
 // Mux vars should be passed in so that the object we are checking can be created. For example, a certificate object requires
 // a fingerprint, the mux var for certificate fingerprints is "fingerprint", so that string should be passed in.
 // Mux vars should always be passed in with the same order they appear in the API route.
-func allowPermission(objectType auth.ObjectType, entitlement auth.Entitlement, muxVars ...string) func(d *Daemon, r *http.Request) response.Response {
+func allowPermission(objectType entitlement.ObjectType, entitlement entitlement.Relation, muxVars ...string) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		objectName, err := auth.ObjectFromRequest(r, objectType, muxVars...)
 		if err != nil {
@@ -699,6 +700,12 @@ func (d *Daemon) Init() error {
 	if err != nil {
 		logger.Error("Failed to start the daemon", logger.Ctx{"err": err})
 		_ = d.Stop(context.Background(), unix.SIGINT)
+		return err
+	}
+
+	// Set default authorizer.
+	d.authorizer, err = auth.LoadAuthorizer(d.shutdownCtx, auth.DriverOpenFGAEmbedded, logger.Log, d.clientCerts, auth.WithOpenFGADatastore(db.NewOpenFGAStore(d.db.Cluster)))
+	if err != nil {
 		return err
 	}
 
@@ -1912,7 +1919,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.CertificateObjects = append(resources.CertificateObjects, auth.ObjectCertificate(fingerprint))
+				resources.CertificateObjects = append(resources.CertificateObjects, entitlement.ObjectCertificate(fingerprint))
 				return nil
 			})
 			if err != nil {
@@ -1926,7 +1933,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.StoragePoolObjects = append(resources.StoragePoolObjects, auth.ObjectStoragePool(storagePoolName))
+				resources.StoragePoolObjects = append(resources.StoragePoolObjects, entitlement.ObjectStoragePool(storagePoolName))
 				return nil
 			})
 			if err != nil {
@@ -1940,7 +1947,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.ProjectObjects = append(resources.ProjectObjects, auth.ObjectProject(projectName))
+				resources.ProjectObjects = append(resources.ProjectObjects, entitlement.ObjectProject(projectName))
 				return nil
 			})
 			if err != nil {
@@ -1955,7 +1962,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.ImageObjects = append(resources.ImageObjects, auth.ObjectImage(projectName, imageFingerprint))
+				resources.ImageObjects = append(resources.ImageObjects, entitlement.ObjectImage(projectName, imageFingerprint))
 				return nil
 			})
 			if err != nil {
@@ -1970,7 +1977,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.ImageAliasObjects = append(resources.ImageAliasObjects, auth.ObjectImageAlias(projectName, imageAliasName))
+				resources.ImageAliasObjects = append(resources.ImageAliasObjects, entitlement.ObjectImageAlias(projectName, imageAliasName))
 				return nil
 			})
 			if err != nil {
@@ -1985,7 +1992,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.InstanceObjects = append(resources.InstanceObjects, auth.ObjectInstance(projectName, instanceName))
+				resources.InstanceObjects = append(resources.InstanceObjects, entitlement.ObjectInstance(projectName, instanceName))
 				return nil
 			})
 			if err != nil {
@@ -2000,7 +2007,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.NetworkObjects = append(resources.NetworkObjects, auth.ObjectNetwork(projectName, networkName))
+				resources.NetworkObjects = append(resources.NetworkObjects, entitlement.ObjectNetwork(projectName, networkName))
 				return nil
 			})
 			if err != nil {
@@ -2015,7 +2022,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.NetworkACLObjects = append(resources.NetworkACLObjects, auth.ObjectNetworkACL(projectName, networkACLName))
+				resources.NetworkACLObjects = append(resources.NetworkACLObjects, entitlement.ObjectNetworkACL(projectName, networkACLName))
 				return nil
 			})
 			if err != nil {
@@ -2030,7 +2037,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.NetworkZoneObjects = append(resources.NetworkZoneObjects, auth.ObjectNetworkZone(projectName, networkZoneName))
+				resources.NetworkZoneObjects = append(resources.NetworkZoneObjects, entitlement.ObjectNetworkZone(projectName, networkZoneName))
 				return nil
 			})
 			if err != nil {
@@ -2045,7 +2052,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					return err
 				}
 
-				resources.ProfileObjects = append(resources.ProfileObjects, auth.ObjectProfile(projectName, profileName))
+				resources.ProfileObjects = append(resources.ProfileObjects, entitlement.ObjectProfile(projectName, profileName))
 				return nil
 			})
 			if err != nil {
@@ -2073,7 +2080,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					location = storageVolumeLocation.String
 				}
 
-				resources.StoragePoolVolumeObjects = append(resources.StoragePoolVolumeObjects, auth.ObjectStorageVolume(projectName, storagePoolName, storageVolumeTypeName, storageVolumeName, location))
+				resources.StoragePoolVolumeObjects = append(resources.StoragePoolVolumeObjects, entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeTypeName, storageVolumeName, location))
 				return nil
 			})
 			if err != nil {
@@ -2095,7 +2102,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 					location = storageBucketLocation.String
 				}
 
-				resources.StorageBucketObjects = append(resources.StorageBucketObjects, auth.ObjectStorageBucket(projectName, storagePoolName, storageBucketName, location))
+				resources.StorageBucketObjects = append(resources.StorageBucketObjects, entitlement.ObjectStorageBucket(projectName, storagePoolName, storageBucketName, location))
 				return nil
 			})
 			if err != nil {

@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/resources"
 	"github.com/canonical/lxd/lxd/response"
 	storagePools "github.com/canonical/lxd/lxd/storage"
@@ -16,13 +16,13 @@ import (
 var api10ResourcesCmd = APIEndpoint{
 	Path: "resources",
 
-	Get: APIEndpointAction{Handler: api10ResourcesGet, AccessHandler: allowPermission(auth.ObjectTypeServer, auth.EntitlementCanViewResources)},
+	Get: APIEndpointAction{Handler: api10ResourcesGet, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanViewResources)},
 }
 
 var storagePoolResourcesCmd = APIEndpoint{
 	Path: "storage-pools/{name}/resources",
 
-	Get: APIEndpointAction{Handler: storagePoolResourcesGet, AccessHandler: allowPermission(auth.ObjectTypeServer, auth.EntitlementCanViewResources)},
+	Get: APIEndpointAction{Handler: storagePoolResourcesGet, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanViewResources)},
 }
 
 // swagger:operation GET /1.0/resources server resources_get

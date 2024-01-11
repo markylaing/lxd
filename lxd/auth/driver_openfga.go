@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/shared/entitlement"
 	"net/http"
 	"net/url"
 	"time"
@@ -284,9 +285,9 @@ func (f *fga) connect(ctx context.Context, certificateCache *certificate.Cache, 
 }
 
 // CheckPermission retrieves user details from the request, then checks if the user is related to the given Object via
-// the given Entitlement. If this is true we return nil, otherwise we return an api.StatusError with http.StatusForbidden.
-func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Object, entitlement Entitlement) error {
-	logCtx := logger.Ctx{"object": object, "entitlement": entitlement, "url": r.URL.String(), "method": r.Method}
+// the given Relation. If this is true we return nil, otherwise we return an api.StatusError with http.StatusForbidden.
+func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, relation entitlement.Relation) error {
+	logCtx := logger.Ctx{"object": object, "relation": relation, "url": r.URL.String(), "method": r.Method}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -301,7 +302,7 @@ func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Objec
 
 	// Use the TLS driver if the user authenticated with TLS.
 	if details.authenticationProtocol() == api.AuthenticationMethodTLS {
-		return f.tls.CheckPermission(ctx, r, object, entitlement)
+		return f.tls.CheckPermission(ctx, r, object, relation)
 	}
 
 	// If offline, return a clear error to the user.
@@ -313,14 +314,14 @@ func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Objec
 	logCtx["username"] = username
 	logCtx["protocol"] = details.protocol
 
-	objectUser := ObjectUser(username)
+	objectUser := entitlement.ObjectUser(username)
 	options := client.ClientCheckOptions{
 		AuthorizationModelId: openfga.PtrString(f.authModelID),
 	}
 
 	body := client.ClientCheckRequest{
 		User:     objectUser.String(),
-		Relation: string(entitlement),
+		Relation: string(relation),
 		Object:   object.String(),
 	}
 
@@ -331,22 +332,22 @@ func (f *fga) CheckPermission(ctx context.Context, r *http.Request, object Objec
 	}
 
 	if !resp.GetAllowed() {
-		return api.StatusErrorf(http.StatusForbidden, "User does not have entitlement %q on object %q", entitlement, object)
+		return api.StatusErrorf(http.StatusForbidden, "User does not have entitlement %q on object %q", relation, object)
 	}
 
 	return nil
 }
 
 // GetPermissionChecker returns a PermissionChecker that does not need to make further API calls to perform permission checks.
-// It does so by listing all objects of the given type that the user is related to via the given Entitlement.
-func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitlement Entitlement, objectType ObjectType) (PermissionChecker, error) {
-	allowFunc := func(b bool) func(Object) bool {
-		return func(Object) bool {
+// It does so by listing all objects of the given type that the user is related to via the given Relation.
+func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, relation entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error) {
+	allowFunc := func(b bool) func(entitlement.Object) bool {
+		return func(entitlement.Object) bool {
 			return b
 		}
 	}
 
-	logCtx := logger.Ctx{"object_type": objectType, "entitlement": entitlement, "url": r.URL.String(), "method": r.Method}
+	logCtx := logger.Ctx{"object_type": objectType, "entitlement": relation, "url": r.URL.String(), "method": r.Method}
 	details, err := f.requestDetails(r)
 	if err != nil {
 		return nil, api.StatusErrorf(http.StatusForbidden, "Failed to extract request details: %v", err)
@@ -358,7 +359,7 @@ func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 
 	// Use the TLS driver if the user authenticated with TLS.
 	if details.authenticationProtocol() == api.AuthenticationMethodTLS {
-		return f.tls.GetPermissionChecker(ctx, r, entitlement, objectType)
+		return f.tls.GetPermissionChecker(ctx, r, relation, objectType)
 	}
 
 	// If offline, return a clear error to the user.
@@ -376,17 +377,17 @@ func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 
 	f.logger.Debug("Listing related objects for user", logCtx)
 	resp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
-		User:     ObjectUser(username).String(),
-		Relation: string(entitlement),
+		User:     entitlement.ObjectUser(username).String(),
+		Relation: string(relation),
 		Type:     string(objectType),
 	}).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to OpenFGA objects of type %q with relation %q for user %q: %w", objectType, entitlement, username, err)
+		return nil, fmt.Errorf("Failed to OpenFGA objects of type %q with relation %q for user %q: %w", objectType, relation, username, err)
 	}
 
 	objects := resp.GetObjects()
 
-	return func(object Object) bool {
+	return func(object entitlement.Object) bool {
 		return shared.ValueInSlice(object.String(), objects)
 	}, nil
 }
@@ -396,14 +397,14 @@ func (f *fga) GetPermissionChecker(ctx context.Context, r *http.Request, entitle
 func (f *fga) AddProject(ctx context.Context, _ int64, projectName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectProject(projectName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectProject(projectName).String(),
 		},
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, "default").String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, "default").String(),
 		},
 	}
 
@@ -416,14 +417,14 @@ func (f *fga) DeleteProject(ctx context.Context, _ int64, projectName string) er
 	deletions := []client.ClientTupleKey{
 		{
 			// Remove the default profile
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, "default").String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, "default").String(),
 		},
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectProject(projectName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectProject(projectName).String(),
 		},
 	}
 
@@ -434,14 +435,14 @@ func (f *fga) DeleteProject(ctx context.Context, _ int64, projectName string) er
 func (f *fga) RenameProject(ctx context.Context, _ int64, oldName string, newName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectProject(newName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectProject(newName).String(),
 		},
 		{
-			User:     ObjectProject(newName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(newName, "default").String(),
+			User:     entitlement.ObjectProject(newName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(newName, "default").String(),
 		},
 	}
 
@@ -449,14 +450,14 @@ func (f *fga) RenameProject(ctx context.Context, _ int64, oldName string, newNam
 	deletions := []client.ClientTupleKey{
 		{
 			// Remove the default profile
-			User:     ObjectProject(oldName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(oldName, "default").String(),
+			User:     entitlement.ObjectProject(oldName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(oldName, "default").String(),
 		},
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectProject(oldName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectProject(oldName).String(),
 		},
 	}
 
@@ -467,9 +468,9 @@ func (f *fga) RenameProject(ctx context.Context, _ int64, oldName string, newNam
 func (f *fga) AddCertificate(ctx context.Context, fingerprint string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectCertificate(fingerprint).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectCertificate(fingerprint).String(),
 		},
 	}
 
@@ -480,9 +481,9 @@ func (f *fga) AddCertificate(ctx context.Context, fingerprint string) error {
 func (f *fga) DeleteCertificate(ctx context.Context, fingerprint string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectCertificate(fingerprint).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectCertificate(fingerprint).String(),
 		},
 	}
 
@@ -493,9 +494,9 @@ func (f *fga) DeleteCertificate(ctx context.Context, fingerprint string) error {
 func (f *fga) AddStoragePool(ctx context.Context, storagePoolName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectStoragePool(storagePoolName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectStoragePool(storagePoolName).String(),
 		},
 	}
 
@@ -506,9 +507,9 @@ func (f *fga) AddStoragePool(ctx context.Context, storagePoolName string) error 
 func (f *fga) DeleteStoragePool(ctx context.Context, storagePoolName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectServer().String(),
-			Relation: relationServer,
-			Object:   ObjectStoragePool(storagePoolName).String(),
+			User:     entitlement.ObjectServer().String(),
+			Relation: string(entitlement.RelationServer),
+			Object:   entitlement.ObjectStoragePool(storagePoolName).String(),
 		},
 	}
 
@@ -519,9 +520,9 @@ func (f *fga) DeleteStoragePool(ctx context.Context, storagePoolName string) err
 func (f *fga) AddImage(ctx context.Context, projectName string, fingerprint string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImage(projectName, fingerprint).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImage(projectName, fingerprint).String(),
 		},
 	}
 
@@ -532,9 +533,9 @@ func (f *fga) AddImage(ctx context.Context, projectName string, fingerprint stri
 func (f *fga) DeleteImage(ctx context.Context, projectName string, fingerprint string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImage(projectName, fingerprint).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImage(projectName, fingerprint).String(),
 		},
 	}
 
@@ -545,9 +546,9 @@ func (f *fga) DeleteImage(ctx context.Context, projectName string, fingerprint s
 func (f *fga) AddImageAlias(ctx context.Context, projectName string, imageAliasName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImageAlias(projectName, imageAliasName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImageAlias(projectName, imageAliasName).String(),
 		},
 	}
 
@@ -558,9 +559,9 @@ func (f *fga) AddImageAlias(ctx context.Context, projectName string, imageAliasN
 func (f *fga) DeleteImageAlias(ctx context.Context, projectName string, imageAliasName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImageAlias(projectName, imageAliasName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImageAlias(projectName, imageAliasName).String(),
 		},
 	}
 
@@ -571,17 +572,17 @@ func (f *fga) DeleteImageAlias(ctx context.Context, projectName string, imageAli
 func (f *fga) RenameImageAlias(ctx context.Context, projectName string, oldAliasName string, newAliasName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImageAlias(projectName, newAliasName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImageAlias(projectName, newAliasName).String(),
 		},
 	}
 
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectImageAlias(projectName, oldAliasName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectImageAlias(projectName, oldAliasName).String(),
 		},
 	}
 
@@ -592,9 +593,9 @@ func (f *fga) RenameImageAlias(ctx context.Context, projectName string, oldAlias
 func (f *fga) AddInstance(ctx context.Context, projectName string, instanceName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectInstance(projectName, instanceName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectInstance(projectName, instanceName).String(),
 		},
 	}
 
@@ -605,9 +606,9 @@ func (f *fga) AddInstance(ctx context.Context, projectName string, instanceName 
 func (f *fga) DeleteInstance(ctx context.Context, projectName string, instanceName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectInstance(projectName, instanceName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectInstance(projectName, instanceName).String(),
 		},
 	}
 
@@ -618,17 +619,17 @@ func (f *fga) DeleteInstance(ctx context.Context, projectName string, instanceNa
 func (f *fga) RenameInstance(ctx context.Context, projectName string, oldInstanceName string, newInstanceName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectInstance(projectName, newInstanceName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectInstance(projectName, newInstanceName).String(),
 		},
 	}
 
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectInstance(projectName, oldInstanceName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectInstance(projectName, oldInstanceName).String(),
 		},
 	}
 
@@ -639,9 +640,9 @@ func (f *fga) RenameInstance(ctx context.Context, projectName string, oldInstanc
 func (f *fga) AddNetwork(ctx context.Context, projectName string, networkName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetwork(projectName, networkName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetwork(projectName, networkName).String(),
 		},
 	}
 
@@ -652,9 +653,9 @@ func (f *fga) AddNetwork(ctx context.Context, projectName string, networkName st
 func (f *fga) DeleteNetwork(ctx context.Context, projectName string, networkName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetwork(projectName, networkName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetwork(projectName, networkName).String(),
 		},
 	}
 
@@ -665,17 +666,17 @@ func (f *fga) DeleteNetwork(ctx context.Context, projectName string, networkName
 func (f *fga) RenameNetwork(ctx context.Context, projectName string, oldNetworkName string, newNetworkName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetwork(projectName, newNetworkName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetwork(projectName, newNetworkName).String(),
 		},
 	}
 
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetwork(projectName, oldNetworkName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetwork(projectName, oldNetworkName).String(),
 		},
 	}
 
@@ -686,9 +687,9 @@ func (f *fga) RenameNetwork(ctx context.Context, projectName string, oldNetworkN
 func (f *fga) AddNetworkZone(ctx context.Context, projectName string, networkZoneName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkZone(projectName, networkZoneName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkZone(projectName, networkZoneName).String(),
 		},
 	}
 
@@ -699,9 +700,9 @@ func (f *fga) AddNetworkZone(ctx context.Context, projectName string, networkZon
 func (f *fga) DeleteNetworkZone(ctx context.Context, projectName string, networkZoneName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkZone(projectName, networkZoneName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkZone(projectName, networkZoneName).String(),
 		},
 	}
 
@@ -712,9 +713,9 @@ func (f *fga) DeleteNetworkZone(ctx context.Context, projectName string, network
 func (f *fga) AddNetworkACL(ctx context.Context, projectName string, networkACLName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkACL(projectName, networkACLName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkACL(projectName, networkACLName).String(),
 		},
 	}
 
@@ -725,9 +726,9 @@ func (f *fga) AddNetworkACL(ctx context.Context, projectName string, networkACLN
 func (f *fga) DeleteNetworkACL(ctx context.Context, projectName string, networkACLName string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkACL(projectName, networkACLName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkACL(projectName, networkACLName).String(),
 		},
 	}
 
@@ -738,17 +739,17 @@ func (f *fga) DeleteNetworkACL(ctx context.Context, projectName string, networkA
 func (f *fga) RenameNetworkACL(ctx context.Context, projectName string, oldNetworkACLName string, newNetworkACLName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkACL(projectName, newNetworkACLName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkACL(projectName, newNetworkACLName).String(),
 		},
 	}
 
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectNetworkACL(projectName, oldNetworkACLName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectNetworkACL(projectName, oldNetworkACLName).String(),
 		},
 	}
 
@@ -759,9 +760,9 @@ func (f *fga) RenameNetworkACL(ctx context.Context, projectName string, oldNetwo
 func (f *fga) AddProfile(ctx context.Context, projectName string, profileName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, profileName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, profileName).String(),
 		},
 	}
 
@@ -772,9 +773,9 @@ func (f *fga) AddProfile(ctx context.Context, projectName string, profileName st
 func (f *fga) DeleteProfile(ctx context.Context, projectName string, profileName string) error {
 	deletes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, profileName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, profileName).String(),
 		},
 	}
 
@@ -785,17 +786,17 @@ func (f *fga) DeleteProfile(ctx context.Context, projectName string, profileName
 func (f *fga) RenameProfile(ctx context.Context, projectName string, oldProfileName string, newProfileName string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, newProfileName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, newProfileName).String(),
 		},
 	}
 
 	deletes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectProfile(projectName, oldProfileName).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectProfile(projectName, oldProfileName).String(),
 		},
 	}
 
@@ -806,9 +807,9 @@ func (f *fga) RenameProfile(ctx context.Context, projectName string, oldProfileN
 func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string, storageVolumeLocation string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -819,9 +820,9 @@ func (f *fga) AddStoragePoolVolume(ctx context.Context, projectName string, stor
 func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, storageVolumeName string, storageVolumeLocation string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, storageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -832,17 +833,17 @@ func (f *fga) DeleteStoragePoolVolume(ctx context.Context, projectName string, s
 func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, storagePoolName string, storageVolumeType string, oldStorageVolumeName string, newStorageVolumeName string, storageVolumeLocation string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, newStorageVolumeName, storageVolumeLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, newStorageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, oldStorageVolumeName, storageVolumeLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeType, oldStorageVolumeName, storageVolumeLocation).String(),
 		},
 	}
 
@@ -853,9 +854,9 @@ func (f *fga) RenameStoragePoolVolume(ctx context.Context, projectName string, s
 func (f *fga) AddStorageBucket(ctx context.Context, projectName string, storagePoolName string, storageBucketName string, storageBucketLocation string) error {
 	writes := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageBucket(projectName, storagePoolName, storageBucketName, storageBucketLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageBucket(projectName, storagePoolName, storageBucketName, storageBucketLocation).String(),
 		},
 	}
 
@@ -866,9 +867,9 @@ func (f *fga) AddStorageBucket(ctx context.Context, projectName string, storageP
 func (f *fga) DeleteStorageBucket(ctx context.Context, projectName string, storagePoolName string, storageBucketName string, storageBucketLocation string) error {
 	deletions := []client.ClientTupleKey{
 		{
-			User:     ObjectProject(projectName).String(),
-			Relation: relationProject,
-			Object:   ObjectStorageBucket(projectName, storagePoolName, storageBucketName, storageBucketLocation).String(),
+			User:     entitlement.ObjectProject(projectName).String(),
+			Relation: string(entitlement.RelationProject),
+			Object:   entitlement.ObjectStorageBucket(projectName, storagePoolName, storageBucketName, storageBucketLocation).String(),
 		},
 	}
 
@@ -943,24 +944,24 @@ func (f *fga) projectObjects(ctx context.Context, projectName string) ([]string,
 		AuthorizationModelId: openfga.PtrString(f.authModelID),
 	}
 
-	objectTypes := []ObjectType{
-		ObjectTypeInstance,
-		ObjectTypeImage,
-		ObjectTypeImageAlias,
-		ObjectTypeNetwork,
-		ObjectTypeNetworkACL,
-		ObjectTypeNetworkZone,
-		ObjectTypeProfile,
-		ObjectTypeStorageVolume,
-		ObjectTypeStorageBucket,
+	objectTypes := []entitlement.ObjectType{
+		entitlement.ObjectTypeInstance,
+		entitlement.ObjectTypeImage,
+		entitlement.ObjectTypeImageAlias,
+		entitlement.ObjectTypeNetwork,
+		entitlement.ObjectTypeNetworkACL,
+		entitlement.ObjectTypeNetworkZone,
+		entitlement.ObjectTypeProfile,
+		entitlement.ObjectTypeStorageVolume,
+		entitlement.ObjectTypeStorageBucket,
 	}
 
 	var allObjects []string
-	projectObjectString := ObjectProject(projectName).String()
+	projectObjectString := entitlement.ObjectProject(projectName).String()
 	for _, objectType := range objectTypes {
 		resp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
 			User:     projectObjectString,
-			Relation: relationProject,
+			Relation: string(entitlement.RelationProject),
 			Type:     string(objectType),
 		}).Execute()
 		if err != nil {
@@ -980,8 +981,8 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 	// Check if the type-bound public access is set.
 	resp, err := f.client.Check(ctx).Options(client.ClientCheckOptions{AuthorizationModelId: openfga.PtrString(f.authModelID)}).Body(client.ClientCheckRequest{
 		User:     "user:*",
-		Relation: relationUser,
-		Object:   ObjectServer().String(),
+		Relation: string(entitlement.RelationUser),
+		Object:   entitlement.ObjectServer().String(),
 	}).Execute()
 	if err != nil {
 		return err
@@ -991,45 +992,45 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 	if !resp.GetAllowed() {
 		writes = append(writes, client.ClientTupleKey{
 			User:     "user:*",
-			Relation: relationUser,
-			Object:   ObjectServer().String(),
+			Relation: string(entitlement.RelationUser),
+			Object:   entitlement.ObjectServer().String(),
 		})
 	}
 
 	// Helper function for diffing local objects with those in OpenFGA. These are appended to the writes and deletions
 	// slices as appropriate. If the given relation is relationProject, we need to construct a project object for the
 	// "user" field. The project is calculated from the object we are inspecting.
-	diffObjects := func(relation string, remoteObjectStrs []string, localObjects []Object) error {
-		user := ObjectServer().String()
+	diffObjects := func(relation entitlement.Relation, remoteObjectStrs []string, localObjects []entitlement.Object) error {
+		user := entitlement.ObjectServer().String()
 
 		for _, localObject := range localObjects {
 			if !shared.ValueInSlice(localObject.String(), remoteObjectStrs) {
-				if relation == relationProject {
-					user = ObjectProject(localObject.Project()).String()
+				if relation == entitlement.RelationProject {
+					user = entitlement.ObjectProject(localObject.Project()).String()
 				}
 
 				writes = append(writes, client.ClientTupleKey{
 					User:     user,
-					Relation: relation,
+					Relation: string(relation),
 					Object:   localObject.String(),
 				})
 			}
 		}
 
 		for _, remoteObjectStr := range remoteObjectStrs {
-			remoteObject, err := ObjectFromString(remoteObjectStr)
+			remoteObject, err := entitlement.ObjectFromString(remoteObjectStr)
 			if err != nil {
 				return err
 			}
 
 			if !shared.ValueInSlice(remoteObject, localObjects) {
-				if relation == relationProject {
-					user = ObjectProject(remoteObject.Project()).String()
+				if relation == entitlement.RelationProject {
+					user = entitlement.ObjectProject(remoteObject.Project()).String()
 				}
 
 				deletions = append(deletions, client.ClientTupleKey{
 					User:     user,
-					Relation: relation,
+					Relation: string(relation),
 					Object:   remoteObject.String(),
 				})
 			}
@@ -1041,41 +1042,41 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 	// List the certificates we have added to the OpenFGA server already.
 	options := client.ClientListObjectsOptions{AuthorizationModelId: openfga.PtrString(f.authModelID)}
 	certificatesResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
-		User:     ObjectServer().String(),
-		Relation: relationServer,
-		Type:     string(ObjectTypeCertificate),
+		User:     entitlement.ObjectServer().String(),
+		Relation: string(entitlement.RelationServer),
+		Type:     string(entitlement.ObjectTypeCertificate),
 	}).Execute()
 	if err != nil {
 		return err
 	}
 
 	// Compare with local certificates.
-	err = diffObjects(relationServer, certificatesResp.GetObjects(), resources.CertificateObjects)
+	err = diffObjects(entitlement.RelationServer, certificatesResp.GetObjects(), resources.CertificateObjects)
 	if err != nil {
 		return err
 	}
 
 	// List the storage pools we have added to the OpenFGA server already.
 	storagePoolsResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
-		User:     ObjectServer().String(),
-		Relation: relationServer,
-		Type:     string(ObjectTypeStoragePool),
+		User:     entitlement.ObjectServer().String(),
+		Relation: string(entitlement.RelationServer),
+		Type:     string(entitlement.ObjectTypeStoragePool),
 	}).Execute()
 	if err != nil {
 		return err
 	}
 
 	// Compare with local storage pools.
-	err = diffObjects(relationServer, storagePoolsResp.GetObjects(), resources.StoragePoolObjects)
+	err = diffObjects(entitlement.RelationServer, storagePoolsResp.GetObjects(), resources.StoragePoolObjects)
 	if err != nil {
 		return err
 	}
 
 	// List the projects we have added to the OpenFGA server already.
 	projectsResp, err := f.client.ListObjects(ctx).Options(options).Body(client.ClientListObjectsRequest{
-		User:     ObjectServer().String(),
-		Relation: relationServer,
-		Type:     string(ObjectTypeProject),
+		User:     entitlement.ObjectServer().String(),
+		Relation: string(entitlement.RelationServer),
+		Type:     string(entitlement.ObjectTypeProject),
 	}).Execute()
 	if err != nil {
 		return err
@@ -1083,7 +1084,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 
 	// Compare with local projects.
 	remoteProjectObjectStrs := projectsResp.GetObjects()
-	err = diffObjects(relationServer, remoteProjectObjectStrs, resources.ProjectObjects)
+	err = diffObjects(entitlement.RelationServer, remoteProjectObjectStrs, resources.ProjectObjects)
 	if err != nil {
 		return err
 	}
@@ -1091,7 +1092,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 	// Get a slice of project level resources for all projects.
 	var remoteProjectResourceObjectStrs []string
 	for _, remoteProjectObjectStr := range remoteProjectObjectStrs {
-		remoteProjectObject, err := ObjectFromString(remoteProjectObjectStr)
+		remoteProjectObject, err := entitlement.ObjectFromString(remoteProjectObjectStr)
 		if err != nil {
 			return err
 		}
@@ -1116,7 +1117,7 @@ func (f *fga) syncResources(ctx context.Context, resources Resources) error {
 	localProjectObjects = append(localProjectObjects, resources.StorageBucketObjects...)
 
 	// Perform a diff on the project resource objects.
-	err = diffObjects(relationProject, remoteProjectResourceObjectStrs, localProjectObjects)
+	err = diffObjects(entitlement.RelationProject, remoteProjectResourceObjectStrs, localProjectObjects)
 	if err != nil {
 		return err
 	}
