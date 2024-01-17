@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/canonical/lxd/client"
-	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/auth/candid"
 	"github.com/canonical/lxd/lxd/auth/oidc"
 	"github.com/canonical/lxd/lxd/cluster"
@@ -35,8 +34,8 @@ import (
 
 var api10Cmd = APIEndpoint{
 	Get:   APIEndpointAction{Handler: api10Get, AllowUntrusted: true},
-	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
-	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
+	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var api10 = []APIEndpoint{
@@ -125,12 +124,12 @@ var api10 = []APIEndpoint{
 	warningsCmd,
 	warningCmd,
 	metricsCmd,
-	groupsCmd,
-	groupCmd,
-	groupUserCmd,
-	groupEntitlementCmd,
-	entitlementsCmd,
-	entitlementsByObjectCmd,
+	//groupsCmd,
+	//groupCmd,
+	//groupUserCmd,
+	//groupEntitlementCmd,
+	//entitlementsCmd,
+	//entitlementsByObjectCmd,
 }
 
 // swagger:operation GET /1.0?public server server_get_untrusted
@@ -244,7 +243,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// If not authorized, return now.
-	err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanView)
+	err := s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanView, entity.TypeServer, "", "")
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -383,7 +382,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	fullSrv.AuthUserName = requestor.Username
 	fullSrv.AuthUserMethod = requestor.Protocol
 
-	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanEdit, entity.TypeServer, "", "")
 	if err == nil {
 		fullSrv.Config, err = daemonConfigRender(s)
 		if err != nil {
@@ -759,11 +758,6 @@ func doApi10Update(d *Daemon, r *http.Request, req api.ServerPut, patch bool) re
 		}
 	})
 
-	err = doAPI10PreNotifyTriggers(d, clusterChanged, newClusterConfig)
-	if err != nil {
-		return response.InternalError(fmt.Errorf("Failed to run pre-notify triggers for cluster config update: %w", err))
-	}
-
 	// Notify the other nodes about changes
 	notifier, err := cluster.NewNotifier(s, s.Endpoints.NetworkCert(), s.ServerCert(), cluster.NotifyAlive)
 	if err != nil {
@@ -807,50 +801,6 @@ func doApi10Update(d *Daemon, r *http.Request, req api.ServerPut, patch bool) re
 	s.Events.SendLifecycle(api.ProjectDefaultName, lifecycle.ConfigUpdated.Event(request.CreateRequestor(r), nil))
 
 	return response.EmptySyncResponse
-}
-
-func doAPI10PreNotifyTriggers(d *Daemon, clusterChanged map[string]string, newClusterConfig *clusterConfig.Config) error {
-	openFGAChanged := false
-	for key := range clusterChanged {
-		switch key {
-		case "openfga.api.url", "openfga.api.token", "openfga.store.id":
-			openFGAChanged = true
-		}
-	}
-
-	if openFGAChanged {
-		apiURL, apiToken, storeID, modelID, _ := newClusterConfig.OpenFGA()
-
-		// Write authorization model only if the modelID has not already been set and we have all other connection information.
-		if modelID == "" && apiURL != "" && apiToken != "" && storeID != "" {
-			var err error
-			modelID, err = auth.WriteOpenFGAAuthorizationModel(d.shutdownCtx, apiURL, apiToken, storeID)
-			if err != nil {
-				return fmt.Errorf("Failed to write OpenFGA authorization model: %w", err)
-			}
-
-			err = d.db.Cluster.Transaction(context.Background(), func(ctx context.Context, tx *db.ClusterTx) error {
-				clusterConfig, err := clusterConfig.Load(ctx, tx)
-				if err != nil {
-					return fmt.Errorf("Failed to load cluster config: %w", err)
-				}
-
-				_, err = clusterConfig.Patch(map[string]any{"openfga.store.model_id": modelID})
-				if err != nil {
-					return err
-				}
-
-				*newClusterConfig = *clusterConfig
-				clusterChanged["openfga.store.model_id"] = modelID
-				return err
-			})
-			if err != nil {
-				return fmt.Errorf("Failed to write OpenFGA authorization model ID to database")
-			}
-		}
-	}
-
-	return nil
 }
 
 func doApi10UpdateTriggers(d *Daemon, nodeChanged, clusterChanged map[string]string, nodeConfig *node.Config, clusterConfig *clusterConfig.Config) error {

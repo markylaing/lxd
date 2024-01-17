@@ -2,7 +2,7 @@ package metrics
 
 import (
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,7 +23,7 @@ func NewMetricSet(labels map[string]string) *MetricSet {
 
 // FilterSamples filters the existing MetricSet using the given permission checker. Samples not containing "project" and
 // "name" labels are skipped.
-func (m *MetricSet) FilterSamples(permissionChecker func(object entitlement.Object) bool) {
+func (m *MetricSet) FilterSamples(permissionChecker func(object string) bool) {
 	for metricType, samples := range m.set {
 		allowedSamples := make([]Sample, 0, len(samples))
 		for _, s := range samples {
@@ -33,7 +33,7 @@ func (m *MetricSet) FilterSamples(permissionChecker func(object entitlement.Obje
 				continue
 			}
 
-			hasPermission := permissionChecker(entitlement.ObjectInstance(projectName, instanceName))
+			hasPermission := permissionChecker(entity.TypeInstance.AuthObject(projectName, "", instanceName))
 			if hasPermission {
 				allowedSamples = append(allowedSamples, s)
 			}

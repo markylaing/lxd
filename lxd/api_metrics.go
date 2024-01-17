@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net"
 	"net/http"
 	"runtime"
@@ -47,7 +47,7 @@ func allowMetrics(d *Daemon, r *http.Request) response.Response {
 		return response.EmptySyncResponse
 	}
 
-	return allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanViewMetrics)(d, r)
+	return allowPermission(entity.TypeServer, entity.EntitlementCanViewMetrics)(d, r)
 }
 
 // swagger:operation GET /1.0/metrics metrics metrics_get
@@ -295,7 +295,7 @@ func getFilteredMetrics(s *state.State, r *http.Request, compress bool, metricSe
 	}
 
 	// Get instances the user is allowed to view.
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeInstance)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeInstance)
 	if err != nil && !api.StatusErrorCheck(err, http.StatusForbidden) {
 		return response.SmartError(err)
 	} else if err != nil {

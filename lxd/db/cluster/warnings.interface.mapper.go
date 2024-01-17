@@ -5,6 +5,8 @@ package cluster
 import (
 	"context"
 	"database/sql"
+
+	"github.com/canonical/lxd/lxd/entity"
 )
 
 // WarningGenerated is an interface of generated methods for Warning.
@@ -23,7 +25,7 @@ type WarningGenerated interface {
 
 	// DeleteWarnings deletes the warning matching the given key parameters.
 	// generator: warning DeleteMany-by-EntityTypeCode-and-EntityID
-	DeleteWarnings(ctx context.Context, tx *sql.Tx, entityTypeCode int, entityID int) error
+	DeleteWarnings(ctx context.Context, tx *sql.Tx, entityTypeCode entity.Type, entityID int) error
 
 	// GetWarningID return the ID of the warning with the given key.
 	// generator: warning ID

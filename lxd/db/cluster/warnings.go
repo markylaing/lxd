@@ -5,6 +5,8 @@ package cluster
 import (
 	"time"
 
+	"github.com/canonical/lxd/lxd/entity"
+
 	"github.com/canonical/lxd/lxd/db/warningtype"
 	"github.com/canonical/lxd/shared/api"
 )
@@ -35,11 +37,11 @@ import (
 // Warning is a value object holding db-related details about a warning.
 type Warning struct {
 	ID             int
-	Node           string `db:"coalesce=''&leftjoin=nodes.name"`
-	Project        string `db:"coalesce=''&leftjoin=projects.name"`
-	EntityTypeCode int    `db:"coalesce=-1"`
-	EntityID       int    `db:"coalesce=-1"`
-	UUID           string `db:"primary=yes"`
+	Node           string      `db:"coalesce=''&leftjoin=nodes.name"`
+	Project        string      `db:"coalesce=''&leftjoin=projects.name"`
+	EntityTypeCode entity.Type `db:"coalesce=-1"`
+	EntityID       int         `db:"coalesce=-1"`
+	UUID           string      `db:"primary=yes"`
 	TypeCode       warningtype.Type
 	Status         warningtype.Status
 	FirstSeenDate  time.Time
@@ -56,7 +58,7 @@ type WarningFilter struct {
 	Project        *string
 	Node           *string
 	TypeCode       *warningtype.Type
-	EntityTypeCode *int
+	EntityTypeCode *entity.Type
 	EntityID       *int
 	Status         *warningtype.Status
 }

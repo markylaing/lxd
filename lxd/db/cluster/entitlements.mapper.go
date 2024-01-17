@@ -17,57 +17,43 @@ import (
 var _ = api.ServerEnvironment{}
 
 var entitlementObjects = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
+SELECT entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id
   FROM entitlements
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
+  ORDER BY entitlements.relation, entitlements.entity_type, entitlements.entity_id
 `)
 
 var entitlementObjectsByID = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
+SELECT entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id
   FROM entitlements
   WHERE ( entitlements.id = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
+  ORDER BY entitlements.relation, entitlements.entity_type, entitlements.entity_id
 `)
 
-var entitlementObjectsByObjectType = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
+var entitlementObjectsByEntityType = RegisterStmt(`
+SELECT entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id
   FROM entitlements
-  WHERE ( entitlements.object_type = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
+  WHERE ( entitlements.entity_type = ? )
+  ORDER BY entitlements.relation, entitlements.entity_type, entitlements.entity_id
 `)
 
-var entitlementObjectsByObjectTypeAndObjectRef = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
+var entitlementObjectsByEntityTypeAndEntityID = RegisterStmt(`
+SELECT entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id
   FROM entitlements
-  WHERE ( entitlements.object_type = ? AND entitlements.object_ref = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
+  WHERE ( entitlements.entity_type = ? AND entitlements.entity_id = ? )
+  ORDER BY entitlements.relation, entitlements.entity_type, entitlements.entity_id
 `)
 
-var entitlementObjectsByObjectTypeAndEntityID = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
+var entitlementObjectsByEntityTypeAndEntityIDAndRelation = RegisterStmt(`
+SELECT entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id
   FROM entitlements
-  WHERE ( entitlements.object_type = ? AND entitlements.entity_id = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
-`)
-
-var entitlementObjectsByObjectTypeAndObjectRefAndRelation = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
-  FROM entitlements
-  WHERE ( entitlements.object_type = ? AND entitlements.object_ref = ? AND entitlements.relation = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
-`)
-
-var entitlementObjectsByObjectTypeAndEntityIDAndRelation = RegisterStmt(`
-SELECT entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref
-  FROM entitlements
-  WHERE ( entitlements.object_type = ? AND entitlements.entity_id = ? AND entitlements.relation = ? )
-  ORDER BY entitlements.relation, entitlements.object_type, entitlements.object_ref
+  WHERE ( entitlements.entity_type = ? AND entitlements.entity_id = ? AND entitlements.relation = ? )
+  ORDER BY entitlements.relation, entitlements.entity_type, entitlements.entity_id
 `)
 
 // entitlementColumns returns a string of column names to be used with a SELECT statement for the entity.
 // Use this function when building statements to retrieve database entries matching the Entitlement entity.
 func entitlementColumns() string {
-	return "entitlements.id, entitlements.relation, entitlements.object_type, entitlements.entity_id, entitlements.object_ref"
+	return "entitlements.id, entitlements.relation, entitlements.entity_type, entitlements.entity_id"
 }
 
 // getEntitlements can be used to run handwritten sql.Stmts to return a slice of objects.
@@ -76,7 +62,7 @@ func getEntitlements(ctx context.Context, stmt *sql.Stmt, args ...any) ([]Entitl
 
 	dest := func(scan func(dest ...any) error) error {
 		e := Entitlement{}
-		err := scan(&e.ID, &e.Relation, &e.ObjectType, &e.EntityID, &e.ObjectRef)
+		err := scan(&e.ID, &e.Relation, &e.EntityType, &e.EntityID)
 		if err != nil {
 			return err
 		}
@@ -100,7 +86,7 @@ func getEntitlementsRaw(ctx context.Context, tx *sql.Tx, sql string, args ...any
 
 	dest := func(scan func(dest ...any) error) error {
 		e := Entitlement{}
-		err := scan(&e.ID, &e.Relation, &e.ObjectType, &e.EntityID, &e.ObjectRef)
+		err := scan(&e.ID, &e.Relation, &e.EntityType, &e.EntityID)
 		if err != nil {
 			return err
 		}
@@ -139,18 +125,18 @@ func GetEntitlements(ctx context.Context, tx *sql.Tx, filters ...EntitlementFilt
 	}
 
 	for i, filter := range filters {
-		if filter.ObjectType != nil && filter.ObjectRef != nil && filter.Relation != nil && filter.ID == nil && filter.EntityID == nil {
-			args = append(args, []any{filter.ObjectType, filter.ObjectRef, filter.Relation}...)
+		if filter.EntityType != nil && filter.EntityID != nil && filter.Relation != nil && filter.ID == nil {
+			args = append(args, []any{filter.EntityType, filter.EntityID, filter.Relation}...)
 			if len(filters) == 1 {
-				sqlStmt, err = Stmt(tx, entitlementObjectsByObjectTypeAndObjectRefAndRelation)
+				sqlStmt, err = Stmt(tx, entitlementObjectsByEntityTypeAndEntityIDAndRelation)
 				if err != nil {
-					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByObjectTypeAndObjectRefAndRelation\" prepared statement: %w", err)
+					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByEntityTypeAndEntityIDAndRelation\" prepared statement: %w", err)
 				}
 
 				break
 			}
 
-			query, err := StmtString(entitlementObjectsByObjectTypeAndObjectRefAndRelation)
+			query, err := StmtString(entitlementObjectsByEntityTypeAndEntityIDAndRelation)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
 			}
@@ -163,18 +149,18 @@ func GetEntitlements(ctx context.Context, tx *sql.Tx, filters ...EntitlementFilt
 
 			_, where, _ := strings.Cut(parts[0], "WHERE")
 			queryParts[0] += "OR" + where
-		} else if filter.ObjectType != nil && filter.EntityID != nil && filter.Relation != nil && filter.ID == nil && filter.ObjectRef == nil {
-			args = append(args, []any{filter.ObjectType, filter.EntityID, filter.Relation}...)
+		} else if filter.EntityType != nil && filter.EntityID != nil && filter.ID == nil && filter.Relation == nil {
+			args = append(args, []any{filter.EntityType, filter.EntityID}...)
 			if len(filters) == 1 {
-				sqlStmt, err = Stmt(tx, entitlementObjectsByObjectTypeAndEntityIDAndRelation)
+				sqlStmt, err = Stmt(tx, entitlementObjectsByEntityTypeAndEntityID)
 				if err != nil {
-					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByObjectTypeAndEntityIDAndRelation\" prepared statement: %w", err)
+					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByEntityTypeAndEntityID\" prepared statement: %w", err)
 				}
 
 				break
 			}
 
-			query, err := StmtString(entitlementObjectsByObjectTypeAndEntityIDAndRelation)
+			query, err := StmtString(entitlementObjectsByEntityTypeAndEntityID)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
 			}
@@ -187,79 +173,7 @@ func GetEntitlements(ctx context.Context, tx *sql.Tx, filters ...EntitlementFilt
 
 			_, where, _ := strings.Cut(parts[0], "WHERE")
 			queryParts[0] += "OR" + where
-		} else if filter.ObjectType != nil && filter.ObjectRef != nil && filter.ID == nil && filter.Relation == nil && filter.EntityID == nil {
-			args = append(args, []any{filter.ObjectType, filter.ObjectRef}...)
-			if len(filters) == 1 {
-				sqlStmt, err = Stmt(tx, entitlementObjectsByObjectTypeAndObjectRef)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByObjectTypeAndObjectRef\" prepared statement: %w", err)
-				}
-
-				break
-			}
-
-			query, err := StmtString(entitlementObjectsByObjectTypeAndObjectRef)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
-			}
-
-			parts := strings.SplitN(query, "ORDER BY", 2)
-			if i == 0 {
-				copy(queryParts[:], parts)
-				continue
-			}
-
-			_, where, _ := strings.Cut(parts[0], "WHERE")
-			queryParts[0] += "OR" + where
-		} else if filter.ObjectType != nil && filter.EntityID != nil && filter.ID == nil && filter.Relation == nil && filter.ObjectRef == nil {
-			args = append(args, []any{filter.ObjectType, filter.EntityID}...)
-			if len(filters) == 1 {
-				sqlStmt, err = Stmt(tx, entitlementObjectsByObjectTypeAndEntityID)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByObjectTypeAndEntityID\" prepared statement: %w", err)
-				}
-
-				break
-			}
-
-			query, err := StmtString(entitlementObjectsByObjectTypeAndEntityID)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
-			}
-
-			parts := strings.SplitN(query, "ORDER BY", 2)
-			if i == 0 {
-				copy(queryParts[:], parts)
-				continue
-			}
-
-			_, where, _ := strings.Cut(parts[0], "WHERE")
-			queryParts[0] += "OR" + where
-		} else if filter.ObjectType != nil && filter.ID == nil && filter.Relation == nil && filter.EntityID == nil && filter.ObjectRef == nil {
-			args = append(args, []any{filter.ObjectType}...)
-			if len(filters) == 1 {
-				sqlStmt, err = Stmt(tx, entitlementObjectsByObjectType)
-				if err != nil {
-					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByObjectType\" prepared statement: %w", err)
-				}
-
-				break
-			}
-
-			query, err := StmtString(entitlementObjectsByObjectType)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
-			}
-
-			parts := strings.SplitN(query, "ORDER BY", 2)
-			if i == 0 {
-				copy(queryParts[:], parts)
-				continue
-			}
-
-			_, where, _ := strings.Cut(parts[0], "WHERE")
-			queryParts[0] += "OR" + where
-		} else if filter.ID != nil && filter.Relation == nil && filter.ObjectType == nil && filter.EntityID == nil && filter.ObjectRef == nil {
+		} else if filter.ID != nil && filter.Relation == nil && filter.EntityType == nil && filter.EntityID == nil {
 			args = append(args, []any{filter.ID}...)
 			if len(filters) == 1 {
 				sqlStmt, err = Stmt(tx, entitlementObjectsByID)
@@ -283,7 +197,31 @@ func GetEntitlements(ctx context.Context, tx *sql.Tx, filters ...EntitlementFilt
 
 			_, where, _ := strings.Cut(parts[0], "WHERE")
 			queryParts[0] += "OR" + where
-		} else if filter.ID == nil && filter.Relation == nil && filter.ObjectType == nil && filter.EntityID == nil && filter.ObjectRef == nil {
+		} else if filter.EntityType != nil && filter.ID == nil && filter.Relation == nil && filter.EntityID == nil {
+			args = append(args, []any{filter.EntityType}...)
+			if len(filters) == 1 {
+				sqlStmt, err = Stmt(tx, entitlementObjectsByEntityType)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to get \"entitlementObjectsByEntityType\" prepared statement: %w", err)
+				}
+
+				break
+			}
+
+			query, err := StmtString(entitlementObjectsByEntityType)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to get \"entitlementObjects\" prepared statement: %w", err)
+			}
+
+			parts := strings.SplitN(query, "ORDER BY", 2)
+			if i == 0 {
+				copy(queryParts[:], parts)
+				continue
+			}
+
+			_, where, _ := strings.Cut(parts[0], "WHERE")
+			queryParts[0] += "OR" + where
+		} else if filter.ID == nil && filter.Relation == nil && filter.EntityType == nil && filter.EntityID == nil {
 			return nil, fmt.Errorf("Cannot filter on empty EntitlementFilter")
 		} else {
 			return nil, fmt.Errorf("No statement exists for the given Filter")

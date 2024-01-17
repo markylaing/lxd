@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 
 	"github.com/canonical/lxd/lxd/backup"
@@ -31,13 +31,13 @@ import (
 var internalRecoverValidateCmd = APIEndpoint{
 	Path: "recover/validate",
 
-	Post: APIEndpointAction{Handler: internalRecoverValidate, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Post: APIEndpointAction{Handler: internalRecoverValidate, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalRecoverImportCmd = APIEndpoint{
 	Path: "recover/import",
 
-	Post: APIEndpointAction{Handler: internalRecoverImport, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Post: APIEndpointAction{Handler: internalRecoverImport, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 // init recover adds API endpoints to handler slice.

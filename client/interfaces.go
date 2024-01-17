@@ -2,7 +2,6 @@ package lxd
 
 import (
 	"context"
-	"github.com/canonical/lxd/shared/entitlement"
 	"io"
 	"net"
 	"net/http"
@@ -424,22 +423,22 @@ type InstanceServer interface {
 	UpdateWarning(UUID string, warning api.WarningPut, ETag string) (err error)
 	DeleteWarning(UUID string) (err error)
 
-	// Group functions
-	GetGroupNames() ([]string, error)
-	GetGroups() ([]api.Group, error)
-	GetGroup(groupName string) (*api.Group, string, error)
-	CreateGroup(api.Group) error
-	UpdateGroup(groupName string, groupPut api.GroupPut, ETag string) error
-	PatchGroup(groupName string, groupPut api.GroupPut, ETag string) error
-	RenameGroup(groupName string, newGroupName string) error
-	DeleteGroup(groupName string) error
-	GroupAddUser(groupName string, userAuthMethod string, userNameOrID string) error
-	GroupRemoveUser(groupName string, userAuthMethod string, userNameOrID string) error
-	GroupGrantEntitlement(groupName string, object entitlement.Object, relation entitlement.Relation) error
-	GroupRevokeEntitlement(groupName string, object entitlement.Object, relation entitlement.Relation) error
-
-	// Entitlement functions
-	GetEntitlements() (map[entitlement.Object]map[entitlement.Relation][]string, error)
+	//// Group functions
+	//GetGroupNames() ([]string, error)
+	//GetGroups() ([]api.Group, error)
+	//GetGroup(groupName string) (*api.Group, string, error)
+	//CreateGroup(api.Group) error
+	//UpdateGroup(groupName string, groupPut api.GroupPut, ETag string) error
+	//PatchGroup(groupName string, groupPut api.GroupPut, ETag string) error
+	//RenameGroup(groupName string, newGroupName string) error
+	//DeleteGroup(groupName string) error
+	//GroupAddUser(groupName string, userAuthMethod string, userNameOrID string) error
+	//GroupRemoveUser(groupName string, userAuthMethod string, userNameOrID string) error
+	//GroupGrantEntitlement(groupName string, object string, relation entity.Entitlement) error
+	//GroupRevokeEntitlement(groupName string, object string, relation entity.Entitlement) error
+	//
+	//// Entitlement functions
+	//GetEntitlements() (map[string]map[entity.Entitlement][]string, error)
 
 	// Internal functions (for internal use)
 	RawQuery(method string, path string, data any, queryETag string) (resp *api.Response, ETag string, err error)

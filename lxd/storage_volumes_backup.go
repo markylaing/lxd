@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,22 +30,22 @@ import (
 var storagePoolVolumeTypeCustomBackupsCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}/backups",
 
-	Get:  APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupsGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
-	Post: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupsPost, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanManageBackups)},
+	Get:  APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupsGet, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupsPost, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanManageBackups)},
 }
 
 var storagePoolVolumeTypeCustomBackupCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}/backups/{backupName}",
 
-	Get:    APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
-	Post:   APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupPost, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanManageBackups)},
-	Delete: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupDelete, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanManageBackups)},
+	Get:    APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupGet, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanView)},
+	Post:   APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupPost, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanManageBackups)},
+	Delete: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupDelete, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanManageBackups)},
 }
 
 var storagePoolVolumeTypeCustomBackupExportCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}/backups/{backupName}/export",
 
-	Get: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupExportGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
+	Get: APIEndpointAction{Handler: storagePoolVolumeTypeCustomBackupExportGet, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanView)},
 }
 
 // swagger:operation GET /1.0/storage-pools/{poolName}/volumes/{type}/{volumeName}/backups storage storage_pool_volumes_type_backups_get

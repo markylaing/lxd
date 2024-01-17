@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 
@@ -23,17 +23,17 @@ import (
 var networkLoadBalancersCmd = APIEndpoint{
 	Path: "networks/{networkName}/load-balancers",
 
-	Get:  APIEndpointAction{Handler: networkLoadBalancersGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
-	Post: APIEndpointAction{Handler: networkLoadBalancersPost, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Get:  APIEndpointAction{Handler: networkLoadBalancersGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: networkLoadBalancersPost, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var networkLoadBalancerCmd = APIEndpoint{
 	Path: "networks/{networkName}/load-balancers/{listenAddress}",
 
-	Delete: APIEndpointAction{Handler: networkLoadBalancerDelete, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: networkLoadBalancerGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
-	Put:    APIEndpointAction{Handler: networkLoadBalancerPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkLoadBalancerPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: networkLoadBalancerDelete, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkLoadBalancerGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: networkLoadBalancerPut, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkLoadBalancerPut, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
 }
 
 // API endpoints

@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/canonical/lxd/lxd/certificate"
 	"github.com/canonical/lxd/shared"
@@ -27,8 +29,8 @@ func (t *tls) load(ctx context.Context, certificateCache *certificate.Cache, opt
 }
 
 // CheckPermission returns an error if the user does not have the given Relation on the given Object.
-func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, relation entitlement.Relation) error {
-	details, err := t.requestDetails(r)
+func (t *tls) CheckPermission(ctx context.Context, req *http.Request, relation entity.Entitlement, entityType entity.Type, projectName string, location string, pathArgs ...string) error {
+	details, err := t.requestDetails(req)
 	if err != nil {
 		return api.StatusErrorf(http.StatusForbidden, "Failed to extract request details: %v", err)
 	}
@@ -50,7 +52,7 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entit
 		return err
 	}
 
-	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
+	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entity.EntitlementCanViewMetrics) {
 		return nil
 	}
 
@@ -60,15 +62,15 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entit
 	}
 
 	// Check server level object types
-	switch object.Type() {
-	case entitlement.ObjectTypeServer:
-		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
+	switch entityType {
+	case entity.TypeServer:
+		if relation == entity.EntitlementCanView || relation == entity.EntitlementCanViewResources || relation == entity.EntitlementCanViewMetrics {
 			return nil
 		}
 
 		return api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
-	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
-		if relation == entitlement.RelationCanView {
+	case entity.TypeStoragePool, entity.TypeCertificate:
+		if relation == entity.EntitlementCanView {
 			return nil
 		}
 
@@ -76,7 +78,6 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entit
 	}
 
 	// Check project level permissions against the certificates project list.
-	projectName := object.Project()
 	if !shared.ValueInSlice(projectName, projectNames) {
 		return api.StatusErrorf(http.StatusForbidden, "User does not have permission for project %q", projectName)
 	}
@@ -85,9 +86,9 @@ func (t *tls) CheckPermission(ctx context.Context, r *http.Request, object entit
 }
 
 // GetPermissionChecker returns a function that can be used to check whether a user has the required entitlement on an authorization object.
-func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relation entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error) {
-	allowFunc := func(b bool) func(entitlement.Object) bool {
-		return func(entitlement.Object) bool {
+func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relation entity.Entitlement, objectType entity.Type) (PermissionChecker, error) {
+	allowFunc := func(b bool) PermissionChecker {
+		return func(string) bool {
 			return b
 		}
 	}
@@ -114,7 +115,7 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relatio
 		return nil, err
 	}
 
-	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
+	if isNotRestricted || (certType == certificate.TypeMetrics && relation == entity.EntitlementCanViewMetrics) {
 		return allowFunc(true), nil
 	}
 
@@ -125,14 +126,14 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relatio
 
 	// Check server level object types
 	switch objectType {
-	case entitlement.ObjectTypeServer:
-		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
+	case entity.TypeServer:
+		if relation == entity.EntitlementCanView || relation == entity.EntitlementCanViewResources || relation == entity.EntitlementCanViewMetrics {
 			return allowFunc(true), nil
 		}
 
 		return nil, api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
-	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
-		if relation == entitlement.RelationCanView {
+	case entity.TypeStoragePool, entity.TypeCertificate:
+		if relation == entity.EntitlementCanView {
 			return allowFunc(true), nil
 		}
 
@@ -140,13 +141,24 @@ func (t *tls) GetPermissionChecker(ctx context.Context, r *http.Request, relatio
 	}
 
 	// Error if user does not have access to the project (unless we're getting projects, where we want to filter the results).
-	if !shared.ValueInSlice(details.projectName, projectNames) && objectType != entitlement.ObjectTypeProject {
+	if !shared.ValueInSlice(details.projectName, projectNames) && objectType != entity.TypeProject {
 		return nil, api.StatusErrorf(http.StatusForbidden, "User does not have permissions for project %q", details.projectName)
 	}
 
 	// Filter objects by project.
-	return func(object entitlement.Object) bool {
-		return shared.ValueInSlice(object.Project(), projectNames)
+	return func(object string) bool {
+		_, entityURL, ok := strings.Cut(object, ":")
+		if !ok {
+			return false
+		}
+
+		u, err := url.Parse(entityURL)
+		if err != nil {
+			return false
+		}
+
+		project := u.Query().Get("project")
+		return shared.ValueInSlice(project, projectNames)
 	}, nil
 }
 

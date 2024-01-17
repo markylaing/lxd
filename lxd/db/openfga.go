@@ -5,14 +5,14 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/canonical/lxd/lxd/db/cluster"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
@@ -27,27 +27,127 @@ func NewOpenFGAStore(clusterDB *Cluster) storage.OpenFGADatastore {
 	}
 }
 
+type tupleRow struct {
+	userEntityType entity.Type
+	userRef        []string
+	userRelation   string
+	relation       string
+	entityType     entity.Type
+	objectRef      []string
+	entityID       int
+}
+
+func (t *tupleRow) scan(scan func(dest ...any) error) error {
+	var userRef, objectRef string
+	err := scan(&t.userEntityType, &userRef, &t.userRelation, &t.relation, &t.entityType, &objectRef, &t.entityID)
+	if err != nil {
+		return err
+	}
+
+	if len(userRef) == 1 && userRef[0] == '*' {
+		t.userRef = []string{"*"}
+	} else {
+		err = json.Unmarshal([]byte(userRef), &t.userRef)
+		if err != nil {
+			return err
+		}
+	}
+
+	return json.Unmarshal([]byte(objectRef), &t.objectRef)
+}
+
+func (t *tupleRow) user() (string, error) {
+	if len(t.userRef) == 1 && t.userRef[0] == "*" {
+		return strings.Join([]string{entity.Names[t.userEntityType], "*"}, ":"), nil
+	}
+
+	userURL, err := t.userEntityType.URL("", "", t.userRef...)
+	if err != nil {
+		return "", err
+	}
+
+	if t.userRelation != "" {
+		userURL = strings.Join([]string{userURL, t.userRelation}, "#")
+	}
+
+	return strings.Join([]string{entity.Names[t.userEntityType], userURL}, ":"), nil
+}
+
+func (t *tupleRow) object() (string, error) {
+	projectName := ""
+	location := ""
+	if t.entityType.RequiresProject() {
+		projectName = t.objectRef[0]
+		t.objectRef = t.objectRef[1:]
+	}
+
+	if t.entityType == entity.TypeStorageVolume || t.entityType == entity.TypeStorageBucket {
+		location = t.objectRef[len(t.objectRef)-1]
+		t.objectRef = t.objectRef[:len(t.objectRef)-1]
+	}
+
+	objectURL, err := t.entityType.URL(projectName, location, t.objectRef...)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.Join([]string{entity.Names[t.entityType], objectURL}, ":"), nil
+}
+
 // openfgaStore is an implementation of storage.OpenFGADatastore that reads from the `openfga_tuple_ref` view in the database.
 type openfgaStore struct {
 	clusterDB *Cluster
 	model     *openfgav1.AuthorizationModel
 }
 
+var openFGATupleSelect = `SELECT user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id FROM openfga_tuple_ref`
+
+func (o *openfgaStore) objectRefFromURI(entityURL string) (string, error) {
+	entityType, projectName, location, pathArguments, err := entity.URLToType(entityURL)
+	if err != nil {
+		return "", err
+	}
+
+	if entityType.RequiresProject() {
+		pathArguments = append([]string{projectName}, pathArguments...)
+	}
+
+	if entityType == entity.TypeStorageBucket || entityType == entity.TypeStorageVolume {
+		pathArguments = append(pathArguments, location)
+	}
+
+	objectRef, err := json.Marshal(pathArguments)
+	if err != nil {
+		return "", err
+	}
+
+	return string(objectRef), nil
+}
+
 // Read reads tuples from the `openfga_tuple_ref` view. It applies where predicates according to the given key.
 func (o *openfgaStore) Read(ctx context.Context, s string, key *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	var builder strings.Builder
-	builder.WriteString(`SELECT user, relation, object_type, object_ref FROM openfga_tuple_ref`)
+	builder.WriteString(openFGATupleSelect)
 
 	var args []any
 	obj := key.GetObject()
 	if obj != "" {
-		objectType, objectID, ok := strings.Cut(obj, ":")
+		entityTypeStr, entityURL, hasURL := strings.Cut(obj, ":")
+		entityType, ok := entity.Types[entityTypeStr]
+		if !ok {
+			return nil, fmt.Errorf("Invalid object type %q", entityTypeStr)
+		}
 
-		builder.WriteString(` WHERE object_type = ?`)
-		args = append(args, objectType)
-		if ok {
+		builder.WriteString(` WHERE entity_type = ?`)
+		args = append(args, entityType)
+		if hasURL {
+			objectRef, err := o.objectRefFromURI(entityURL)
+			if err != nil {
+				return nil, err
+			}
+
 			builder.WriteString(` AND object_ref = ?`)
-			args = append(args, objectID)
+			args = append(args, objectRef)
 		}
 	}
 
@@ -65,14 +165,39 @@ func (o *openfgaStore) Read(ctx context.Context, s string, key *openfgav1.TupleK
 
 	user := key.GetUser()
 	if user != "" {
+		userTypeStr, userURL, hasUserURL := strings.Cut(user, ":")
+		userEntityType, ok := entity.Types[userTypeStr]
+		if !ok {
+			return nil, fmt.Errorf("Invalid user type %q", userTypeStr)
+		}
+
 		if len(args) == 0 {
 			builder.WriteString(` WHERE`)
 		} else {
 			builder.WriteString(` AND`)
 		}
 
-		builder.WriteString(` user = ?`)
-		args = append(args, user)
+		builder.WriteString(` user_entity_type = ?`)
+		args = append(args, userEntityType)
+		if hasUserURL && userURL == "*" {
+			builder.WriteString(` AND user_ref = '*' AND user_relation = ''`)
+		} else if hasUserURL {
+			// May have a reference relation.
+			parts := strings.Split(userURL, "#")
+			userRelation := ""
+			if len(parts) == 2 {
+				userURL = parts[0]
+				userRelation = parts[1]
+			}
+
+			userRef, err := o.objectRefFromURI(userURL)
+			if err != nil {
+				return nil, err
+			}
+
+			builder.WriteString(` AND user_ref = ? AND user_relation = ?`)
+			args = append(args, userRef, userRelation)
+		}
 	}
 
 	rows, err := o.clusterDB.DB().QueryContext(ctx, builder.String(), args...)
@@ -95,8 +220,18 @@ func (t tupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	var user, relation, objectType, objectID string
-	err := t.rows.Scan(&user, &relation, &objectType, &objectID)
+	tupleRow := &tupleRow{}
+	err := tupleRow.scan(t.rows.Scan)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := tupleRow.user()
+	if err != nil {
+		return nil, err
+	}
+
+	object, err := tupleRow.object()
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +239,8 @@ func (t tupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	return &openfgav1.Tuple{
 		Key: &openfgav1.TupleKey{
 			User:     user,
-			Relation: relation,
-			Object:   strings.Join([]string{objectType, objectID}, ":"),
+			Relation: tupleRow.relation,
+			Object:   object,
 		},
 	}, nil
 }
@@ -123,7 +258,7 @@ func (*openfgaStore) ReadPage(ctx context.Context, store string, tk *openfgav1.T
 // ReadUserTuple reads a single tuple from the store.
 func (o *openfgaStore) ReadUserTuple(ctx context.Context, store string, tk *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	var builder strings.Builder
-	builder.WriteString(`SELECT user, relation, object_type, object_ref FROM openfga_tuple_ref`)
+	builder.WriteString(openFGATupleSelect)
 
 	var args []any
 	obj := tk.GetObject()
@@ -131,13 +266,23 @@ func (o *openfgaStore) ReadUserTuple(ctx context.Context, store string, tk *open
 		return nil, api.StatusErrorf(http.StatusBadRequest, "Must provide object")
 	}
 
-	objectType, objectID, ok := strings.Cut(obj, ":")
+	entityTypeStr, entityURL, ok := strings.Cut(obj, ":")
 	if !ok {
 		return nil, api.StatusErrorf(http.StatusBadRequest, "Invalid object format %q", obj)
 	}
 
-	builder.WriteString(` WHERE object_type = ? AND object_ref = ?`)
-	args = append(args, objectType, objectID)
+	entityType, ok := entity.Types[entityTypeStr]
+	if !ok {
+		return nil, fmt.Errorf("Invalid object type %q", entityTypeStr)
+	}
+
+	objectRef, err := o.objectRefFromURI(entityURL)
+	if err != nil {
+		return nil, err
+	}
+
+	builder.WriteString(` WHERE entity_type = ? AND object_ref = ?`)
+	args = append(args, entityType, objectRef)
 
 	relation := tk.GetRelation()
 	if relation == "" {
@@ -152,15 +297,49 @@ func (o *openfgaStore) ReadUserTuple(ctx context.Context, store string, tk *open
 		return nil, api.StatusErrorf(http.StatusBadRequest, "Must provide user")
 	}
 
-	builder.WriteString(` AND user = ?`)
-	args = append(args, user)
+	userTypeStr, userURL, ok := strings.Cut(user, ":")
+	if !ok {
+		return nil, fmt.Errorf("Must provide user reference")
+	}
+
+	userEntityType, ok := entity.Types[userTypeStr]
+	if !ok {
+		return nil, fmt.Errorf("Invalid user type %q", userTypeStr)
+	}
+
+	builder.WriteString(` AND user_entity_type = ?`)
+	args = append(args, userEntityType)
+
+	if userURL == "*" {
+		builder.WriteString(` AND user_ref = '*' AND user_relation = ''`)
+	} else {
+		// May have a reference relation.
+		parts := strings.Split(userURL, "#")
+		userRelation := ""
+		if len(parts) == 2 {
+			userURL = parts[0]
+			userRelation = parts[1]
+		}
+
+		userRef, err := o.objectRefFromURI(userURL)
+		if err != nil {
+			return nil, err
+		}
+
+		builder.WriteString(` AND user_ref = ? AND user_relation = ?`)
+		args = append(args, userRef, userRelation)
+	}
 
 	row := o.clusterDB.DB().QueryRowContext(ctx, builder.String(), args...)
 	if row.Err() != nil {
+		if errors.Is(row.Err(), sql.ErrNoRows) {
+			return nil, storage.ErrNotFound
+		}
 		return nil, row.Err()
 	}
 
-	err := row.Scan(&user, &relation, &objectType, &objectID)
+	tuple := &tupleRow{}
+	err = tuple.scan(row.Scan)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
@@ -169,11 +348,21 @@ func (o *openfgaStore) ReadUserTuple(ctx context.Context, store string, tk *open
 		return nil, err
 	}
 
+	user, err = tuple.user()
+	if err != nil {
+		return nil, err
+	}
+
+	object, err := tuple.object()
+	if err != nil {
+		return nil, err
+	}
+
 	return &openfgav1.Tuple{
 		Key: &openfgav1.TupleKey{
 			User:     user,
 			Relation: relation,
-			Object:   strings.Join([]string{objectType, objectID}, ":"),
+			Object:   object,
 		},
 	}, nil
 }
@@ -181,18 +370,27 @@ func (o *openfgaStore) ReadUserTuple(ctx context.Context, store string, tk *open
 // ReadUsersetTuples is called on check requests. It accounts for things like type-bound public access tuples.
 func (o *openfgaStore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	var builder strings.Builder
-	builder.WriteString(`SELECT user, relation, object_type, object_ref FROM openfga_tuple_ref`)
+	builder.WriteString(openFGATupleSelect)
 
 	var args []any
 	obj := filter.Object
 	if obj != "" {
-		objectType, objectID, ok := strings.Cut(obj, ":")
+		entityTypeStr, entityURL, hasURL := strings.Cut(obj, ":")
+		entityType, ok := entity.Types[entityTypeStr]
+		if !ok {
+			return nil, fmt.Errorf("Invalid object type %q", entityTypeStr)
+		}
 
-		builder.WriteString(` WHERE object_type = ?`)
-		args = append(args, objectType)
-		if ok {
+		builder.WriteString(` WHERE entity_type = ?`)
+		args = append(args, entityType)
+		if hasURL {
+			objectRef, err := o.objectRefFromURI(entityURL)
+			if err != nil {
+				return nil, err
+			}
+
 			builder.WriteString(` AND object_ref = ?`)
-			args = append(args, objectID)
+			args = append(args, objectRef)
 		}
 	}
 
@@ -213,13 +411,14 @@ func (o *openfgaStore) ReadUsersetTuples(ctx context.Context, store string, filt
 		for _, userset := range filter.AllowedUserTypeRestrictions {
 			_, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation)
 			if ok {
-				orConditions = append(orConditions, fmt.Sprintf(`user LIKE '%s:%%#%s'`, userset.Type, userset.GetRelation()))
+				orConditions = append(orConditions, `(user_entity_type = ? AND user_relation = ?)`)
+				args = append(args, entity.Types[userset.Type], userset.GetRelation())
 			}
 
 			_, ok = userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard)
 			if ok {
-				orConditions = append(orConditions, `user = ?`)
-				args = append(args, fmt.Sprintf("%s:*", userset.Type))
+				orConditions = append(orConditions, `(user_entity_type = ? AND user_ref = '*')`)
+				args = append(args, entity.Types[userset.Type])
 			}
 		}
 
@@ -252,7 +451,7 @@ func (o *openfgaStore) ReadUsersetTuples(ctx context.Context, store string, filt
 // ReadStartingWithUser is used when listing user objects.
 func (o *openfgaStore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	var builder strings.Builder
-	builder.WriteString(`SELECT user, relation, object_type, object_ref FROM openfga_tuple_ref`)
+	builder.WriteString(openFGATupleSelect)
 
 	if filter.ObjectType == "" {
 		return nil, api.StatusErrorf(http.StatusBadRequest, "Must provide object type")
@@ -260,19 +459,36 @@ func (o *openfgaStore) ReadStartingWithUser(ctx context.Context, store string, f
 		return nil, api.StatusErrorf(http.StatusBadRequest, "Must provide relation")
 	}
 
-	builder.WriteString(` WHERE object_type = ? AND relation = ?`)
+	builder.WriteString(` WHERE entity_type = ? AND relation = ?`)
 	var args []any
-	args = append(args, filter.ObjectType, filter.Relation)
+	args = append(args, entity.Types[filter.ObjectType], filter.Relation)
 
 	if len(filter.UserFilter) > 0 {
 		var orConditions []string
 		for _, u := range filter.UserFilter {
-			targetUser := u.GetObject()
-			if u.GetRelation() != "" {
-				targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+			userTypeStr, userURL, ok := strings.Cut(u.GetObject(), ":")
+			if !ok {
+				return nil, fmt.Errorf("Must provide user reference")
 			}
 
-			orConditions = append(orConditions, fmt.Sprintf("user = '%s'", targetUser))
+			userEntityType, ok := entity.Types[userTypeStr]
+			if !ok {
+				return nil, fmt.Errorf("Invalid user type %q", userTypeStr)
+			}
+
+			if userURL == "*" {
+				orConditions = append(orConditions, `(user_entity_type = ? AND user_ref = '*' AND user_relation = '')`)
+				args = append(args, userEntityType)
+				continue
+			}
+
+			userRef, err := o.objectRefFromURI(userURL)
+			if err != nil {
+				return nil, err
+			}
+
+			orConditions = append(orConditions, `(user_entity_type = ? AND user_ref = ? AND user_relation = ?)`)
+			args = append(args, userEntityType, userRef, u.GetRelation())
 		}
 
 		builder.WriteString(` AND`)
@@ -390,73 +606,3 @@ func (*openfgaStore) IsReady(ctx context.Context) (storage.ReadinessStatus, erro
 
 // Close is a no-op.
 func (*openfgaStore) Close() {}
-
-func (c *ClusterTx) GetAuthObjectEntityID(ctx context.Context, object entitlement.Object) (int, error) {
-	var id int64
-	var err error
-	switch object.Type() {
-	case entitlement.ObjectTypeGroup:
-		id, err = cluster.GetGroupID(ctx, c.Tx(), object.Elements()[0])
-	case entitlement.ObjectTypeCertificate:
-		id, err = cluster.GetCertificateID(ctx, c.Tx(), object.Elements()[0])
-	case entitlement.ObjectTypeStoragePool:
-		id, err = c.GetStoragePoolID(ctx, object.Elements()[0])
-	case entitlement.ObjectTypeProject:
-		id, err = cluster.GetProjectID(ctx, c.Tx(), object.Project())
-	case entitlement.ObjectTypeImage:
-		project := object.Project()
-		idInt, _, err := c.GetImageByFingerprintPrefix(ctx, object.Elements()[0], cluster.ImageFilter{Project: &project})
-		if err != nil {
-			return 0, err
-		}
-
-		id = int64(idInt)
-	case entitlement.ObjectTypeImageAlias:
-		idInt, _, err := c.GetImageAlias(ctx, object.Project(), object.Elements()[0], true)
-		if err != nil {
-			return 0, err
-		}
-
-		id = int64(idInt)
-	case entitlement.ObjectTypeInstance:
-		id, err = cluster.GetInstanceID(ctx, c.Tx(), object.Project(), object.Elements()[0])
-	case entitlement.ObjectTypeNetwork:
-		id, err = c.GetNetworkID(ctx, object.Project(), object.Elements()[0])
-	case entitlement.ObjectTypeNetworkACL:
-		id, err = c.GetNetworkACLID(ctx, object.Project(), object.Elements()[0])
-	case entitlement.ObjectTypeNetworkZone:
-		id, err = c.GetNetworkZoneID(ctx, object.Elements()[0])
-	case entitlement.ObjectTypeProfile:
-		id, err = cluster.GetProfileID(ctx, c.Tx(), object.Project(), object.Elements()[0])
-	case entitlement.ObjectTypeStorageBucket:
-		elements := object.Elements()
-		var node string
-		if len(elements) == 3 {
-			node = elements[2]
-		}
-
-		id, err = c.GetStoragePoolBucketID(ctx, object.Elements()[1], object.Elements()[0], object.Project(), node)
-	case entitlement.ObjectTypeStorageVolume:
-		elements := object.Elements()
-		var node string
-		if len(elements) == 4 {
-			node = elements[3]
-		}
-
-		var volumeType int
-		volumeType, err = VolumeTypeNameToDBType(object.Elements()[1])
-		if err != nil {
-			return 0, err
-		}
-
-		id, err = c.GetStoragePoolVolumeID(ctx, object.Elements()[0], volumeType, object.Elements()[2], object.Project(), node)
-	default:
-		return 0, api.StatusErrorf(http.StatusBadRequest, "Objects of type %q do not have an entity ID", object.Type())
-	}
-
-	if err != nil {
-		return 0, err
-	}
-
-	return int(id), nil
-}

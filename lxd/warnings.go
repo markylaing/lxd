@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,16 +32,16 @@ import (
 var warningsCmd = APIEndpoint{
 	Path: "warnings",
 
-	Get: APIEndpointAction{Handler: warningsGet, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: warningsGet, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var warningCmd = APIEndpoint{
 	Path: "warnings/{id}",
 
-	Get:    APIEndpointAction{Handler: warningGet, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
-	Patch:  APIEndpointAction{Handler: warningPatch, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
-	Put:    APIEndpointAction{Handler: warningPut, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
-	Delete: APIEndpointAction{Handler: warningDelete, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get:    APIEndpointAction{Handler: warningGet, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: warningPatch, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: warningPut, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: warningDelete, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 func filterWarnings(warnings []api.Warning, clauses *filter.ClauseSet) ([]api.Warning, error) {
@@ -506,14 +506,14 @@ func getWarningEntityURL(ctx context.Context, tx *sql.Tx, warning *cluster.Warni
 		return "", nil
 	}
 
-	_, ok := cluster.EntityNames[warning.EntityTypeCode]
+	_, ok := entity.Names[warning.EntityTypeCode]
 	if !ok {
 		return "", fmt.Errorf("Unknown entity type")
 	}
 
 	var url string
 	switch warning.EntityTypeCode {
-	case cluster.TypeImage:
+	case entity.TypeImage:
 		entities, err := cluster.GetImages(ctx, tx, cluster.ImageFilter{ID: &warning.EntityID})
 		if err != nil {
 			return "", err
@@ -525,7 +525,7 @@ func getWarningEntityURL(ctx context.Context, tx *sql.Tx, warning *cluster.Warni
 
 		apiImage := api.Image{Fingerprint: entities[0].Fingerprint}
 		url = apiImage.URL(version.APIVersion, entities[0].Project).String()
-	case cluster.TypeProfile:
+	case entity.TypeProfile:
 		entities, err := cluster.GetProfiles(ctx, tx, cluster.ProfileFilter{ID: &warning.EntityID})
 		if err != nil {
 			return "", err
@@ -537,7 +537,7 @@ func getWarningEntityURL(ctx context.Context, tx *sql.Tx, warning *cluster.Warni
 
 		apiProfile := api.Profile{Name: entities[0].Name}
 		url = apiProfile.URL(version.APIVersion, entities[0].Project).String()
-	case cluster.TypeProject:
+	case entity.TypeProject:
 		entities, err := cluster.GetProjects(ctx, tx, cluster.ProjectFilter{ID: &warning.EntityID})
 		if err != nil {
 			return "", err
@@ -549,7 +549,7 @@ func getWarningEntityURL(ctx context.Context, tx *sql.Tx, warning *cluster.Warni
 
 		apiProject := api.Project{Name: entities[0].Name}
 		url = apiProject.URL(version.APIVersion).String()
-	case cluster.TypeCertificate:
+	case entity.TypeCertificate:
 		entities, err := cluster.GetCertificates(ctx, tx, cluster.CertificateFilter{ID: &warning.EntityID})
 		if err != nil {
 			return "", err
@@ -561,9 +561,9 @@ func getWarningEntityURL(ctx context.Context, tx *sql.Tx, warning *cluster.Warni
 
 		apiCertificate := api.Certificate{Fingerprint: entities[0].Fingerprint}
 		url = apiCertificate.URL(version.APIVersion).String()
-	case cluster.TypeContainer:
+	case entity.TypeContainer:
 		fallthrough
-	case cluster.TypeInstance:
+	case entity.TypeInstance:
 		entities, err := cluster.GetInstances(ctx, tx, cluster.InstanceFilter{ID: &warning.EntityID})
 		if err != nil {
 			return "", err

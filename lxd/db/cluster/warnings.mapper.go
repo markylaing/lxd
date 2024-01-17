@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/canonical/lxd/lxd/db/query"
+	"github.com/canonical/lxd/lxd/entity"
 	"github.com/canonical/lxd/shared/api"
 )
 
@@ -384,7 +385,7 @@ func DeleteWarning(ctx context.Context, tx *sql.Tx, uuid string) error {
 
 // DeleteWarnings deletes the warning matching the given key parameters.
 // generator: warning DeleteMany-by-EntityTypeCode-and-EntityID
-func DeleteWarnings(ctx context.Context, tx *sql.Tx, entityTypeCode int, entityID int) error {
+func DeleteWarnings(ctx context.Context, tx *sql.Tx, entityTypeCode entity.Type, entityID int) error {
 	stmt, err := Stmt(tx, warningDeleteByEntityTypeCodeAndEntityID)
 	if err != nil {
 		return fmt.Errorf("Failed to get \"warningDeleteByEntityTypeCodeAndEntityID\" prepared statement: %w", err)

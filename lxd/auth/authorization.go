@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -30,8 +30,7 @@ const (
 var ErrUnknownDriver = fmt.Errorf("Unknown driver")
 
 var authorizers = map[string]func() authorizer{
-	DriverTLS:     func() authorizer { return &tls{} },
-	DriverOpenFGA: func() authorizer { return &fga{} },
+	DriverTLS: func() authorizer { return &tls{} },
 	DriverRBAC: func() authorizer {
 		return &rbac{
 			resources:   map[string]string{},
@@ -52,15 +51,15 @@ type authorizer interface {
 
 // PermissionChecker is a type alias for a function that returns whether a user has required permissions on an object.
 // It is returned by Authorizer.GetPermissionChecker.
-type PermissionChecker func(object entitlement.Object) bool
+type PermissionChecker func(object string) bool
 
 // Authorizer is the primary external API for this package.
 type Authorizer interface {
 	Driver() string
 	StopService(ctx context.Context) error
 
-	CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, entitlement entitlement.Relation) error
-	GetPermissionChecker(ctx context.Context, r *http.Request, entitlement entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error)
+	CheckPermission(ctx context.Context, req *http.Request, relation entity.Entitlement, entityType entity.Type, projectName string, location string, pathArgs ...string) error
+	GetPermissionChecker(ctx context.Context, r *http.Request, relation entity.Entitlement, entityType entity.Type) (PermissionChecker, error)
 
 	AddProject(ctx context.Context, projectID int64, projectName string) error
 	DeleteProject(ctx context.Context, projectID int64, projectName string) error
@@ -111,24 +110,7 @@ type Authorizer interface {
 type Opts struct {
 	config           map[string]any
 	projectsGetFunc  func(ctx context.Context) (map[int64]string, error)
-	resourcesFunc    func() (*Resources, error)
 	openfgaDatastore storage.OpenFGADatastore
-}
-
-// Resources represents a set of current API resources as Object slices for use when loading an Authorizer.
-type Resources struct {
-	CertificateObjects       []entitlement.Object
-	StoragePoolObjects       []entitlement.Object
-	ProjectObjects           []entitlement.Object
-	ImageObjects             []entitlement.Object
-	ImageAliasObjects        []entitlement.Object
-	InstanceObjects          []entitlement.Object
-	NetworkObjects           []entitlement.Object
-	NetworkACLObjects        []entitlement.Object
-	NetworkZoneObjects       []entitlement.Object
-	ProfileObjects           []entitlement.Object
-	StoragePoolVolumeObjects []entitlement.Object
-	StorageBucketObjects     []entitlement.Object
 }
 
 // WithConfig can be passed into LoadAuthorizer to pass in driver specific configuration.
@@ -142,13 +124,6 @@ func WithConfig(c map[string]any) func(*Opts) {
 func WithProjectsGetFunc(f func(ctx context.Context) (map[int64]string, error)) func(*Opts) {
 	return func(o *Opts) {
 		o.projectsGetFunc = f
-	}
-}
-
-// WithResourcesFunc should be passed into LoadAuthorizer when DriverOpenFGA is used.
-func WithResourcesFunc(f func() (*Resources, error)) func(*Opts) {
-	return func(o *Opts) {
-		o.resourcesFunc = f
 	}
 }
 

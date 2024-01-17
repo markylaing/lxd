@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 
@@ -22,7 +22,7 @@ import (
 var storagePoolVolumeTypeStateCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}/state",
 
-	Get: APIEndpointAction{Handler: storagePoolVolumeTypeStateGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
+	Get: APIEndpointAction{Handler: storagePoolVolumeTypeStateGet, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanView)},
 }
 
 // swagger:operation GET /1.0/storage-pools/{poolName}/volumes/{type}/{volumeName}/state storage storage_pool_volume_type_state_get

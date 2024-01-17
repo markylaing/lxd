@@ -1,8 +1,6 @@
 package operationtype
 
-import (
-	"github.com/canonical/lxd/shared/entitlement"
-)
+import "github.com/canonical/lxd/lxd/entity"
 
 // Type is a numeric code indentifying the type of an Operation.
 type Type int64
@@ -204,82 +202,82 @@ func (t Type) Description() string {
 }
 
 // Permission returns the auth.ObjectType and auth.Relation required to cancel the operation.
-func (t Type) Permission() (entitlement.ObjectType, entitlement.Relation) {
+func (t Type) Permission() (entity.Type, entity.Entitlement) {
 	switch t {
 	case BackupCreate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
+		return entity.TypeInstance, entity.EntitlementCanManageBackups
 	case BackupRename:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
+		return entity.TypeInstance, entity.EntitlementCanManageBackups
 	case BackupRestore:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
+		return entity.TypeInstance, entity.EntitlementCanManageBackups
 	case BackupRemove:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageBackups
+		return entity.TypeInstance, entity.EntitlementCanManageBackups
 	case ConsoleShow:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanAccessConsole
+		return entity.TypeInstance, entity.EntitlementCanAccessConsole
 	case InstanceFreeze:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
+		return entity.TypeInstance, entity.EntitlementCanUpdateState
 	case InstanceUnfreeze:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
+		return entity.TypeInstance, entity.EntitlementCanUpdateState
 	case InstanceStart:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
+		return entity.TypeInstance, entity.EntitlementCanUpdateState
 	case InstanceStop:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
+		return entity.TypeInstance, entity.EntitlementCanUpdateState
 	case InstanceRestart:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanUpdateState
+		return entity.TypeInstance, entity.EntitlementCanUpdateState
 	case CommandExec:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanExec
+		return entity.TypeInstance, entity.EntitlementCanExec
 	case SnapshotCreate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
+		return entity.TypeInstance, entity.EntitlementCanManageSnapshots
 	case SnapshotRename:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
+		return entity.TypeInstance, entity.EntitlementCanManageSnapshots
 	case SnapshotTransfer:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
+		return entity.TypeInstance, entity.EntitlementCanManageSnapshots
 	case SnapshotUpdate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
+		return entity.TypeInstance, entity.EntitlementCanManageSnapshots
 	case SnapshotDelete:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanManageSnapshots
+		return entity.TypeInstance, entity.EntitlementCanManageSnapshots
 
 	case InstanceCreate:
-		return entitlement.ObjectTypeProject, entitlement.RelationCanManageInstances
+		return entity.TypeProject, entity.EntitlementCanManageInstances
 	case InstanceUpdate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case InstanceRename:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case InstanceMigrate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case InstanceLiveMigrate:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case InstanceDelete:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case InstanceRebuild:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 	case SnapshotRestore:
-		return entitlement.ObjectTypeInstance, entitlement.RelationCanEdit
+		return entity.TypeInstance, entity.EntitlementCanEdit
 
 	case ImageDownload:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 	case ImageDelete:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 	case ImageToken:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 	case ImageRefresh:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 	case ImagesUpdate:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 	case ImagesSynchronize:
-		return entitlement.ObjectTypeImage, entitlement.RelationCanEdit
+		return entity.TypeImage, entity.EntitlementCanEdit
 
 	case CustomVolumeSnapshotsExpire:
-		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanEdit
+		return entity.TypeStorageVolume, entity.EntitlementCanEdit
 	case CustomVolumeBackupCreate:
-		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
+		return entity.TypeStorageVolume, entity.EntitlementCanManageBackups
 	case CustomVolumeBackupRemove:
-		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
+		return entity.TypeStorageVolume, entity.EntitlementCanManageBackups
 	case CustomVolumeBackupRename:
-		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanManageBackups
+		return entity.TypeStorageVolume, entity.EntitlementCanManageBackups
 	case CustomVolumeBackupRestore:
-		return entitlement.ObjectTypeStorageVolume, entitlement.RelationCanEdit
+		return entity.TypeStorageVolume, entity.EntitlementCanEdit
 	}
 
-	return "", ""
+	return -1, ""
 }

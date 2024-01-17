@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"net/http"
 	"net/url"
@@ -47,28 +47,28 @@ var storagePoolVolumesCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes",
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageStorageVolumes)},
 }
 
 var storagePoolVolumesTypeCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}",
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolVolumesTypePost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesTypePost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageStorageVolumes)},
 }
 
 var storagePoolVolumeTypeCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/volumes/{type}/{volumeName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanView)},
-	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
-	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
-	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: storagePoolVolumeAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: storagePoolVolumeDelete, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolVolumeGet, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: storagePoolVolumePatch, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: storagePoolVolumePost, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: storagePoolVolumePut, AccessHandler: storagePoolVolumeAccessHandler(entity.EntitlementCanEdit)},
 }
 
 // storagePoolVolumeAccessHandler resolves the project and location of the storage volume before performing the permission check.
-func storagePoolVolumeAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
+func storagePoolVolumeAccessHandler(relation entity.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
@@ -128,7 +128,7 @@ func storagePoolVolumeAccessHandler(relation entitlement.Relation) func(d *Daemo
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectStorageVolume(projectName, poolName, volumeTypeName, volumeName, location), relation)
+		err = s.Authorizer.CheckPermission(r.Context(), r, relation, entity.TypeStorageVolume, projectName, location, poolName, volumeTypeName, volumeName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -517,7 +517,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 		return volA.Name < volB.Name
 	})
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeStorageVolume)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeStorageVolume)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -533,7 +533,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 			}
 
 			volumeName, _, _ := api.GetParentAndSnapshotName(vol.Name)
-			if !userHasPermission(entitlement.ObjectStorageVolume(vol.Project, poolName, dbVol.Type, volumeName, location)) {
+			if !userHasPermission(entity.TypeStorageVolume.AuthObject(vol.Project, location, poolName, dbVol.Type, volumeName)) {
 				continue
 			}
 
@@ -562,7 +562,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 			location = dbVol.Location
 		}
 
-		if !userHasPermission(entitlement.ObjectStorageVolume(dbVol.Project, poolName, dbVol.Type, volumeName, location)) {
+		if !userHasPermission(entity.TypeStorageVolume.AuthObject(dbVol.Project, location, poolName, dbVol.Type, volumeName)) {
 			continue
 		}
 
@@ -1228,7 +1228,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Check if user has access to effective storage target project
-		err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(targetProjectName), entitlement.RelationCanManageStorageVolumes)
+		err := s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanManageStorageVolumes, entity.TypeProject, "", "", targetProjectName)
 		if err != nil {
 			return response.SmartError(err)
 		}

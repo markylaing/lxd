@@ -1,13 +1,5 @@
 package cluster
 
-import (
-	"context"
-	"database/sql"
-	"strings"
-
-	"github.com/canonical/lxd/shared/api"
-)
-
 // Code generation directives.
 //
 //go:generate -command mapper lxd-generate db mapper -t groups.mapper.go
@@ -40,35 +32,35 @@ type GroupFilter struct {
 	Name *string
 }
 
-func (g *Group) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Group, error) {
-	group := &api.Group{
-		GroupPost: api.GroupPost{Name: g.Name},
-		GroupPut:  api.GroupPut{Description: g.Description},
-	}
-
-	entitlements, err := GetGroupEntitlements(ctx, tx, g.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	group.Entitlements = make(map[string][]string)
-	for _, entitlement := range entitlements {
-		object := strings.Join([]string{entitlement.ObjectType, entitlement.ObjectRef}, ":")
-		group.Entitlements[object] = append(group.Entitlements[object], entitlement.Relation)
-	}
-
-	certificates, err := GetGroupCertificates(ctx, tx, g.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	group.TLSUsers = make([]string, 0, len(certificates))
-	for _, cert := range certificates {
-		group.TLSUsers = append(group.TLSUsers, cert.Fingerprint)
-	}
-
-	group.IdPGroups = make([]string, 0)
-	group.OIDCUsers = make([]string, 0)
-
-	return group, nil
-}
+//func (g *Group) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Group, error) {
+//	group := &api.Group{
+//		GroupPost: api.GroupPost{Name: g.Name},
+//		GroupPut:  api.GroupPut{Description: g.Description},
+//	}
+//
+//	entitlements, err := GetGroupEntitlements(ctx, tx, g.ID)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	group.Entitlements = make(map[string][]string)
+//	for _, entitlement := range entitlements {
+//		object := fmt.Sprintf("%d:%d", entitlement.EntityType, entitlement.EntityID)
+//		group.Entitlements[object] = append(group.Entitlements[object], entity.Entitlement)
+//	}
+//
+//	certificates, err := GetGroupCertificates(ctx, tx, g.ID)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	group.TLSUsers = make([]string, 0, len(certificates))
+//	for _, cert := range certificates {
+//		group.TLSUsers = append(group.TLSUsers, cert.Fingerprint)
+//	}
+//
+//	group.IdPGroups = make([]string, 0)
+//	group.OIDCUsers = make([]string, 0)
+//
+//	return group, nil
+//}

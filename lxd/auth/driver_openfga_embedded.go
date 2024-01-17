@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
-	"net/http"
-	"time"
-
+	"github.com/canonical/lxd/lxd/entity"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/server"
 	"go.uber.org/zap"
+	"net/http"
 
 	"github.com/canonical/lxd/lxd/certificate"
 	"github.com/canonical/lxd/shared"
@@ -63,10 +61,11 @@ func (e *embeddedOpenFGA) load(ctx context.Context, certificateCache *certificat
 
 // CheckPermission checks whether the user who sent the request has the given entitlement on the given object using the
 // embedded OpenFGA server.
-func (e *embeddedOpenFGA) CheckPermission(ctx context.Context, r *http.Request, object entitlement.Object, relation entitlement.Relation) error {
+func (e *embeddedOpenFGA) CheckPermission(ctx context.Context, r *http.Request, relation entity.Entitlement, entityType entity.Type, projectName string, location string, pathArgs ...string) error {
+	object := entityType.AuthObject(projectName, location, pathArgs...)
 	logCtx := logger.Ctx{"object": object, "relation": relation, "url": r.URL.String(), "method": r.Method}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	//defer cancel()
 
 	details, err := e.requestDetails(r)
 	if err != nil {
@@ -91,17 +90,22 @@ func (e *embeddedOpenFGA) CheckPermission(ctx context.Context, r *http.Request, 
 		return err
 	}
 
-	if isPrivileged || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
+	if isPrivileged || (certType == certificate.TypeMetrics && relation == entity.EntitlementCanViewMetrics) {
 		return nil
 	}
 
-	objectUser := entitlement.ObjectUser(username)
+	userURL, err := entity.TypeAuthUser.URL("", "", username)
+	if err != nil {
+		return err
+	}
+
+	objectUser := fmt.Sprintf("%s:%s", entity.Names[entity.TypeAuthUser], userURL)
 	req := &openfgav1.CheckRequest{
 		StoreId: ulid.Make().String(),
 		TupleKey: &openfgav1.CheckRequestTupleKey{
-			User:     objectUser.String(),
+			User:     objectUser,
 			Relation: string(relation),
-			Object:   object.String(),
+			Object:   object,
 		},
 		ContextualTuples: &openfgav1.ContextualTupleKeys{
 			TupleKeys: []*openfgav1.TupleKey{},
@@ -111,25 +115,25 @@ func (e *embeddedOpenFGA) CheckPermission(ctx context.Context, r *http.Request, 
 	if isPrivileged {
 		req.ContextualTuples.TupleKeys = []*openfgav1.TupleKey{
 			{
-				User:     objectUser.String(),
-				Relation: string(entitlement.RelationAdmin),
-				Object:   entitlement.ObjectServer().String(),
+				User:     objectUser,
+				Relation: string(entity.EntitlementAdmin),
+				Object:   entity.TypeServer.AuthObject("", ""),
 			},
 		}
 	} else {
 		for _, groupName := range groups {
 			req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
-				User:     objectUser.String(),
-				Relation: string(entitlement.RelationMember),
-				Object:   entitlement.ObjectGroup(groupName).String(),
+				User:     objectUser,
+				Relation: string(entity.EntitlementMember),
+				Object:   entity.TypeAuthGroup.AuthObject("", "", groupName),
 			})
 		}
 
 		for _, projectName := range projects {
 			req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
-				User:      objectUser.String(),
-				Relation:  "operator",
-				Object:    entitlement.ObjectProject(projectName).String(),
+				User:      objectUser,
+				Relation:  string(entity.EntitlementOperator),
+				Object:    entity.TypeProject.AuthObject("", "", projectName),
 				Condition: nil,
 			})
 		}
@@ -149,17 +153,17 @@ func (e *embeddedOpenFGA) CheckPermission(ctx context.Context, r *http.Request, 
 }
 
 // GetPermissionChecker returns a PermissionChecker using the embedded openfga server.
-func (e *embeddedOpenFGA) GetPermissionChecker(ctx context.Context, r *http.Request, relation entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+func (e *embeddedOpenFGA) GetPermissionChecker(ctx context.Context, r *http.Request, relation entity.Entitlement, entityType entity.Type) (PermissionChecker, error) {
+	//ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	//defer cancel()
 
-	allowFunc := func(b bool) func(entitlement.Object) bool {
-		return func(entitlement.Object) bool {
+	allowFunc := func(b bool) func(string) bool {
+		return func(string) bool {
 			return b
 		}
 	}
 
-	logCtx := logger.Ctx{"object_type": objectType, "relation": relation, "url": r.URL.String(), "method": r.Method}
+	logCtx := logger.Ctx{"entity_type": entityType, "relation": relation, "url": r.URL.String(), "method": r.Method}
 	details, err := e.requestDetails(r)
 	if err != nil {
 		return nil, api.StatusErrorf(http.StatusForbidden, "Failed to extract request details: %v", err)
@@ -183,16 +187,16 @@ func (e *embeddedOpenFGA) GetPermissionChecker(ctx context.Context, r *http.Requ
 		return nil, err
 	}
 
-	if isPrivileged || (certType == certificate.TypeMetrics && relation == entitlement.RelationCanViewMetrics) {
+	if isPrivileged || (certType == certificate.TypeMetrics && relation == entity.EntitlementCanViewMetrics) {
 		return allowFunc(true), nil
 	}
 
-	userObjectStr := entitlement.ObjectUser(username).String()
+	objectUser := entity.TypeAuthUser.AuthObject("", "", username)
 	req := &openfgav1.ListObjectsRequest{
 		StoreId:  ulid.Make().String(),
-		Type:     string(objectType),
+		Type:     entityType.String(),
 		Relation: string(relation),
-		User:     userObjectStr,
+		User:     objectUser,
 		ContextualTuples: &openfgav1.ContextualTupleKeys{
 			TupleKeys: []*openfgav1.TupleKey{},
 		},
@@ -201,25 +205,25 @@ func (e *embeddedOpenFGA) GetPermissionChecker(ctx context.Context, r *http.Requ
 	if isPrivileged {
 		req.ContextualTuples.TupleKeys = []*openfgav1.TupleKey{
 			{
-				User:     userObjectStr,
+				User:     objectUser,
 				Relation: "admin",
-				Object:   entitlement.ObjectServer().String(),
+				Object:   fmt.Sprintf("%s:%s", entity.Names[entity.TypeServer], entity.TypeServer.AuthObject("", "")),
 			},
 		}
 	} else {
 		for _, groupName := range groups {
 			req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
-				User:     userObjectStr,
-				Relation: string(entitlement.RelationMember),
-				Object:   entitlement.ObjectGroup(groupName).String(),
+				User:     objectUser,
+				Relation: string(entity.EntitlementMember),
+				Object:   entity.TypeAuthGroup.AuthObject("", "", groupName),
 			})
 		}
 
 		for _, projectName := range projects {
 			req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
-				User:      userObjectStr,
-				Relation:  string(entitlement.RelationOperator),
-				Object:    entitlement.ObjectProject(projectName).String(),
+				User:      objectUser,
+				Relation:  string(entity.EntitlementOperator),
+				Object:    entity.TypeProject.AuthObject("", "", projectName),
 				Condition: nil,
 			})
 		}
@@ -228,13 +232,13 @@ func (e *embeddedOpenFGA) GetPermissionChecker(ctx context.Context, r *http.Requ
 	e.logger.Debug("Listing related objects for user", logCtx)
 	resp, err := e.server.ListObjects(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to OpenFGA objects of type %q with relation %q for user %q: %w", objectType, relation, username, err)
+		return nil, fmt.Errorf("Failed to OpenFGA objects of type %q with relation %q for user %q: %w", entityType.String(), relation, username, err)
 	}
 
 	objects := resp.GetObjects()
 
-	return func(object entitlement.Object) bool {
-		return shared.ValueInSlice(object.String(), objects)
+	return func(object string) bool {
+		return shared.ValueInSlice(object, objects)
 	}, nil
 }
 

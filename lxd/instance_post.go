@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"net/http"
 	"net/url"
@@ -323,7 +323,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		if req.Pool != "" || req.Project != "" {
 			// Check if user has access to target project.
 			if req.Project != "" {
-				err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(req.Project), entitlement.RelationCanManageInstances)
+				err := s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanManageInstances, entity.TypeProject, "", "", req.Project)
 				if err != nil {
 					return response.SmartError(err)
 				}

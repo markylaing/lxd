@@ -1,4 +1,4 @@
-package cluster
+package entity
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ func TestURLToEntityType(t *testing.T) {
 	tests := []struct {
 		name               string
 		rawURL             string
-		expectedEntityType int
+		expectedEntityType Type
 		expectedProject    string
 		expectedLocation   string
 		expectedPathArgs   []string
@@ -44,7 +44,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "projects",
 			rawURL:             "/1.0/projects/my-project",
 			expectedEntityType: TypeProject,
-			expectedProject:    "my-project",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"my-project"},
 			expectedErr:        nil,
 		},
@@ -52,7 +52,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "certificates",
 			rawURL:             "/1.0/certificates/foawienfoawnefkanwelfknsfl",
 			expectedEntityType: TypeCertificate,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"foawienfoawnefkanwelfknsfl"},
 			expectedErr:        nil,
 		},
@@ -100,7 +100,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "cluster members",
 			rawURL:             "/1.0/cluster/members/node01",
 			expectedEntityType: TypeNode,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"node01"},
 			expectedErr:        nil,
 		},
@@ -108,7 +108,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "operation",
 			rawURL:             "/1.0/operations/3e75d1bf-30ed-45ce-9e02-267fa7338eb4",
 			expectedEntityType: TypeOperation,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"3e75d1bf-30ed-45ce-9e02-267fa7338eb4"},
 			expectedErr:        nil,
 		},
@@ -116,7 +116,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "storage pools",
 			rawURL:             "/1.0/storage-pools/my-storage-pool",
 			expectedEntityType: TypeStoragePool,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"my-storage-pool"},
 			expectedErr:        nil,
 		},
@@ -157,7 +157,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "warnings",
 			rawURL:             "/1.0/warnings/3e75d1bf-30ed-45ce-9e02-267fa7338eb4",
 			expectedEntityType: TypeWarning,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"3e75d1bf-30ed-45ce-9e02-267fa7338eb4"},
 			expectedErr:        nil,
 		},
@@ -165,7 +165,7 @@ func TestURLToEntityType(t *testing.T) {
 			name:               "cluster groups",
 			rawURL:             "/1.0/cluster/groups/my-cluster-group",
 			expectedEntityType: TypeClusterGroup,
-			expectedProject:    "default",
+			expectedProject:    "",
 			expectedPathArgs:   []string{"my-cluster-group"},
 			expectedErr:        nil,
 		},
@@ -173,7 +173,7 @@ func TestURLToEntityType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actualEntityType, actualProject, actualLocation, actualPathArgs, actualErr := URLToEntityType(tt.rawURL)
+			actualEntityType, actualProject, actualLocation, actualPathArgs, actualErr := URLToType(tt.rawURL)
 
 			assert.Equal(t, tt.expectedEntityType, actualEntityType)
 			assert.Equal(t, tt.expectedProject, actualProject)

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -185,7 +185,7 @@ func (r *rbac) configure(opts Opts) error {
 
 // CheckPermission syncs the users permissions with the RBAC server, then maps the given Object and Relation to an RBAC permission
 // and checks this against the users permissions.
-func (r *rbac) CheckPermission(ctx context.Context, req *http.Request, object entitlement.Object, relation entitlement.Relation) error {
+func (r *rbac) CheckPermission(ctx context.Context, req *http.Request, relation entity.Entitlement, entityType entity.Type, projectName string, location string, pathArgs ...string) error {
 	details, err := r.requestDetails(req)
 	if err != nil {
 		return api.StatusErrorf(http.StatusForbidden, "Failed to extract request details: %v", err)
@@ -197,7 +197,7 @@ func (r *rbac) CheckPermission(ctx context.Context, req *http.Request, object en
 
 	// Use the TLS driver if the user authenticated with TLS.
 	if details.authenticationProtocol() == api.AuthenticationMethodTLS {
-		return r.tls.CheckPermission(ctx, req, object, relation)
+		return r.tls.CheckPermission(ctx, req, relation, entityType, projectName, location, pathArgs...)
 	}
 
 	r.permissionsLock.Lock()
@@ -228,27 +228,26 @@ func (r *rbac) CheckPermission(ctx context.Context, req *http.Request, object en
 	}
 
 	// Check server level object types
-	switch object.Type() {
-	case entitlement.ObjectTypeServer:
-		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
+	switch entityType {
+	case entity.TypeServer:
+		if relation == entity.EntitlementCanView || relation == entity.EntitlementCanViewResources || relation == entity.EntitlementCanViewMetrics {
 			return nil
 		}
 
 		return api.StatusErrorf(http.StatusForbidden, "User is not an administrator")
-	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
-		if relation == entitlement.RelationCanView {
+	case entity.TypeStoragePool, entity.TypeCertificate:
+		if relation == entity.EntitlementCanView {
 			return nil
 		}
 
 		return api.StatusErrorf(http.StatusForbidden, "User is not an administrator")
 	}
 
-	permission, err := r.relationToPermission(object, relation)
+	permission, err := r.relationToPermission(entityType, relation)
 	if err != nil {
 		return err
 	}
 
-	projectName := object.Project()
 	if !shared.ValueInSlice(permission, permissions[projectName]) {
 		return api.StatusErrorf(http.StatusForbidden, "User %q does not have permission %q on project %q", username, permission, projectName)
 	}
@@ -258,9 +257,9 @@ func (r *rbac) CheckPermission(ctx context.Context, req *http.Request, object en
 
 // GetPermissionChecker syncs the users permissions with the RBAC server, then in the returned PermissionChecker maps the
 // given Object and Relation to an RBAC permission and checks this against the users permissions.
-func (r *rbac) GetPermissionChecker(ctx context.Context, req *http.Request, relation entitlement.Relation, objectType entitlement.ObjectType) (PermissionChecker, error) {
-	allowFunc := func(b bool) func(entitlement.Object) bool {
-		return func(entitlement.Object) bool {
+func (r *rbac) GetPermissionChecker(ctx context.Context, req *http.Request, relation entity.Entitlement, objectType entity.Type) (PermissionChecker, error) {
+	allowFunc := func(b bool) func(string) bool {
+		return func(string) bool {
 			return b
 		}
 	}
@@ -308,14 +307,14 @@ func (r *rbac) GetPermissionChecker(ctx context.Context, req *http.Request, rela
 
 	// Check server level object types
 	switch objectType {
-	case entitlement.ObjectTypeServer:
-		if relation == entitlement.RelationCanView || relation == entitlement.RelationCanViewResources || relation == entitlement.RelationCanViewMetrics {
+	case entity.TypeServer:
+		if relation == entity.EntitlementCanView || relation == entity.EntitlementCanViewResources || relation == entity.EntitlementCanViewMetrics {
 			return allowFunc(true), nil
 		}
 
 		return nil, api.StatusErrorf(http.StatusForbidden, "User is not an administrator")
-	case entitlement.ObjectTypeStoragePool, entitlement.ObjectTypeCertificate:
-		if relation == entitlement.RelationCanView {
+	case entity.TypeStoragePool, entity.TypeCertificate:
+		if relation == entity.EntitlementCanView {
 			return allowFunc(true), nil
 		}
 
@@ -324,22 +323,33 @@ func (r *rbac) GetPermissionChecker(ctx context.Context, req *http.Request, rela
 
 	// Error if user does not have access to the project (unless we're getting projects, where we want to filter the results).
 	_, ok = permissions[details.projectName]
-	if !ok && objectType != entitlement.ObjectTypeProject {
+	if !ok && objectType != entity.TypeProject {
 		return nil, api.StatusErrorf(http.StatusForbidden, "User does not have permissions for project %q", details.projectName)
 	}
 
-	return func(object entitlement.Object) bool {
+	return func(object string) bool {
 		// Acquire read lock on the permissions cache.
 		r.permissionsLock.RLock()
 		defer r.permissionsLock.RUnlock()
 
-		permission, err := r.relationToPermission(object, relation)
+		permission, err := r.relationToPermission(objectType, relation)
 		if err != nil {
 			r.logger.Error("Could not convert object and entitlement to RBAC permission", logger.Ctx{"object": object, "entitlement": relation, "error": err})
 			return false
 		}
 
-		return shared.ValueInSlice(permission, permissions[object.Project()])
+		_, entityURL, ok := strings.Cut(object, ":")
+		if !ok {
+			return false
+		}
+
+		u, err := url.Parse(entityURL)
+		if err != nil {
+			return false
+		}
+
+		project := u.Query().Get("project")
+		return shared.ValueInSlice(permission, permissions[project])
 	}, nil
 }
 
@@ -717,156 +727,156 @@ func (r *rbac) postResources(ctx context.Context, updates []rbacResource, remova
 // relationToPermission is a mapping from fine-grained Object and Relation permissions to a less fine-grained RBAC Permission.
 // This function will error if there is no mapping. This can be the case when an endpoint does not require any permissions, such
 // as `GET /1.0/storage-pools`. These should be handled separately.
-func (r *rbac) relationToPermission(object entitlement.Object, relation entitlement.Relation) (rbacPermission, error) {
-	switch object.Type() {
-	case entitlement.ObjectTypeServer:
+func (r *rbac) relationToPermission(entityType entity.Type, relation entity.Entitlement) (rbacPermission, error) {
+	switch entityType {
+	case entity.TypeServer:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionAdmin, nil
-		case entitlement.RelationCanManageStoragePools:
+		case entity.EntitlementCanManageStoragePools:
 			return rbacPermissionAdmin, nil
-		case entitlement.RelationCanManageProjects:
+		case entity.EntitlementCanManageProjects:
 			return rbacPermissionAdmin, nil
-		case entitlement.RelationCanManageCertificates:
+		case entity.EntitlementCanManageCertificates:
 			return rbacPermissionAdmin, nil
-		case entitlement.RelationCanOverrideClusterTargetRestriction:
+		case entity.EntitlementCanOverrideClusterTargetRestriction:
 			return rbacPermissionAdmin, nil
-		case entitlement.RelationCanViewPrivilegedEvents:
+		case entity.EntitlementCanViewPrivilegedEvents:
 			return rbacPermissionAdmin, nil
 		}
 
-	case entitlement.ObjectTypeCertificate:
+	case entity.TypeCertificate:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionAdmin, nil
 		}
 
-	case entitlement.ObjectTypeStoragePool:
+	case entity.TypeStoragePool:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionAdmin, nil
 		}
 
-	case entitlement.ObjectTypeProject:
+	case entity.TypeProject:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageProjects, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
-		case entitlement.RelationCanManageInstances:
+		case entity.EntitlementCanManageInstances:
 			return rbacPermissionManageInstances, nil
-		case entitlement.RelationCanManageImages:
+		case entity.EntitlementCanManageImages:
 			return rbacPermissionManageImages, nil
-		case entitlement.RelationCanManageImageAliases:
+		case entity.EntitlementCanManageImageAliases:
 			return rbacPermissionManageImages, nil
-		case entitlement.RelationCanManageNetworks:
+		case entity.EntitlementCanManageNetworks:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanManageNetworkACLs:
+		case entity.EntitlementCanManageNetworkACLs:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanManageNetworkZones:
+		case entity.EntitlementCanManageNetworkZones:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanManageProfiles:
+		case entity.EntitlementCanManageProfiles:
 			return rbacPermissionManageProfiles, nil
-		case entitlement.RelationCanManageStorageVolumes:
+		case entity.EntitlementCanManageStorageVolumes:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanManageStorageBuckets:
+		case entity.EntitlementCanManageStorageBuckets:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanViewOperations:
+		case entity.EntitlementCanViewOperations:
 			return rbacPermissionView, nil
-		case entitlement.RelationCanViewEvents:
+		case entity.EntitlementCanViewEvents:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeImage:
+	case entity.TypeImage:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageImages, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeImageAlias:
+	case entity.TypeImageAlias:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageImages, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeInstance:
+	case entity.TypeInstance:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageInstances, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
-		case entitlement.RelationCanUpdateState:
+		case entity.EntitlementCanUpdateState:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanManageBackups:
+		case entity.EntitlementCanManageBackups:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanManageSnapshots:
+		case entity.EntitlementCanManageSnapshots:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanConnectSFTP:
+		case entity.EntitlementCanConnectSFTP:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanAccessFiles:
+		case entity.EntitlementCanAccessFiles:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanAccessConsole:
+		case entity.EntitlementCanAccessConsole:
 			return rbacPermissionOperateInstances, nil
-		case entitlement.RelationCanExec:
+		case entity.EntitlementCanExec:
 			return rbacPermissionOperateInstances, nil
 		}
 
-	case entitlement.ObjectTypeNetwork:
+	case entity.TypeNetwork:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeNetworkACL:
+	case entity.TypeNetworkACL:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeNetworkZone:
+	case entity.TypeNetworkZone:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageNetworks, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeProfile:
+	case entity.TypeProfile:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageProfiles, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeStorageBucket:
+	case entity.TypeStorageBucket:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 
-	case entitlement.ObjectTypeStorageVolume:
+	case entity.TypeStorageVolume:
 		switch relation {
-		case entitlement.RelationCanEdit:
+		case entity.EntitlementCanEdit:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanManageBackups:
+		case entity.EntitlementCanManageBackups:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanManageSnapshots:
+		case entity.EntitlementCanManageSnapshots:
 			return rbacPermissionManageStorageVolumes, nil
-		case entitlement.RelationCanView:
+		case entity.EntitlementCanView:
 			return rbacPermissionView, nil
 		}
 	}
 
-	return "", fmt.Errorf("Could not map object %q and entitlement %q to an RBAC permission", object, relation)
+	return "", fmt.Errorf("Could not map object %q and entitlement %q to an RBAC permission", entityType, relation)
 }

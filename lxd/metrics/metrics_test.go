@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"github.com/canonical/lxd/shared/entitlement"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,8 +17,8 @@ func TestMetricSet_FilterSamples(t *testing.T) {
 	}
 
 	m := newMetricSet()
-	permissionChecker := func(object entitlement.Object) bool {
-		return object == entitlement.ObjectInstance("default", "jammy")
+	permissionChecker := func(object string) bool {
+		return object == entity.Instance("default", "jammy")
 	}
 
 	m.FilterSamples(permissionChecker)
@@ -28,8 +27,8 @@ func TestMetricSet_FilterSamples(t *testing.T) {
 	require.Equal(t, []Sample{{Value: 10, Labels: labels}}, m.set[CPUSecondsTotal])
 
 	m = newMetricSet()
-	permissionChecker = func(object entitlement.Object) bool {
-		return object == entitlement.ObjectInstance("not-default", "not-jammy")
+	permissionChecker = func(object string) bool {
+		return object == entity.Instance("not-default", "not-jammy")
 	}
 
 	m.FilterSamples(permissionChecker)

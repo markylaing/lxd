@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/canonical/lxd/shared/logger"
 	"strings"
+
+	"github.com/canonical/lxd/shared/logger"
 )
 
 // Transaction executes the given function within a database transaction with a 10s context timeout.

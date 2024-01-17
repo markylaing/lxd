@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net"
 	"net/http"
 
@@ -118,7 +118,7 @@ func networkAllocationsGet(d *Daemon, r *http.Request) response.Response {
 
 	result := make([]api.NetworkAllocations, 0)
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeNetwork)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeNetwork)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -132,7 +132,7 @@ func networkAllocationsGet(d *Daemon, r *http.Request) response.Response {
 
 		// Get all the networks, their attached instances, their network forwards and their network load balancers.
 		for _, networkName := range networkNames {
-			if !userHasPermission(entitlement.ObjectNetwork(projectName, networkName)) {
+			if !userHasPermission(entity.TypeNetwork.AuthObject(projectName, "", networkName)) {
 				continue
 			}
 

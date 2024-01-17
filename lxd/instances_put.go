@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"strings"
 	"sync"
@@ -97,7 +97,7 @@ func instancesPut(d *Daemon, r *http.Request) response.Response {
 
 	action := shared.InstanceAction(req.State.Action)
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanUpdateState, entitlement.ObjectTypeInstance)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanUpdateState, entity.TypeInstance)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -110,7 +110,7 @@ func instancesPut(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Only allow changing the state of instances the user has permission for.
-		if !userHasPermission(entitlement.ObjectInstance(inst.Project().Name, inst.Name())) {
+		if !userHasPermission(entity.TypeInstance.AuthObject(inst.Project().Name, "", inst.Name())) {
 			continue
 		}
 

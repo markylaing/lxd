@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 
@@ -23,17 +23,17 @@ import (
 var networkForwardsCmd = APIEndpoint{
 	Path: "networks/{networkName}/forwards",
 
-	Get:  APIEndpointAction{Handler: networkForwardsGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
-	Post: APIEndpointAction{Handler: networkForwardsPost, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Get:  APIEndpointAction{Handler: networkForwardsGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: networkForwardsPost, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var networkForwardCmd = APIEndpoint{
 	Path: "networks/{networkName}/forwards/{listenAddress}",
 
-	Delete: APIEndpointAction{Handler: networkForwardDelete, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: networkForwardGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
-	Put:    APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: networkForwardDelete, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkForwardGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkForwardPut, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
 }
 
 // API endpoints

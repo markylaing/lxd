@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 	"strings"
@@ -256,21 +256,16 @@ func operationDelete(d *Daemon, r *http.Request) response.Response {
 			projectName = api.ProjectDefaultName
 		}
 
-		objectType, relation := op.Permission()
-		if objectType != "" {
+		entityType, entitlement := op.Permission()
+		if entityType > -1 {
 			for _, v := range op.Resources() {
 				for _, u := range v {
-					_, _, _, pathArgs, err := dbCluster.URLToEntityType(u.String())
+					entityType, projectName, location, pathArgs, err := entity.URLToType(u.String())
 					if err != nil {
 						return response.InternalError(fmt.Errorf("Unable to parse operation resource URL: %w", err))
 					}
 
-					object, err := entitlement.NewObject(objectType, projectName, pathArgs...)
-					if err != nil {
-						return response.InternalError(fmt.Errorf("Unable to create authorization object for operation: %w", err))
-					}
-
-					err = s.Authorizer.CheckPermission(r.Context(), r, object, relation)
+					err = s.Authorizer.CheckPermission(r.Context(), r, entitlement, entityType, projectName, location, pathArgs...)
 					if err != nil {
 						return response.SmartError(err)
 					}
@@ -497,7 +492,7 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 		projectName = api.ProjectDefaultName
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanViewOperations, entitlement.ObjectTypeProject)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanViewOperations, entity.TypeProject)
 	if err != nil {
 		return response.InternalError(fmt.Errorf("Failed to get operation permission checker: %w", err))
 	}
@@ -514,7 +509,7 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 				continue
 			}
 
-			if !userHasPermission(entitlement.ObjectProject(v.Project())) {
+			if !userHasPermission(entity.TypeProject.AuthObject("", "", v.Project())) {
 				continue
 			}
 
@@ -542,7 +537,7 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 				continue
 			}
 
-			if !userHasPermission(entitlement.ObjectProject(v.Project())) {
+			if !userHasPermission(entity.TypeProject.AuthObject("", "", v.Project())) {
 				continue
 			}
 

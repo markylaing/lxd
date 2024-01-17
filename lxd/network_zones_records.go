@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 
@@ -22,17 +22,17 @@ import (
 var networkZoneRecordsCmd = APIEndpoint{
 	Path: "network-zones/{zone}/records",
 
-	Get:  APIEndpointAction{Handler: networkZoneRecordsGet, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanView)},
-	Post: APIEndpointAction{Handler: networkZoneRecordsPost, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
+	Get:  APIEndpointAction{Handler: networkZoneRecordsGet, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: networkZoneRecordsPost, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var networkZoneRecordCmd = APIEndpoint{
 	Path: "network-zones/{zone}/records/{name}",
 
-	Delete: APIEndpointAction{Handler: networkZoneRecordDelete, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: networkZoneRecordGet, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanView)},
-	Put:    APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: networkZoneRecordDelete, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkZoneRecordGet, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkZoneRecordPut, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
 }
 
 // API endpoints.

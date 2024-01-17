@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -774,6 +773,10 @@ INSERT INTO certificates (fingerprint, type, name, certificate, restricted) VALU
 INSERT INTO certificates (fingerprint, type, name, certificate, restricted) VALUES ('03c3a0a1d180e31c8f0ce5c0164e8d9fd191bec72ebe419c2c12556ea56f431e', 1, 'non-admin', '', 1);
 INSERT INTO storage_pools (name, driver, description, state) VALUES ('local', 'zfs', '', 1);
 INSERT INTO projects (name, description) VALUES ('test-project', '');
+INSERT INTO profiles (name, description, project_id) VALUES ('default', '', 1);
+INSERT INTO nodes (name, description, address, schema, api_extensions, arch) VALUES ('node01', '', '', 70, 1282, 1);
+INSERT INTO storage_volumes (name, storage_pool_id, node_id, type, description, project_id) VALUES ('vol1', 1, 1, 2, '', 1);
+INSERT INTO storage_buckets (name, storage_pool_id, description, project_id) VALUES ('my/slash/delimited/storage/bucket', 1, '', 1)
 `)
 		require.NoError(t, err)
 	})
@@ -785,39 +788,68 @@ INSERT INTO projects (name, description) VALUES ('test-project', '');
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(context.Background(), `
-INSERT INTO entitlements (relation, object_type, entity_id) VALUES ('operator', 'project', 1);
-INSERT INTO groups (name, description) VALUES ('default-project-operators', '');
-INSERT INTO groups_entitlements (group_id, entitlement_id) VALUES (1,1);
-INSERT INTO profiles (name, description, project_id) VALUES ('default', '', 1);
-INSERT INTO nodes (name, description, address, schema, api_extensions, arch) VALUES ('node01', '', '', 70, 1282, 1);
-INSERT INTO storage_volumes (name, storage_pool_id, node_id, type, description, project_id) VALUES ('vol1', 1, 1, 2, '', 1);
-INSERT INTO storage_buckets (name, storage_pool_id, description, project_id) VALUES ('my/slash/delimited/storage/bucket', 1, '', 1)
-`)
-	require.NoError(t, err)
-
-	rows, err := tx.QueryContext(context.Background(), "SELECT user, relation, object_type, object_ref, entity_id FROM openfga_tuple_ref")
+	rows, err := tx.QueryContext(context.Background(), "SELECT user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id FROM openfga_entity_ref")
 	require.NoError(t, err)
 
 	type tupleRow struct {
-		user       string
-		relation   string
-		objectType string
-		objectRef  string
-		entityID   *int
+		userEntityType int
+		userRef        string
+		userRelation   string
+		relation       string
+		entityType     int
+		objectRef      string
+		entityID       int
 	}
 
 	var tupleRows []tupleRow
 	for rows.Next() {
 		var r tupleRow
-		err = rows.Scan(&r.user, &r.relation, &r.objectType, &r.objectRef, &r.entityID)
+		err = rows.Scan(&r.userEntityType, &r.userRef, &r.userRelation, &r.relation, &r.entityType, &r.objectRef, &r.entityID)
 		require.NoError(t, err)
 		tupleRows = append(tupleRows, r)
+	}
 
-		if r.objectType == "storage_volume" {
-			results := strings.Split(r.objectRef, "\u0000")
-			fmt.Println(len(results), results)
-		}
+	require.NoError(t, rows.Err())
+
+	r := tx.QueryRow(`SELECT entity_type, entity_id FROM openfga_entity_ref WHERE openfga_entity_ref.entity_type = 3 AND 1 = openfga_entity_ref.entity_id`)
+	if r.Err() != nil {
+		t.Logf("Failed to query for entity: %v", err)
+		t.FailNow()
+	}
+
+	var tp, i int
+	err = r.Scan(&tp, &i)
+	if err != nil {
+		t.Logf("Failed getting count: %v", err)
+		t.FailNow()
+	}
+
+	_, err = tx.Exec(`
+INSERT INTO entitlements (relation, entity_type, entity_id) VALUES ('operator', 3, 1);`)
+	if err != nil {
+		t.Logf("1: failed adding project entitlement: %v", err)
+		t.FailNow()
+	}
+
+	_, err = tx.Exec(`
+INSERT INTO entitlements (relation, entity_type, entity_id) VALUES ('admin', 22, 0);
+INSERT INTO groups (name, description) VALUES ('default-project-operators', '');
+INSERT INTO groups (name, description) VALUES ('administrators', '');
+INSERT INTO groups_entitlements (group_id, entitlement_id) VALUES (1,1);
+INSERT INTO groups_entitlements (group_id, entitlement_id) VALUES (2,2);
+`)
+
+	require.NoError(t, err)
+
+	rows, err = tx.QueryContext(context.Background(), "SELECT user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id FROM openfga_tuple_ref")
+	require.NoError(t, err)
+
+	tupleRows = []tupleRow{}
+	for rows.Next() {
+		var r tupleRow
+		err = rows.Scan(&r.userEntityType, &r.userRef, &r.userRelation, &r.relation, &r.entityType, &r.objectRef, &r.entityID)
+		require.NoError(t, err)
+		tupleRows = append(tupleRows, r)
 	}
 
 	require.NoError(t, rows.Err())

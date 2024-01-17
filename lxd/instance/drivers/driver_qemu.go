@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"io/fs"
 	"net"
@@ -1359,7 +1360,7 @@ func (d *qemu) start(stateful bool, op *operationlock.InstanceOperation) error {
 
 			if errUnsupported == device.ErrMissingVirtiofsd {
 				// Create a warning if virtiofsd is missing.
-				_ = d.state.DB.Cluster.UpsertWarning(d.node, d.project.Name, dbCluster.TypeInstance, d.ID(), warningtype.MissingVirtiofsd, "Using 9p as a fallback")
+				_ = d.state.DB.Cluster.UpsertWarning(d.node, d.project.Name, entity.TypeInstance, d.ID(), warningtype.MissingVirtiofsd, "Using 9p as a fallback")
 			} else {
 				// Resolve previous warning.
 				_ = warnings.ResolveWarningsByNodeAndProjectAndType(d.state.DB.Cluster, d.node, d.project.Name, warningtype.MissingVirtiofsd)

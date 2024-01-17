@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net"
 	"net/http"
 	"net/url"
@@ -48,35 +48,35 @@ var networksCmd = APIEndpoint{
 	Path: "networks",
 
 	Get:  APIEndpointAction{Handler: networksGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: networksPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageNetworks)},
+	Post: APIEndpointAction{Handler: networksPost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageNetworks)},
 }
 
 var networkCmd = APIEndpoint{
 	Path: "networks/{networkName}",
 
-	Delete: APIEndpointAction{Handler: networkDelete, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: networkGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
-	Patch:  APIEndpointAction{Handler: networkPatch, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Post:   APIEndpointAction{Handler: networkPost, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
-	Put:    APIEndpointAction{Handler: networkPut, AccessHandler: networkAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: networkDelete, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: networkPatch, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: networkPost, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: networkPut, AccessHandler: networkAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var networkLeasesCmd = APIEndpoint{
 	Path: "networks/{networkName}/leases",
 
-	Get: APIEndpointAction{Handler: networkLeasesGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Get: APIEndpointAction{Handler: networkLeasesGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
 }
 
 var networkStateCmd = APIEndpoint{
 	Path: "networks/{networkName}/state",
 
-	Get: APIEndpointAction{Handler: networkStateGet, AccessHandler: networkAccessHandler(entitlement.RelationCanView)},
+	Get: APIEndpointAction{Handler: networkStateGet, AccessHandler: networkAccessHandler(entity.EntitlementCanView)},
 }
 
-func networkAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
+func networkAccessHandler(relation entity.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
-		profileName, err := url.PathUnescape(mux.Vars(r)["networkName"])
+		networkName, err := url.PathUnescape(mux.Vars(r)["networkName"])
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -87,7 +87,7 @@ func networkAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectNetwork(projectName, profileName), relation)
+		err = s.Authorizer.CheckPermission(r.Context(), r, relation, entity.TypeNetwork, projectName, "", networkName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -226,7 +226,7 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 		}
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeNetwork)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeNetwork)
 	if err != nil {
 		return response.InternalError(err)
 	}
@@ -234,7 +234,7 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 	resultString := []string{}
 	resultMap := []api.Network{}
 	for _, networkName := range networkNames {
-		if !userHasPermission(entitlement.ObjectNetwork(projectName, networkName)) {
+		if !userHasPermission(entity.TypeNetwork.AuthObject(projectName, "", networkName)) {
 			continue
 		}
 
@@ -863,7 +863,7 @@ func doNetworkGet(s *state.State, r *http.Request, allNodes bool, projectName st
 		apiNet.Description = n.Description()
 		apiNet.Type = n.Type()
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectNetwork(projectName, networkName), entitlement.RelationCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanEdit, entity.TypeNetwork, projectName, "", networkName)
 		if err == nil {
 			// Only allow admins to see network config as sensitive info can be stored there.
 			apiNet.Config = n.Config()
@@ -1508,7 +1508,7 @@ func networkStartup(s *state.State) error {
 		err = n.Start()
 		if err != nil {
 			err = fmt.Errorf("Failed starting: %w", err)
-			_ = s.DB.Cluster.UpsertWarningLocalNode(n.Project(), dbCluster.TypeNetwork, int(n.ID()), warningtype.NetworkUnvailable, err.Error())
+			_ = s.DB.Cluster.UpsertWarningLocalNode(n.Project(), entity.TypeNetwork, int(n.ID()), warningtype.NetworkUnvailable, err.Error())
 
 			return err
 		}
@@ -1523,7 +1523,7 @@ func networkStartup(s *state.State) error {
 
 		delete(initNetworks[priority], pn)
 
-		_ = warnings.ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity(s.DB.Cluster, n.Project(), warningtype.NetworkUnvailable, dbCluster.TypeNetwork, int(n.ID()))
+		_ = warnings.ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity(s.DB.Cluster, n.Project(), warningtype.NetworkUnvailable, entity.TypeNetwork, int(n.ID()))
 
 		return nil
 	}

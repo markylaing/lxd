@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,7 +22,6 @@ import (
 
 	"github.com/canonical/lxd/lxd/backup"
 	"github.com/canonical/lxd/lxd/db"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/canonical/lxd/lxd/db/warningtype"
 	deviceConfig "github.com/canonical/lxd/lxd/device/config"
@@ -66,74 +65,74 @@ var apiInternal = []APIEndpoint{
 var internalShutdownCmd = APIEndpoint{
 	Path: "shutdown",
 
-	Put: APIEndpointAction{Handler: internalShutdown, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Put: APIEndpointAction{Handler: internalShutdown, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalReadyCmd = APIEndpoint{
 	Path: "ready",
 
-	Get: APIEndpointAction{Handler: internalWaitReady, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalWaitReady, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalContainerOnStartCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstart",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStart, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStart, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalContainerOnStopNSCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstopns",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStopNS, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStopNS, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalContainerOnStopCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstop",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStop, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStop, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalSQLCmd = APIEndpoint{
 	Path: "sql",
 
-	Get:  APIEndpointAction{Handler: internalSQLGet, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
-	Post: APIEndpointAction{Handler: internalSQLPost, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get:  APIEndpointAction{Handler: internalSQLGet, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalSQLPost, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalGarbageCollectorCmd = APIEndpoint{
 	Path: "gc",
 
-	Get: APIEndpointAction{Handler: internalGC, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalGC, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalRAFTSnapshotCmd = APIEndpoint{
 	Path: "raft-snapshot",
 
-	Get: APIEndpointAction{Handler: internalRAFTSnapshot, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalRAFTSnapshot, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalImageRefreshCmd = APIEndpoint{
 	Path: "testing/image-refresh",
 
-	Get: APIEndpointAction{Handler: internalRefreshImage, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalRefreshImage, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalImageOptimizeCmd = APIEndpoint{
 	Path: "image-optimize",
 
-	Post: APIEndpointAction{Handler: internalOptimizeImage, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Post: APIEndpointAction{Handler: internalOptimizeImage, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalWarningCreateCmd = APIEndpoint{
 	Path: "testing/warnings",
 
-	Post: APIEndpointAction{Handler: internalCreateWarning, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Post: APIEndpointAction{Handler: internalCreateWarning, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 var internalBGPStateCmd = APIEndpoint{
 	Path: "testing/bgp",
 
-	Get: APIEndpointAction{Handler: internalBGPState, AccessHandler: allowPermission(entitlement.ObjectTypeServer, entitlement.RelationCanEdit)},
+	Get: APIEndpointAction{Handler: internalBGPState, AccessHandler: allowPermission(entity.TypeServer, entity.EntitlementCanEdit)},
 }
 
 type internalImageOptimizePost struct {
@@ -176,12 +175,12 @@ func internalCreateWarning(d *Daemon, r *http.Request) response.Response {
 	req.EntityID, _ = reqRaw.GetInt("entity_id")
 
 	// Check if the entity exists, and fail if it doesn't.
-	_, ok := cluster.EntityNames[req.EntityTypeCode]
+	_, ok := entity.Names[entity.Type(req.EntityTypeCode)]
 	if req.EntityTypeCode != -1 && !ok {
 		return response.SmartError(fmt.Errorf("Invalid entity type"))
 	}
 
-	err = d.State().DB.Cluster.UpsertWarning(req.Location, req.Project, req.EntityTypeCode, req.EntityID, warningtype.Type(req.TypeCode), req.Message)
+	err = d.State().DB.Cluster.UpsertWarning(req.Location, req.Project, entity.Type(req.EntityTypeCode), req.EntityID, warningtype.Type(req.TypeCode), req.Message)
 	if err != nil {
 		return response.SmartError(fmt.Errorf("Failed to create warning: %w", err))
 	}

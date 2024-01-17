@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"net"
 	"net/http"
@@ -40,7 +39,6 @@ import (
 	"github.com/canonical/lxd/lxd/daemon"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
-	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/canonical/lxd/lxd/db/warningtype"
 	"github.com/canonical/lxd/lxd/dns"
 	"github.com/canonical/lxd/lxd/endpoints"
@@ -255,17 +253,32 @@ func allowAuthenticated(d *Daemon, r *http.Request) response.Response {
 // Mux vars should be passed in so that the object we are checking can be created. For example, a certificate object requires
 // a fingerprint, the mux var for certificate fingerprints is "fingerprint", so that string should be passed in.
 // Mux vars should always be passed in with the same order they appear in the API route.
-func allowPermission(objectType entitlement.ObjectType, entitlement entitlement.Relation, muxVars ...string) func(d *Daemon, r *http.Request) response.Response {
+func allowPermission(entityType entity.Type, entitlement entity.Entitlement, muxVars ...string) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
-		objectName, err := auth.ObjectFromRequest(r, objectType, muxVars...)
-		if err != nil {
-			return response.InternalError(fmt.Errorf("Failed to create authentication object: %w", err))
+		projectName := request.ProjectParam(r)
+		location := r.URL.Query().Get("target")
+
+		vars := mux.Vars(r)
+		pathArgs := make([]string, 0, len(muxVars))
+		for _, muxVar := range muxVars {
+			arg, ok := vars[muxVar]
+			if !ok {
+				return response.InternalError(fmt.Errorf("Incorrect mux var %q in access handler", muxVar))
+			}
+
+			pathArgs = append(pathArgs, arg)
 		}
 
 		s := d.State()
+		if entityType == entity.TypeProject {
+			urlEntityType, _, _, _, _ := entity.URLToType(r.URL.String())
+			if urlEntityType != entity.TypeProject {
+				pathArgs = []string{projectName}
+				projectName = ""
+			}
+		}
 
-		// Validate whether the user has the needed permission
-		err = s.Authorizer.CheckPermission(r.Context(), r, objectName, entitlement)
+		err := s.Authorizer.CheckPermission(r.Context(), r, entitlement, entityType, projectName, location, pathArgs...)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1889,236 +1902,7 @@ func (d *Daemon) setupOpenFGA(apiURL string, apiToken string, storeID string, au
 		d.authorizer, _ = auth.LoadAuthorizer(d.shutdownCtx, auth.DriverTLS, logger.Log, d.clientCerts)
 	})
 
-	// Build the list of resources to update the model.
-	refreshResources := func() (*auth.Resources, error) {
-		isLeader := false
-
-		leaderAddress, err := d.gateway.LeaderAddress()
-		if err != nil {
-			if !errors.Is(err, cluster.ErrNodeIsNotClustered) {
-				return nil, err
-			}
-
-			isLeader = true
-		} else if leaderAddress == d.localConfig.ClusterAddress() {
-			isLeader = true
-		}
-
-		// If clustered and not running on a leader, skip the resource update.
-		if !isLeader {
-			return nil, nil
-		}
-
-		var resources auth.Resources
-
-		err = d.db.Cluster.Transaction(d.shutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
-			err := query.Scan(ctx, tx.Tx(), "SELECT certificates.fingerprint from certificates", func(scan func(dest ...any) error) error {
-				var fingerprint string
-				err := scan(&fingerprint)
-				if err != nil {
-					return err
-				}
-
-				resources.CertificateObjects = append(resources.CertificateObjects, entitlement.ObjectCertificate(fingerprint))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT name from storage_pools", func(scan func(dest ...any) error) error {
-				var storagePoolName string
-				err := scan(&storagePoolName)
-				if err != nil {
-					return err
-				}
-
-				resources.StoragePoolObjects = append(resources.StoragePoolObjects, entitlement.ObjectStoragePool(storagePoolName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT name from projects", func(scan func(dest ...any) error) error {
-				var projectName string
-				err := scan(&projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.ProjectObjects = append(resources.ProjectObjects, entitlement.ObjectProject(projectName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT images.fingerprint, projects.name from images JOIN projects ON projects.id=images.project_id", func(scan func(dest ...any) error) error {
-				var imageFingerprint string
-				var projectName string
-				err := scan(&imageFingerprint, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.ImageObjects = append(resources.ImageObjects, entitlement.ObjectImage(projectName, imageFingerprint))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT images_aliases.name, projects.name from images_aliases JOIN projects ON projects.id=images_aliases.project_id", func(scan func(dest ...any) error) error {
-				var imageAliasName string
-				var projectName string
-				err := scan(&imageAliasName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.ImageAliasObjects = append(resources.ImageAliasObjects, entitlement.ObjectImageAlias(projectName, imageAliasName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT instances.name, projects.name from instances JOIN projects ON projects.id=instances.project_id", func(scan func(dest ...any) error) error {
-				var instanceName string
-				var projectName string
-				err := scan(&instanceName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.InstanceObjects = append(resources.InstanceObjects, entitlement.ObjectInstance(projectName, instanceName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT networks.name, projects.name FROM networks JOIN projects ON projects.id=networks.project_id", func(scan func(dest ...any) error) error {
-				var networkName string
-				var projectName string
-				err := scan(&networkName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.NetworkObjects = append(resources.NetworkObjects, entitlement.ObjectNetwork(projectName, networkName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT networks_acls.name, projects.name FROM networks_acls JOIN projects ON projects.id=networks_acls.project_id", func(scan func(dest ...any) error) error {
-				var networkACLName string
-				var projectName string
-				err := scan(&networkACLName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.NetworkACLObjects = append(resources.NetworkACLObjects, entitlement.ObjectNetworkACL(projectName, networkACLName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT networks_zones.name, projects.name FROM networks_zones JOIN projects ON projects.id=networks_zones.project_id", func(scan func(dest ...any) error) error {
-				var networkZoneName string
-				var projectName string
-				err := scan(&networkZoneName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.NetworkZoneObjects = append(resources.NetworkZoneObjects, entitlement.ObjectNetworkZone(projectName, networkZoneName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT profiles.name, projects.name FROM profiles JOIN projects ON projects.id=profiles.project_id", func(scan func(dest ...any) error) error {
-				var profileName string
-				var projectName string
-				err := scan(&profileName, &projectName)
-				if err != nil {
-					return err
-				}
-
-				resources.ProfileObjects = append(resources.ProfileObjects, entitlement.ObjectProfile(projectName, profileName))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT storage_volumes.name, storage_volumes.type, storage_pools.name, projects.name, nodes.name FROM storage_volumes JOIN projects ON projects.id=storage_volumes.project_id JOIN storage_pools ON storage_pools.id=storage_volumes.storage_pool_id LEFT JOIN nodes ON storage_volumes.node_id=nodes.id", func(scan func(dest ...any) error) error {
-				var storageVolumeName string
-				var storageVolumeType int
-				var storageVolumeLocation sql.NullString
-				var storagePoolName string
-				var projectName string
-				err := scan(&storageVolumeName, &storageVolumeType, &storagePoolName, &projectName, &storageVolumeLocation)
-				if err != nil {
-					return err
-				}
-
-				storageVolumeTypeName, err := db.StoragePoolVolumeTypeToName(storageVolumeType)
-				if err != nil {
-					return err
-				}
-
-				var location string
-				if d.serverClustered && storageVolumeType != db.StoragePoolVolumeTypeContainer && storageVolumeType != db.StoragePoolVolumeTypeVM && storageVolumeLocation.Valid {
-					location = storageVolumeLocation.String
-				}
-
-				resources.StoragePoolVolumeObjects = append(resources.StoragePoolVolumeObjects, entitlement.ObjectStorageVolume(projectName, storagePoolName, storageVolumeTypeName, storageVolumeName, location))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			err = query.Scan(ctx, tx.Tx(), "SELECT storage_buckets.name, storage_pools.name, projects.name, nodes.name FROM storage_buckets JOIN projects ON projects.id=storage_buckets.project_id JOIN storage_pools ON storage_pools.id=storage_buckets.storage_pool_id LEFT JOIN nodes ON storage_buckets.node_id=nodes.id", func(scan func(dest ...any) error) error {
-				var storageBucketName string
-				var storageBucketLocation sql.NullString
-				var storagePoolName string
-				var projectName string
-				err := scan(&storageBucketName, &storagePoolName, &projectName, &storageBucketLocation)
-				if err != nil {
-					return err
-				}
-
-				var location string
-				if d.serverClustered && storageBucketLocation.Valid {
-					location = storageBucketLocation.String
-				}
-
-				resources.StorageBucketObjects = append(resources.StorageBucketObjects, entitlement.ObjectStorageBucket(projectName, storagePoolName, storageBucketName, location))
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		return &resources, nil
-	}
-
-	openfgaAuthorizer, err := auth.LoadAuthorizer(d.shutdownCtx, auth.DriverOpenFGA, logger.Log, d.clientCerts, auth.WithConfig(config), auth.WithResourcesFunc(refreshResources))
+	openfgaAuthorizer, err := auth.LoadAuthorizer(d.shutdownCtx, auth.DriverOpenFGA, logger.Log, d.clientCerts, auth.WithConfig(config))
 	if err != nil {
 		return err
 	}

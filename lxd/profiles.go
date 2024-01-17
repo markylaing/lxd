@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"io"
 	"net/http"
 	"net/url"
@@ -36,21 +36,21 @@ var profilesCmd = APIEndpoint{
 	Path: "profiles",
 
 	Get:  APIEndpointAction{Handler: profilesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageProfiles)},
+	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageProfiles)},
 }
 
 var profileCmd = APIEndpoint{
 	Path: "profiles/{name}",
 
-	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: profileAccessHandler(entitlement.RelationCanView)},
-	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
-	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
-	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: profileAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: profileDelete, AccessHandler: profileAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: profileGet, AccessHandler: profileAccessHandler(entity.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: profilePatch, AccessHandler: profileAccessHandler(entity.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: profilePost, AccessHandler: profileAccessHandler(entity.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: profilePut, AccessHandler: profileAccessHandler(entity.EntitlementCanEdit)},
 }
 
 // profileAccessHandler resolves the effective project of a profile before checking against the authorizer.
-func profileAccessHandler(relation entitlement.Relation) func(*Daemon, *http.Request) response.Response {
+func profileAccessHandler(relation entity.Entitlement) func(*Daemon, *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		profileName, err := url.PathUnescape(mux.Vars(r)["name"])
@@ -64,7 +64,7 @@ func profileAccessHandler(relation entitlement.Relation) func(*Daemon, *http.Req
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProfile(actualProject.Name, profileName), relation)
+		err = s.Authorizer.CheckPermission(r.Context(), r, relation, entity.TypeProfile, actualProject.Name, "", profileName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -175,7 +175,7 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 	recursion := util.IsRecursionRequest(r)
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeProfile)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeProfile)
 	if err != nil {
 		return response.InternalError(err)
 	}
@@ -193,7 +193,7 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 		apiProfiles := make([]*api.Profile, 0, len(profiles))
 		for _, profile := range profiles {
-			if !userHasPermission(entitlement.ObjectProfile(p.Name, profile.Name)) {
+			if !userHasPermission(entity.TypeProfile.AuthObject(p.Name, "", profile.Name)) {
 				continue
 			}
 

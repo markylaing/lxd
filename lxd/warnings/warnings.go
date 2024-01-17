@@ -3,6 +3,7 @@ package warnings
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/entity"
 	"time"
 
 	"github.com/canonical/lxd/lxd/db"
@@ -168,7 +169,7 @@ func ResolveWarningsByLocalNodeAndProjectAndType(dbCluster *db.Cluster, projectN
 }
 
 // ResolveWarningsByNodeAndProjectAndTypeAndEntity resolves warnings with the given node, project, type code, and entity.
-func ResolveWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, nodeName string, projectName string, typeCode warningtype.Type, entityTypeCode int, entityID int) error {
+func ResolveWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, nodeName string, projectName string, typeCode warningtype.Type, entityTypeCode entity.Type, entityID int) error {
 	err := dbCluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := cluster.WarningFilter{
 			TypeCode:       &typeCode,
@@ -200,7 +201,7 @@ func ResolveWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, node
 }
 
 // ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity resolves warnings with the given project, type code, and entity.
-func ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, projectName string, typeCode warningtype.Type, entityTypeCode int, entityID int) error {
+func ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, projectName string, typeCode warningtype.Type, entityTypeCode entity.Type, entityID int) error {
 	var err error
 	var localName string
 
@@ -224,7 +225,7 @@ func ResolveWarningsByLocalNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster,
 }
 
 // DeleteWarningsByNodeAndProjectAndTypeAndEntity deletes warnings with the given node, project, type code, and entity.
-func DeleteWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, nodeName string, projectName string, typeCode warningtype.Type, entityTypeCode int, entityID int) error {
+func DeleteWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, nodeName string, projectName string, typeCode warningtype.Type, entityTypeCode entity.Type, entityID int) error {
 	err := dbCluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := cluster.WarningFilter{
 			TypeCode:       &typeCode,
@@ -256,7 +257,7 @@ func DeleteWarningsByNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, nodeN
 }
 
 // DeleteWarningsByLocalNodeAndProjectAndTypeAndEntity resolves warnings with the given project, type code, and entity.
-func DeleteWarningsByLocalNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, projectName string, typeCode warningtype.Type, entityTypeCode int, entityID int) error {
+func DeleteWarningsByLocalNodeAndProjectAndTypeAndEntity(dbCluster *db.Cluster, projectName string, typeCode warningtype.Type, entityTypeCode entity.Type, entityID int) error {
 	var err error
 	var localName string
 

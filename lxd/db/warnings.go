@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/canonical/lxd/lxd/entity"
+
 	"github.com/google/uuid"
 
 	"github.com/canonical/lxd/lxd/db/cluster"
@@ -22,7 +24,7 @@ INSERT INTO warnings (node_id, project_id, entity_type_code, entity_id, uuid, ty
 `)
 
 // UpsertWarningLocalNode creates or updates a warning for the local member. Returns error if no local member name.
-func (c *Cluster) UpsertWarningLocalNode(projectName string, entityTypeCode int, entityID int, typeCode warningtype.Type, message string) error {
+func (c *Cluster) UpsertWarningLocalNode(projectName string, entityTypeCode entity.Type, entityID int, typeCode warningtype.Type, message string) error {
 	var err error
 	var localName string
 
@@ -46,7 +48,7 @@ func (c *Cluster) UpsertWarningLocalNode(projectName string, entityTypeCode int,
 }
 
 // UpsertWarning creates or updates a warning.
-func (c *Cluster) UpsertWarning(nodeName string, projectName string, entityTypeCode int, entityID int, typeCode warningtype.Type, message string) error {
+func (c *Cluster) UpsertWarning(nodeName string, projectName string, entityTypeCode entity.Type, entityID int, typeCode warningtype.Type, message string) error {
 	// Validate
 	_, err := c.GetURIFromEntity(entityTypeCode, entityID)
 	if err != nil {

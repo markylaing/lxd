@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"strings"
 
@@ -62,19 +62,19 @@ func eventsSocket(s *state.State, r *http.Request, w http.ResponseWriter) error 
 
 	var projectPermissionFunc auth.PermissionChecker
 	if projectName != "" {
-		err := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectProject(projectName), entitlement.RelationCanViewEvents)
+		err := s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanViewEvents, entity.TypeProject, "", "", projectName)
 		if err != nil {
 			return err
 		}
 	} else if allProjects {
 		var err error
-		projectPermissionFunc, err = s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanViewEvents, entitlement.ObjectTypeProject)
+		projectPermissionFunc, err = s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanViewEvents, entity.TypeProject)
 		if err != nil {
 			return err
 		}
 	}
 
-	canViewPrivilegedEvents := s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanViewPrivilegedEvents) == nil
+	canViewPrivilegedEvents := s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanViewPrivilegedEvents, entity.TypeServer, "", "") == nil
 
 	types := strings.Split(r.FormValue("type"), ",")
 	if len(types) == 1 && types[0] == "" {

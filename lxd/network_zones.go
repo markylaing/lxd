@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 
@@ -25,19 +25,19 @@ var networkZonesCmd = APIEndpoint{
 	Path: "network-zones",
 
 	Get:  APIEndpointAction{Handler: networkZonesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageNetworkZones)},
+	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageNetworkZones)},
 }
 
 var networkZoneCmd = APIEndpoint{
 	Path: "network-zones/{zone}",
 
-	Delete: APIEndpointAction{Handler: networkZoneDelete, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: networkZoneGet, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanView)},
-	Put:    APIEndpointAction{Handler: networkZonePut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
-	Patch:  APIEndpointAction{Handler: networkZonePut, AccessHandler: networkZoneAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: networkZoneDelete, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: networkZoneGet, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: networkZonePut, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: networkZonePut, AccessHandler: networkZoneAccessHandler(entity.EntitlementCanEdit)},
 }
 
-func networkZoneAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
+func networkZoneAccessHandler(relation entity.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		networkZoneName, err := url.PathUnescape(mux.Vars(r)["zone"])
@@ -51,7 +51,7 @@ func networkZoneAccessHandler(relation entitlement.Relation) func(d *Daemon, r *
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectNetworkZone(projectName, networkZoneName), relation)
+		err = s.Authorizer.CheckPermission(r.Context(), r, relation, entity.TypeNetworkZone, projectName, "", networkZoneName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -170,7 +170,7 @@ func networkZonesGet(d *Daemon, r *http.Request) response.Response {
 		return response.InternalError(err)
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeNetworkZone)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeNetworkZone)
 	if err != nil {
 		return response.InternalError(err)
 	}
@@ -178,7 +178,7 @@ func networkZonesGet(d *Daemon, r *http.Request) response.Response {
 	resultString := []string{}
 	resultMap := []api.NetworkZone{}
 	for _, zoneName := range zoneNames {
-		if !userHasPermission(entitlement.ObjectNetworkZone(projectName, zoneName)) {
+		if !userHasPermission(entity.TypeNetworkZone.AuthObject(projectName, "", zoneName)) {
 			continue
 		}
 

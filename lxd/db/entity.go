@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/entity"
+
 	"github.com/canonical/lxd/lxd/db/cluster"
 )
 
@@ -14,12 +16,12 @@ import (
 var ErrUnknownEntityID = fmt.Errorf("Unknown entity ID")
 
 // GetURIFromEntity returns the URI for the given entity type and entity ID.
-func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error) {
+func (c *Cluster) GetURIFromEntity(entityType entity.Type, entityID int) (string, error) {
 	if entityID == -1 || entityType == -1 {
 		return "", nil
 	}
 
-	_, ok := cluster.EntityNames[entityType]
+	_, ok := entity.Names[entityType]
 	if !ok {
 		return "", fmt.Errorf("Unknown entity type")
 	}
@@ -28,7 +30,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 	var uri string
 
 	switch entityType {
-	case cluster.TypeImage:
+	case entity.TypeImage:
 		var images []cluster.Image
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -48,7 +50,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], image.Fingerprint, image.Project)
+			uri = fmt.Sprintf(entity.UrIs[entityType], image.Fingerprint, image.Project)
 			break
 		}
 
@@ -56,7 +58,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeProfile:
+	case entity.TypeProfile:
 		var profiles []cluster.Profile
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -76,7 +78,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], profile.Name, profile.Project)
+			uri = fmt.Sprintf(entity.UrIs[entityType], profile.Name, profile.Project)
 			break
 		}
 
@@ -84,7 +86,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeProject:
+	case entity.TypeProject:
 		projects := make(map[int64]string)
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -104,8 +106,8 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], name)
-	case cluster.TypeCertificate:
+		uri = fmt.Sprintf(entity.UrIs[entityType], name)
+	case entity.TypeCertificate:
 		var certificates []cluster.Certificate
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -125,7 +127,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], cert.Name)
+			uri = fmt.Sprintf(entity.UrIs[entityType], cert.Name)
 			break
 		}
 
@@ -133,9 +135,9 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeContainer:
+	case entity.TypeContainer:
 		fallthrough
-	case cluster.TypeInstance:
+	case entity.TypeInstance:
 		var instances []cluster.Instance
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -155,7 +157,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], instance.Name, instance.Project)
+			uri = fmt.Sprintf(entity.UrIs[entityType], instance.Name, instance.Project)
 			break
 		}
 
@@ -163,7 +165,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeInstanceBackup:
+	case entity.TypeInstanceBackup:
 		instanceBackup, err := c.GetInstanceBackupWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get instance backup: %w", err)
@@ -188,7 +190,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], instance.Name, instanceBackup.Name, instance.Project)
+			uri = fmt.Sprintf(entity.UrIs[entityType], instance.Name, instanceBackup.Name, instance.Project)
 			break
 		}
 
@@ -196,7 +198,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeInstanceSnapshot:
+	case entity.TypeInstanceSnapshot:
 		var snapshots []cluster.InstanceSnapshot
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -216,7 +218,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 				continue
 			}
 
-			uri = fmt.Sprintf(cluster.EntityURIs[entityType], snapshot.Name, snapshot.Project)
+			uri = fmt.Sprintf(entity.UrIs[entityType], snapshot.Name, snapshot.Project)
 			break
 		}
 
@@ -224,21 +226,21 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", ErrUnknownEntityID
 		}
 
-	case cluster.TypeNetwork:
+	case entity.TypeNetwork:
 		networkName, projectName, err := c.GetNetworkNameAndProjectWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get network name and project name: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], networkName, projectName)
-	case cluster.TypeNetworkACL:
+		uri = fmt.Sprintf(entity.UrIs[entityType], networkName, projectName)
+	case entity.TypeNetworkACL:
 		networkACLName, projectName, err := c.GetNetworkACLNameAndProjectWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get network ACL name and project name: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], networkACLName, projectName)
-	case cluster.TypeNode:
+		uri = fmt.Sprintf(entity.UrIs[entityType], networkACLName, projectName)
+	case entity.TypeNode:
 		var nodeInfo NodeInfo
 
 		err := c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -253,8 +255,8 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", fmt.Errorf("Failed to get node information: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], nodeInfo.Name)
-	case cluster.TypeOperation:
+		uri = fmt.Sprintf(entity.UrIs[entityType], nodeInfo.Name)
+	case entity.TypeOperation:
 		var op cluster.Operation
 
 		err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
@@ -276,15 +278,15 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", fmt.Errorf("Failed to get operation: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], op.UUID)
-	case cluster.TypeStoragePool:
+		uri = fmt.Sprintf(entity.UrIs[entityType], op.UUID)
+	case entity.TypeStoragePool:
 		_, pool, _, err := c.GetStoragePoolWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get storage pool: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], pool.Name)
-	case cluster.TypeStorageVolume:
+		uri = fmt.Sprintf(entity.UrIs[entityType], pool.Name)
+	case entity.TypeStorageVolume:
 		var args StorageVolumeArgs
 
 		err := c.Transaction(c.closingCtx, func(ctx context.Context, tx *ClusterTx) error {
@@ -299,8 +301,8 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", fmt.Errorf("Failed to get storage volume: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], args.PoolName, args.TypeName, args.Name, args.ProjectName)
-	case cluster.TypeStorageVolumeBackup:
+		uri = fmt.Sprintf(entity.UrIs[entityType], args.PoolName, args.TypeName, args.Name, args.ProjectName)
+	case entity.TypeStorageVolumeBackup:
 		backup, err := c.GetStoragePoolVolumeBackupWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get volume backup: %w", err)
@@ -320,8 +322,8 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 			return "", fmt.Errorf("Failed to get storage volume: %w", err)
 		}
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], volume.PoolName, volume.TypeName, volume.Name, backup.Name, volume.ProjectName)
-	case cluster.TypeStorageVolumeSnapshot:
+		uri = fmt.Sprintf(entity.UrIs[entityType], volume.PoolName, volume.TypeName, volume.Name, backup.Name, volume.ProjectName)
+	case entity.TypeStorageVolumeSnapshot:
 		snapshot, err := c.GetStorageVolumeSnapshotWithID(entityID)
 		if err != nil {
 			return "", fmt.Errorf("Failed to get volume snapshot: %w", err)
@@ -329,7 +331,7 @@ func (c *Cluster) GetURIFromEntity(entityType int, entityID int) (string, error)
 
 		fields := strings.Split(snapshot.Name, "/")
 
-		uri = fmt.Sprintf(cluster.EntityURIs[entityType], snapshot.PoolName, snapshot, snapshot.TypeName, fields[0], fields[1], snapshot.ProjectName)
+		uri = fmt.Sprintf(entity.UrIs[entityType], snapshot.PoolName, snapshot, snapshot.TypeName, fields[0], fields[1], snapshot.ProjectName)
 	}
 
 	return uri, nil

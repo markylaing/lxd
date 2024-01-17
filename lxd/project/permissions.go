@@ -3,7 +3,7 @@ package project
 import (
 	"context"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -1427,32 +1427,12 @@ func FilterUsedBy(authorizer auth.Authorizer, r *http.Request, entries []string)
 	// Filter the entries.
 	usedBy := []string{}
 	for _, entry := range entries {
-		entityType, projectName, location, pathArgs, err := cluster.URLToEntityType(entry)
+		entityType, projectName, location, pathArgs, err := entity.URLToType(entry)
 		if err != nil {
 			continue
 		}
 
-		var object entitlement.Object
-		switch entityType {
-		case cluster.TypeImage:
-			object = entitlement.ObjectImage(projectName, pathArgs[0])
-		case cluster.TypeInstance:
-			object = entitlement.ObjectInstance(projectName, pathArgs[0])
-		case cluster.TypeNetwork:
-			object = entitlement.ObjectNetwork(projectName, pathArgs[0])
-		case cluster.TypeProfile:
-			object = entitlement.ObjectProfile(projectName, pathArgs[0])
-		case cluster.TypeStoragePool:
-			object = entitlement.ObjectStoragePool(pathArgs[0])
-		case cluster.TypeStorageVolume:
-			object = entitlement.ObjectStorageVolume(projectName, pathArgs[0], pathArgs[1], pathArgs[2], location)
-		case cluster.TypeStorageBucket:
-			object = entitlement.ObjectStorageBucket(projectName, pathArgs[0], pathArgs[1], location)
-		default:
-			continue
-		}
-
-		err = authorizer.CheckPermission(r.Context(), r, object, entitlement.RelationCanView)
+		err = authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanView, entityType, projectName, location, pathArgs...)
 		if err != nil {
 			continue
 		}
@@ -1485,7 +1465,7 @@ func projectHasRestriction(project *api.Project, restrictionKey string, blockVal
 func CheckClusterTargetRestriction(authorizer auth.Authorizer, r *http.Request, project *api.Project, targetFlag string) error {
 	if projectHasRestriction(project, "restricted.cluster.target", "block") && targetFlag != "" {
 		// Allow server administrators to move instances around even when restricted (node evacuation, ...)
-		err := authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanOverrideClusterTargetRestriction)
+		err := authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanOverrideClusterTargetRestriction, entity.TypeServer, "", "")
 		if err != nil && api.StatusErrorCheck(err, http.StatusForbidden) {
 			return api.StatusErrorf(http.StatusForbidden, "This project doesn't allow cluster member targeting")
 		} else if err != nil {

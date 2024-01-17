@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,34 +28,34 @@ var storagePoolBucketsCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets",
 
 	Get:  APIEndpointAction{Handler: storagePoolBucketsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolBucketsPost, AccessHandler: allowPermission(entitlement.ObjectTypeProject, entitlement.RelationCanManageStorageBuckets)},
+	Post: APIEndpointAction{Handler: storagePoolBucketsPost, AccessHandler: allowPermission(entity.TypeProject, entity.EntitlementCanManageStorageBuckets)},
 }
 
 var storagePoolBucketCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolBucketDelete, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: storagePoolBucketGet, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanView)},
-	Patch:  APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
-	Put:    APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: storagePoolBucketDelete, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolBucketGet, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanView)},
+	Patch:  APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: storagePoolBucketPut, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var storagePoolBucketKeysCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}/keys",
 
-	Get:  APIEndpointAction{Handler: storagePoolBucketKeysGet, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanView)},
-	Post: APIEndpointAction{Handler: storagePoolBucketKeysPost, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
+	Get:  APIEndpointAction{Handler: storagePoolBucketKeysGet, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanView)},
+	Post: APIEndpointAction{Handler: storagePoolBucketKeysPost, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
 }
 
 var storagePoolBucketKeyCmd = APIEndpoint{
 	Path: "storage-pools/{poolName}/buckets/{bucketName}/keys/{keyName}",
 
-	Delete: APIEndpointAction{Handler: storagePoolBucketKeyDelete, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
-	Get:    APIEndpointAction{Handler: storagePoolBucketKeyGet, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanView)},
-	Put:    APIEndpointAction{Handler: storagePoolBucketKeyPut, AccessHandler: storageBucketAccessHandler(entitlement.RelationCanEdit)},
+	Delete: APIEndpointAction{Handler: storagePoolBucketKeyDelete, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: storagePoolBucketKeyGet, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanView)},
+	Put:    APIEndpointAction{Handler: storagePoolBucketKeyPut, AccessHandler: storageBucketAccessHandler(entity.EntitlementCanEdit)},
 }
 
-func storageBucketAccessHandler(relation entitlement.Relation) func(d *Daemon, r *http.Request) response.Response {
+func storageBucketAccessHandler(relation entity.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
 		poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
@@ -76,7 +76,7 @@ func storageBucketAccessHandler(relation entitlement.Relation) func(d *Daemon, r
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectStorageBucket(projectName, poolName, bucketName, location), relation)
+		err = s.Authorizer.CheckPermission(r.Context(), r, relation, entity.TypeStorageBucket, projectName, location, poolName, bucketName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -225,7 +225,7 @@ func storagePoolBucketsGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeStorageBucket)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeStorageBucket)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -238,7 +238,7 @@ func storagePoolBucketsGet(d *Daemon, r *http.Request) response.Response {
 			location = bucket.Location
 		}
 
-		if !userHasPermission(entitlement.ObjectStorageBucket(requestProjectName, poolName, bucket.Name, location)) {
+		if !userHasPermission(entity.TypeStorageBucket.AuthObject(requestProjectName, location, poolName, bucket.Name)) {
 			continue
 		}
 

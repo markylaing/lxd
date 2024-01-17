@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canonical/lxd/lxd/entity"
+
 	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/canonical/lxd/lxd/db/schema"
 	"github.com/canonical/lxd/shared"
@@ -161,11 +163,9 @@ CREATE TABLE oidc_users_groups (
 CREATE TABLE entitlements (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     relation TEXT NOT NULL,
-    object_type TEXT NOT NULL,
-    entity_id INTEGER,
-    object_ref TEXT NOT NULL,
-    UNIQUE (relation, object_type, entity_id),
-    UNIQUE (relation, object_type, object_ref)
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    UNIQUE (relation, entity_type, entity_id)
 );
 
 CREATE TABLE groups_entitlements (
@@ -177,125 +177,110 @@ CREATE TABLE groups_entitlements (
     UNIQUE (group_id, entitlement_id)
 );
 
-CREATE VIEW openfga_tuple_ref (user, relation, object_type, object_ref, entity_id) AS
+CREATE VIEW openfga_entity_ref (user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id) AS
 	-- Type-bound public access.
-	SELECT 'user:*', 'user', 'server', 'lxd', NULL  
-
-	-- Group entitlements.
-	UNION SELECT printf('group:%s#member', groups.name),
-		entitlements.relation,
-		entitlements.object_type,
-		entitlements.object_ref,
-		entitlements.entity_id
-		FROM entitlements 
-			JOIN groups_entitlements ON entitlements.id = groups_entitlements.entitlement_id 
-			JOIN groups on groups_entitlements.group_id = groups.id  
+	SELECT 23, '*', '', 'user', 22, json_array(), 0
 
 	-- Server to project relations.
-	UNION SELECT 'server:lxd',
+	UNION SELECT 22, json_array(), '',
 		'server',
-		'project',
-		projects.name,
+		3,
+		json_array(projects.name),
 		projects.id
 		FROM projects
 	
 	-- Server to group relations.
-	UNION SELECT 'server:lxd',
+	UNION SELECT 22, json_array(), '',
 		'server',
-		'group',
-		groups.name,
+		24,
+		json_array(groups.name),
 		groups.id
 		FROM groups
 	
 	-- Server to certificate relations.
-	UNION SELECT 'server:lxd',
+	UNION SELECT 22, json_array(), '',
 		'server',
-		'certificate',
-		certificates.fingerprint,
+		4,
+		json_array(certificates.fingerprint),
 		certificates.id
 		FROM certificates
 
 	-- Server to storage pool relations.
-  	UNION SELECT 'server:lxd',
+  	UNION SELECT 22, json_array(), '',
 		'server',
-		'storage_pool',
-		storage_pools.name,
+		12,
+		json_array(storage_pools.name),
 		storage_pools.id
 		FROM storage_pools
 
 	-- Project to image relations.
-	UNION SELECT printf('project:%s', projects.name),
+	UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'image',
-		printf('%s/%s', projects.name, images.fingerprint),
+		1,
+		json_array(projects.name, images.fingerprint),
 		images.id
 		FROM images JOIN projects ON project_id=projects.id
 	
 	-- Project to image alias relations.
-	UNION SELECT printf('project:%s', projects.name),
+	UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'image_alias',
-		printf('%s/%s', projects.name, replace(images_aliases.name, '/', '%2F')),
+		25,
+		json_array(projects.name, images_aliases.name),
 		images_aliases.id
 		FROM images_aliases JOIN projects ON project_id=projects.id
     
 	-- Project to instance relations.
-	UNION SELECT printf('project:%s', projects.name),
+	UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'instance',
-		printf('%s/%s', projects.name, instances.name),
+		5,
+		json_array(projects.name, instances.name),
 		instances.id
     	FROM instances JOIN projects ON project_id=projects.id 
 	
 	-- Project to network relations.
-	UNION SELECT printf('project:%s', projects.name),
+	UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'network',
-		printf('%s/%s', projects.name, networks.name),
+		8,
+		json_array(projects.name, networks.name),
 		networks.id
     FROM networks JOIN projects ON project_id=projects.id 
     
     -- Project to network ACL relations.
-    UNION SELECT printf('project:%s', projects.name),
+    UNION SELECT 3, json_array(projects.name), '',
          'project',
-         'network_acl',
-         printf('%s/%s', projects.name, networks_acls.name),
+         9,
+		json_array(projects.name, networks_acls.name),
          networks_acls.id
     FROM networks_acls JOIN projects ON project_id=projects.id 
     
     -- Project to network zone relations.
-    UNION SELECT printf('project:%s', projects.name),
+    UNION SELECT 3, json_array(projects.name), '',
          'project',
-  		 'network_zone',
-  		 printf('%s/%s', projects.name, replace(networks_zones.name, '/', '%2F')),
+  		 26,
+		json_array(projects.name, networks_zones.name),
   		 networks_zones.id
     FROM networks_zones JOIN projects ON project_id=projects.id 
     
     -- Project to profile relations.
-    UNION SELECT printf('project:%s', projects.name),
+    UNION SELECT 3, json_array(projects.name), '',
          'project',
-         'profile',
-         printf('%s/%s', projects.name, profiles.name),
+         2,
+		json_array(projects.name, profiles.name),
          profiles.id
     FROM profiles JOIN projects ON project_id=projects.id 
     
     -- Project to storage volume relations.
-    UNION SELECT printf('project:%s', projects.name),
+    UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'storage_volume',
-		printf('%s/%s/%s/%s/%s', 
-			projects.name,
-			storage_pools.name,
+		13,
+		json_array(projects.name, storage_pools.name, 			
 			-- Use case statement to resolve type to name.
 			CASE storage_volumes.type
 				WHEN 0 THEN 'container' 
          	    WHEN 1 THEN 'image' 
          	    WHEN 2 THEN 'custom' 
          	    WHEN 3 THEN 'virtual-machine' 
-			END,
-			storage_volumes.name,
-			coalesce(nodes.name, '')
-		),
+			END, storage_volumes.name, replace(coalesce(nodes.name, ''), 'none', '')),
 		storage_volumes.id
     	FROM storage_volumes 
         	JOIN projects ON project_id=projects.id 
@@ -303,37 +288,29 @@ CREATE VIEW openfga_tuple_ref (user, relation, object_type, object_ref, entity_i
     	    LEFT JOIN nodes ON node_id=nodes.id
     
     -- Project to storage bucket relations.	
-	UNION SELECT printf('project:%s', projects.name),
+	UNION SELECT 3, json_array(projects.name), '',
 		'project',
-		'storage_bucket',
-		printf('%s/%s/%s/%s', 
-			projects.name, 
-			storage_pools.name, 
-			replace(storage_buckets.name, '/', '%2F'),
-			coalesce(nodes.name, '')
-		),
+		18,
+		json_array(projects.name, storage_pools.name, storage_buckets.name, replace(coalesce(nodes.name, ''), 'none', '')),
 		storage_buckets.id
 	FROM storage_buckets 
         JOIN projects ON project_id=projects.id 
         JOIN storage_pools ON storage_pool_id=storage_pools.id 
         LEFT JOIN nodes ON node_id=nodes.id;
 
--- Before creating an entitlement, check that the entity_id is valid for the object_type.
-CREATE TRIGGER entitlements_check_entity
-  BEFORE INSERT ON entitlements
-  WHEN NEW.entity_id IS NOT NULL AND (SELECT COUNT(*) FROM openfga_tuple_ref WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id) = 0
-  BEGIN
-    SELECT RAISE(FAIL,
-    "No entity exists with the given type and ID");
-  END;
+CREATE VIEW openfga_tuple_ref (user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id) AS
+	-- Group entitlements.
+	SELECT 24, json_array(groups.name), 'member',
+		entitlements.relation,
+		openfga_entity_ref.entity_type,
+		openfga_entity_ref.object_ref,
+		groups_entitlements.id
+		FROM entitlements
+			JOIN groups_entitlements ON entitlements.id = groups_entitlements.entitlement_id 
+			JOIN groups ON groups_entitlements.group_id = groups.id
+			JOIN openfga_entity_ref ON entitlements.entity_type = openfga_entity_ref.entity_type AND entitlements.entity_id = openfga_entity_ref.entity_id
 
--- When creating a new entitlement, set the object_ref to exactly what is in the openfga_tuple_ref view.
-CREATE TRIGGER entitlements_set_object_ref
-  AFTER INSERT ON entitlements
-  WHEN NEW.entity_id IS NOT NULL
-  BEGIN
-    UPDATE entitlements SET object_ref = (SELECT object_ref FROM openfga_tuple_ref WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id) WHERE object_type = NEW.object_type AND entity_id = NEW.entity_id; 
-  END;
+	UNION SELECT user_entity_type, user_ref, user_relation, relation, entity_type, object_ref, entity_id FROM openfga_entity_ref;
 `
 	_, err := tx.ExecContext(ctx, update)
 	if err != nil {
@@ -4225,7 +4202,7 @@ CREATE VIEW projects_used_by_ref (name, value) AS
     FROM images JOIN projects ON project_id=projects.id UNION
   SELECT projects.name, printf('%s', profiles.name, projects.name)
     FROM profiles JOIN projects ON project_id=projects.id
-`, EntityURIs[TypeContainer], EntityURIs[TypeImage], EntityURIs[TypeProfile])
+`, entity.UrIs[entity.TypeContainer], entity.UrIs[entity.TypeImage], entity.UrIs[entity.TypeProfile])
 	_, err = tx.Exec(stmt)
 	if err != nil {
 		return fmt.Errorf("Failed to create projects_used_by_ref view: %w", err)
@@ -4317,7 +4294,7 @@ CREATE VIEW profiles_used_by_ref (project, name, value) AS
       ON containers_profiles.profile_id=profiles.id
     JOIN containers
       ON containers.id=containers_profiles.container_id
-`, EntityURIs[TypeContainer])
+`, entity.UrIs[entity.TypeContainer])
 	_, err = tx.Exec(stmt)
 	if err != nil {
 		return fmt.Errorf("Failed to create profiles_used_by_ref view: %w", err)

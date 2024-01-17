@@ -251,8 +251,8 @@ For help with any of those, simply call them with --help.`))
 	warningCmd := cmdWarning{global: &globalCmd}
 	app.AddCommand(warningCmd.Command())
 
-	groupCmd := cmdGroup{global: &globalCmd}
-	app.AddCommand(groupCmd.Command())
+	//groupCmd := cmdGroup{global: &globalCmd}
+	//app.AddCommand(groupCmd.Command())
 
 	// Get help command
 	app.InitDefaultHelpCmd()

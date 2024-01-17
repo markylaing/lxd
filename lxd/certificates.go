@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"github.com/canonical/lxd/shared/entitlement"
+	"github.com/canonical/lxd/lxd/entity"
 	"net"
 	"net/http"
 	"net/url"
@@ -136,7 +136,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 	recursion := util.IsRecursionRequest(r)
 	s := d.State()
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entitlement.RelationCanView, entitlement.ObjectTypeCertificate)
+	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), r, entity.EntitlementCanView, entity.TypeCertificate)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -153,7 +153,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 
 			certResponses = make([]api.Certificate, 0, len(baseCerts))
 			for _, baseCert := range baseCerts {
-				if !userHasPermission(entitlement.ObjectCertificate(baseCert.Fingerprint)) {
+				if !userHasPermission(entity.TypeCertificate.AuthObject("", "", baseCert.Fingerprint)) {
 					continue
 				}
 
@@ -180,7 +180,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 	for _, certs := range trustedCertificates {
 		for _, cert := range certs {
 			fingerprint := shared.CertFingerprint(&cert)
-			if !userHasPermission(entitlement.ObjectCertificate(fingerprint)) {
+			if !userHasPermission(entity.TypeCertificate.AuthObject("", "", fingerprint)) {
 				continue
 			}
 
@@ -548,7 +548,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 
 	// Handle requests by non-admin users.
 	var userCanCreateCertificates bool
-	err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectServer(), entitlement.RelationCanManageCertificates)
+	err = s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanManageCertificates, entity.TypeServer, "", "")
 	if err == nil {
 		userCanCreateCertificates = true
 	} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -846,7 +846,7 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	err = s.Authorizer.CheckPermission(ctx, r, entitlement.ObjectCertificate(cert.Fingerprint), entitlement.RelationCanView)
+	err = s.Authorizer.CheckPermission(ctx, r, entity.EntitlementCanView, entity.TypeCertificate, "", "", cert.Fingerprint)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1010,7 +1010,7 @@ func doCertificateUpdate(d *Daemon, dbInfo api.Certificate, req api.CertificateP
 		}
 
 		var userCanEditCertificate bool
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectCertificate(dbInfo.Fingerprint), entitlement.RelationCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanEdit, entity.TypeCertificate, "", "", dbInfo.Fingerprint)
 		if err == nil {
 			userCanEditCertificate = true
 		} else if !api.StatusErrorCheck(err, http.StatusForbidden) {
@@ -1174,7 +1174,7 @@ func certificateDelete(d *Daemon, r *http.Request) response.Response {
 		}
 
 		var userCanEditCertificate bool
-		err = s.Authorizer.CheckPermission(r.Context(), r, entitlement.ObjectCertificate(certInfo.Fingerprint), entitlement.RelationCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), r, entity.EntitlementCanEdit, entity.TypeCertificate, "", "", certInfo.Fingerprint)
 		if err == nil {
 			userCanEditCertificate = true
 		} else if api.StatusErrorCheck(err, http.StatusForbidden) {
