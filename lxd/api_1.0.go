@@ -217,7 +217,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 		authMethods = append(authMethods, api.AuthenticationMethodCandid)
 	}
 
-	oidcIssuer, oidcClientID, _ := s.GlobalConfig.OIDCServer()
+	oidcIssuer, oidcClientID, _, _ := s.GlobalConfig.OIDCServer()
 	if oidcIssuer != "" && oidcClientID != "" {
 		authMethods = append(authMethods, api.AuthenticationMethodOIDC)
 	}
@@ -891,7 +891,7 @@ func doAPI10UpdateTriggers(d *Daemon, nodeChanged, clusterChanged map[string]str
 			acmeCAURLChanged = true
 		case "acme.domain":
 			acmeDomainChanged = true
-		case "oidc.issuer", "oidc.client.id", "oidc.audience":
+		case "oidc.issuer", "oidc.client.id", "oidc.audience", "oidc.groups_claim":
 			oidcChanged = true
 		}
 	}
@@ -1054,13 +1054,13 @@ func doAPI10UpdateTriggers(d *Daemon, nodeChanged, clusterChanged map[string]str
 	}
 
 	if oidcChanged {
-		oidcIssuer, oidcClientID, oidcAudience := clusterConfig.OIDCServer()
+		oidcIssuer, oidcClientID, oidcAudience, oidcGroupsClaim := clusterConfig.OIDCServer()
 
 		if oidcIssuer == "" || oidcClientID == "" {
 			d.oidcVerifier = nil
 		} else {
 			var err error
-			d.oidcVerifier, err = oidc.NewVerifier(oidcIssuer, oidcClientID, oidcAudience, s.ServerCert, nil)
+			d.oidcVerifier, err = oidc.NewVerifier(oidcIssuer, oidcClientID, oidcAudience, s.ServerCert, &oidc.Opts{GroupsClaim: oidcGroupsClaim})
 			if err != nil {
 				return fmt.Errorf("Failed creating verifier: %w", err)
 			}
