@@ -312,7 +312,7 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (trusted b
 	// Allow internal cluster traffic by checking against the trusted certfificates.
 	if r.TLS != nil {
 		for _, i := range r.TLS.PeerCertificates {
-			trusted, fingerprint := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateServer), d.endpoints.NetworkCert(), false)
+			trusted, fingerprint := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateServer))
 			if trusted {
 				return true, fingerprint, "cluster", nil, nil
 			}
@@ -367,21 +367,33 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (trusted b
 		return true, result.Email, api.AuthenticationMethodOIDC, result.IdentityProviderGroups, nil
 	}
 
-	// Validate normal TLS access.
+	// Validate cert via CA if configured.
 	trustCACertificates := d.globalConfig.TrustCACertificates()
+	if trustCACertificates {
+		for _, i := range r.TLS.PeerCertificates {
+			trusted, err := util.IsCASigned(*i, d.endpoints.NetworkCert())
+			if err != nil && !api.StatusErrorCheck(err, http.StatusUnauthorized) {
+				return false, "", "", nil, err
+			} else if trusted {
+				request.SetCtxValue(r, request.CtxCASigned, true)
+				return true, shared.CertFingerprint(i), api.AuthenticationMethodTLS, nil, nil
+			}
+		}
+	}
 
 	// Validate metrics certificates.
 	if r.URL.Path == "/1.0/metrics" {
 		for _, i := range r.TLS.PeerCertificates {
-			trusted, username := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateMetricsRestricted, api.IdentityTypeCertificateMetricsUnrestricted), d.endpoints.NetworkCert(), trustCACertificates)
+			trusted, username := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateMetricsRestricted, api.IdentityTypeCertificateMetricsUnrestricted))
 			if trusted {
 				return true, username, api.AuthenticationMethodTLS, nil, nil
 			}
 		}
 	}
 
+	// Validate normal TLS access.
 	for _, i := range r.TLS.PeerCertificates {
-		trusted, username := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateClientRestricted, api.IdentityTypeCertificateClientUnrestricted), d.endpoints.NetworkCert(), trustCACertificates)
+		trusted, username := util.CheckTrustState(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateClientRestricted, api.IdentityTypeCertificateClientUnrestricted))
 		if trusted {
 			return true, username, api.AuthenticationMethodTLS, nil, nil
 		}
@@ -610,6 +622,12 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 				ctx = context.WithValue(ctx, request.CtxForwardedAddress, r.Header.Get(request.HeaderForwardedAddress))
 				ctx = context.WithValue(ctx, request.CtxForwardedUsername, r.Header.Get(request.HeaderForwardedUsername))
 				ctx = context.WithValue(ctx, request.CtxForwardedProtocol, r.Header.Get(request.HeaderForwardedProtocol))
+
+				forwardedCASigned := r.Header.Get(request.HeaderForwardedCASigned)
+				if shared.IsTrue(forwardedCASigned) {
+					ctx = context.WithValue(ctx, request.CtxForwardedCASigned, true)
+				}
+
 				forwardedIdentityProviderGroupsJSON := r.Header.Get(request.HeaderForwardedIdentityProviderGroups)
 				if forwardedIdentityProviderGroupsJSON != "" {
 					var forwardedIdentityProviderGroups []string

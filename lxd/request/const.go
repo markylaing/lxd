@@ -45,6 +45,10 @@ const (
 
 	// CtxTrusted is a boolean value that indicates whether the request was authenticated or not.
 	CtxTrusted CtxKey = "trusted"
+
+	// CtxCASigned indicates that the request was authenticated via PKI (e.g. signed by the server CA)
+	CtxCASigned          CtxKey = "ca_signed"
+	CtxForwardedCASigned CtxKey = "forwarded_ca_signed"
 )
 
 // Headers.
@@ -61,4 +65,6 @@ const (
 	// HeaderForwardedIdentityProviderGroups is the forwarded identity provider groups field in request header.
 	// This will be a JSON marshalled []string.
 	HeaderForwardedIdentityProviderGroups = "X-LXD-forwarded-identity-provider-groups"
+
+	HeaderForwardedCASigned = "X-LXD-forwarded-CA-signed"
 )

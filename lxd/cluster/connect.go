@@ -55,26 +55,31 @@ func Connect(address string, networkCert *shared.CertInfo, serverCert *shared.Ce
 		proxy := func(req *http.Request) (*url.URL, error) {
 			ctx := r.Context()
 
-			val, ok := ctx.Value(request.CtxUsername).(string)
-			if ok {
-				req.Header.Add(request.HeaderForwardedUsername, val)
+			username, err := request.GetCtxValue[string](ctx, request.CtxUsername)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to set required forwarding header: %w", err)
 			}
 
-			val, ok = ctx.Value(request.CtxProtocol).(string)
-			if ok {
-				req.Header.Add(request.HeaderForwardedProtocol, val)
+			req.Header.Add(request.HeaderForwardedUsername, username)
+
+			protocol, err := request.GetCtxValue[string](ctx, request.CtxProtocol)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to set required forwarding header: %w", err)
 			}
 
+			req.Header.Add(request.HeaderForwardedProtocol, protocol)
 			req.Header.Add(request.HeaderForwardedAddress, r.RemoteAddr)
 
-			identityProviderGroupsAny := ctx.Value(request.CtxIdentityProviderGroups)
-			if ok {
-				identityProviderGroups, ok := identityProviderGroupsAny.([]string)
-				if ok {
-					b, err := json.Marshal(identityProviderGroups)
-					if err == nil {
-						req.Header.Add(request.HeaderForwardedIdentityProviderGroups, string(b))
-					}
+			caSigned, _ := request.GetCtxValue[bool](ctx, request.CtxCASigned)
+			if caSigned {
+				req.Header.Add(request.HeaderForwardedCASigned, "true")
+			}
+
+			identityProviderGroups, _ := request.GetCtxValue[[]string](ctx, request.CtxIdentityProviderGroups)
+			if identityProviderGroups != nil {
+				b, err := json.Marshal(identityProviderGroups)
+				if err == nil {
+					req.Header.Add(request.HeaderForwardedIdentityProviderGroups, string(b))
 				}
 			}
 

@@ -107,9 +107,10 @@ func (c *commonAuthorizer) requestDetails(r *http.Request) (*requestDetails, err
 	// Forwarded protocol can be empty.
 	d.forwardedProtocol, _ = request.GetCtxValue[string](r.Context(), request.CtxForwardedProtocol)
 
-	// If we're in a CA environment, it's possible for a certificate to be trusted despite not being present in the trust store.
-	// We rely on the validation of the certificate (and its potential revocation) having been done in CheckTrustState.
-	d.isPKI = d.authenticationProtocol() == api.AuthenticationMethodTLS && shared.PathExists(shared.VarPath("server.ca"))
+	d.isPKI, _ = request.GetCtxValue[bool](r.Context(), request.CtxCASigned)
+	if d.forwardedProtocol != "" {
+		d.isPKI, _ = request.GetCtxValue[bool](r.Context(), request.CtxForwardedCASigned)
+	}
 
 	// Username cannot be empty.
 	d.userName, err = request.GetCtxValue[string](r.Context(), request.CtxUsername)

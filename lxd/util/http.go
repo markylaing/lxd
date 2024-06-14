@@ -152,38 +152,48 @@ type ContextAwareRequest interface {
 	WithContext(ctx context.Context) *http.Request
 }
 
+func IsCASigned(cert x509.Certificate, networkCert *shared.CertInfo) (bool, error) {
+	ca := networkCert.CA()
+	if ca == nil {
+		return false, fmt.Errorf("Network cert does not have an associated CA")
+	}
+
+	err := cert.CheckSignatureFrom(ca)
+	if err != nil {
+		return false, api.StatusErrorf(http.StatusUnauthorized, "Failed to verify CA signature for the given certificate: %w", err)
+	}
+
+	crl := networkCert.CRL()
+	if crl == nil {
+		// No certificates to revoke.
+		return true, nil
+	}
+
+	err = crl.CheckSignatureFrom(ca)
+	if err != nil {
+		// CRL not signed by CA
+		return false, api.StatusErrorf(http.StatusUnauthorized, "Failed to verify that the certificate revokation list was signed by the CA: %w", err)
+	}
+
+	for _, revoked := range crl.RevokedCertificateEntries {
+		if cert.SerialNumber.Cmp(revoked.SerialNumber) == 0 {
+			// Certificate is revoked, so not trusted anymore.
+			return false, api.StatusErrorf(http.StatusUnauthorized, "Certificate has been revoked")
+		}
+	}
+
+	// Certificate not revoked, so trust it as is signed by CA cert.
+	return true, nil
+}
+
 // CheckTrustState checks whether the given client certificate is trusted
 // (i.e. it has a valid time span and it belongs to the given list of trusted
 // certificates).
 // Returns whether or not the certificate is trusted, and the fingerprint of the certificate.
-func CheckTrustState(cert x509.Certificate, trustedCerts map[string]x509.Certificate, networkCert *shared.CertInfo, trustCACertificates bool) (bool, string) {
+func CheckTrustState(cert x509.Certificate, trustedCerts map[string]x509.Certificate) (bool, string) {
 	// Extra validity check (should have been caught by TLS stack)
 	if time.Now().Before(cert.NotBefore) || time.Now().After(cert.NotAfter) {
 		return false, ""
-	}
-
-	if networkCert != nil && trustCACertificates {
-		ca := networkCert.CA()
-
-		if ca != nil && cert.CheckSignatureFrom(ca) == nil {
-			// Check whether the certificate has been revoked.
-			crl := networkCert.CRL()
-
-			if crl != nil {
-				if crl.CheckSignatureFrom(ca) != nil {
-					return false, "" // CRL not signed by CA
-				}
-
-				for _, revoked := range crl.RevokedCertificates {
-					if cert.SerialNumber.Cmp(revoked.SerialNumber) == 0 {
-						return false, "" // Certificate is revoked, so not trusted anymore.
-					}
-				}
-			}
-
-			// Certificate not revoked, so trust it as is signed by CA cert.
-			return true, shared.CertFingerprint(&cert)
-		}
 	}
 
 	// Check whether client certificate is in trust store.
