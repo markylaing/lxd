@@ -265,11 +265,13 @@ fine_grained_authorization() {
 }
 
 user_is_not_server_admin() {
-  # Can always see server info (type-bound public access https://openfga.dev/docs/modeling/public-access).
-  lxc_remote info oidc: > /dev/null
+  # Should be trusted and able to see some server info.
+  [ "$(lxc_remote query oidc:/1.0 | jq --exit-status --raw-output '.auth')" = "trusted" ]
+  [ "$(lxc_remote query oidc:/1.0 | jq --exit-status --raw-output '.auth_user_method')" = "oidc" ]
+  [ "$(lxc_remote query oidc:/1.0 | jq --exit-status --raw-output '.auth_user_name')" = "test-user@example.com" ]
 
   # Cannot see any config.
-  ! lxc_remote info oidc: | grep -Fq 'core.https_address' || false
+  ! lxc_remote query oidc:/1.0 | jq --exit-status '.config."core.https_address"' || false
 
   # Cannot set any config.
   ! lxc_remote config set oidc: core.proxy_https=https://example.com || false
