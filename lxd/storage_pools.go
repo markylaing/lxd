@@ -160,6 +160,11 @@ func storagePoolsGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
+	hasViewPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), auth.EntitlementCanView, entity.TypeStoragePool)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	hasEditPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), auth.EntitlementCanEdit, entity.TypeStoragePool)
 	if err != nil {
 		return response.InternalError(err)
@@ -168,6 +173,10 @@ func storagePoolsGet(d *Daemon, r *http.Request) response.Response {
 	resultString := []string{}
 	resultMap := []api.StoragePool{}
 	for _, poolName := range poolNames {
+		if !hasViewPermission(entity.StoragePoolURL(poolName)) {
+			continue
+		}
+
 		if !recursion {
 			resultString = append(resultString, fmt.Sprintf("/%s/storage-pools/%s", version.APIVersion, poolName))
 		} else {
