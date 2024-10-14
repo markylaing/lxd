@@ -340,6 +340,16 @@ func (i Identity) PendingTLSMetadata() (*PendingTLSMetadata, error) {
 	return &metadata, nil
 }
 
+func (i Identity) CertificateMetadata() (*CertificateMetadata, error) {
+	var metadata CertificateMetadata
+	err := json.Unmarshal([]byte(i.Metadata), &metadata)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal certificate identity metadata: %w", err)
+	}
+
+	return &metadata, nil
+}
+
 // ToAPI converts an Identity to an api.Identity, executing database queries as necessary.
 func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.PermissionChecker) (*api.Identity, error) {
 	groups, err := GetAuthGroupsByIdentityID(ctx, tx, i.ID)
@@ -354,12 +364,23 @@ func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.Perm
 		}
 	}
 
+	var tlsCertificate string
+	if i.AuthMethod == api.AuthenticationMethodTLS && i.Type != api.IdentityTypeCertificateClientPending {
+		metadata, err := i.CertificateMetadata()
+		if err != nil {
+			return nil, err
+		}
+
+		tlsCertificate = metadata.Certificate
+	}
+
 	return &api.Identity{
 		AuthenticationMethod: string(i.AuthMethod),
 		Type:                 string(i.Type),
 		Identifier:           i.Identifier,
 		Name:                 i.Name,
 		Groups:               groupNames,
+		TLSCertificate:       tlsCertificate,
 	}, nil
 }
 

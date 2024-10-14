@@ -61,6 +61,11 @@ type Identity struct {
 	// Groups is the list of groups for which the identity is a member.
 	// Example: ["foo", "bar"]
 	Groups []string `json:"groups" yaml:"groups"`
+
+	// TLSCertificate is a PEM encoded x509 certificate. This is only set if the AuthenticationMethod is AuthenticationMethodTLS.
+	//
+	// API extension: access_management_tls.
+	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate"`
 }
 
 // Writable converts a Identity struct into a IdentityPut struct (filters read-only fields).
@@ -103,6 +108,16 @@ type IdentityPut struct {
 	// Groups is the list of groups for which the identity is a member.
 	// Example: ["foo", "bar"]
 	Groups []string `json:"groups" yaml:"groups"`
+
+	// Name is the name of the identity. This can only be set if the authentication method of the identity is AuthenticationMethodTLS.
+	// Example: foo
+	// API extension: access_management_tls
+	Name string `json:"name" yaml:"name"`
+
+	// TLSCertificate is a base64 encoded x509 certificate. This can only be set if the authentication method of the identity is AuthenticationMethodTLS.
+	//
+	// API extension: access_management_tls.
+	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate"`
 }
 
 // IdentitiesTLSPost contains required information for the creation of a TLS identity.
