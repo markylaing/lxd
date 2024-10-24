@@ -110,6 +110,8 @@ cleanup() {
     if [ "${expandDmesg}" = "no" ]; then
       echo "::endgroup::"
     fi
+
+    panic_checker "${TEST_DIR}"
   fi
 
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
@@ -405,6 +407,11 @@ if [ "${1:-"all"}" != "cluster" ]; then
     run_test test_syslog_socket "Syslog socket"
     run_test test_lxd_user "lxd user"
 fi
+
+# Run panic checker here in case a test was successful but panics occurred.
+# E.g. A command that was expected to fail did fail, but because of a panic and not because of an expected failure.
+# Redirect output to null, the panic will be outputted in the clean up function.
+panic_checker "${TEST_DIR}" > /dev/null
 
 # shellcheck disable=SC2034
 TEST_RESULT=success
