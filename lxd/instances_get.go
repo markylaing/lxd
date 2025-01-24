@@ -510,6 +510,17 @@ func instancesGet(d *Daemon, r *http.Request) response.Response {
 		return response.SyncResponse(true, resultList)
 	}
 
+	urlToInstance := make(map[*api.URL]auth.EntitlementReporter)
+	for _, res := range resultFullList {
+		u := entity.InstanceURL(res.Project, res.Name)
+		urlToInstance[u] = res
+	}
+
+	err = reportEntitlements(r.Context(), s.Authorizer, s.IdentityCache, entity.TypeInstance, []auth.Entitlement{auth.EntitlementCanView}, urlToInstance)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	if recursion == 1 {
 		resultList := make([]*api.Instance, 0, len(resultFullList))
 		for i := range resultFullList {

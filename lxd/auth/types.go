@@ -31,6 +31,10 @@ const (
 	AuthenticationMethodDevLXD = "devlxd"
 )
 
+type EntitlementReporter interface {
+	ReportEntitlements([]string) // Needs to be string because this is for API types.
+}
+
 // PermissionChecker is a type alias for a function that returns whether a user has required permissions on an object.
 // It is returned by Authorizer.GetPermissionChecker.
 type PermissionChecker func(entityURL *api.URL) bool

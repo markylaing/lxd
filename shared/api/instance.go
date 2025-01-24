@@ -293,6 +293,12 @@ type Instance struct {
 	// Expanded devices (all profiles and local devices merged)
 	// Example: {"root": {"type": "disk", "pool": "default", "path": "/"}}
 	ExpandedDevices map[string]map[string]string `json:"expanded_devices,omitempty" yaml:"expanded_devices,omitempty"`
+
+	AccessEntitlements []string `json:"access_entitlements" yaml:"access_entitlements"`
+}
+
+func (i *Instance) ReportEntitlements(entitlements []string) {
+	i.AccessEntitlements = entitlements
 }
 
 // InstanceFull is a combination of Instance, InstanceBackup, InstanceState and InstanceSnapshot.

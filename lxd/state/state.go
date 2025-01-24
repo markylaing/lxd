@@ -4,6 +4,7 @@ package state
 
 import (
 	"context"
+	"github.com/canonical/lxd/lxd/identity"
 	"net/http"
 	"net/url"
 	"time"
@@ -59,6 +60,8 @@ type State struct {
 
 	// Server certificate
 	ServerCert func() *shared.CertInfo
+
+	IdentityCache *identity.Cache
 
 	// UpdateIdentityCache refreshes the local cache of identities.
 	// This should be called whenever an identity is added, modified, or removed.
