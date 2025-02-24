@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -19,7 +20,7 @@ type Permission struct {
 	ID          int
 	GroupID     int
 	Entitlement auth.Entitlement
-	EntityType  EntityType
+	EntityType  types.EntityType
 	EntityID    int
 }
 
@@ -32,7 +33,7 @@ type Permission struct {
 // unexpected error.
 func GetPermissionEntityURLs(ctx context.Context, tx *sql.Tx, permissions []Permission) ([]Permission, map[entity.Type]map[int]*api.URL, error) {
 	// To make as few calls as possible, categorize the permissions by entity type.
-	permissionsByEntityType := map[EntityType][]Permission{}
+	permissionsByEntityType := map[types.EntityType][]Permission{}
 	for _, permission := range permissions {
 		permissionsByEntityType[permission.EntityType] = append(permissionsByEntityType[permission.EntityType], permission)
 	}
@@ -100,7 +101,7 @@ func GetPermissionEntityURLs(ctx context.Context, tx *sql.Tx, permissions []Perm
 	// If there are any dangling permissions, log an appropriate warning message.
 	if len(danglingPermissions) > 0 {
 		permissionIDs := make([]int, 0, len(danglingPermissions))
-		entityTypes := make([]EntityType, 0, len(danglingPermissions))
+		entityTypes := make([]types.EntityType, 0, len(danglingPermissions))
 		for _, perm := range danglingPermissions {
 			permissionIDs = append(permissionIDs, perm.ID)
 			if !shared.ValueInSlice(perm.EntityType, entityTypes) {

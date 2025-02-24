@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/instance"
 	"github.com/canonical/lxd/lxd/instance/instancetype"
 	"github.com/canonical/lxd/lxd/project"
@@ -101,7 +101,7 @@ func storagePoolVolumeTypeStateGet(d *Daemon, r *http.Request) response.Response
 	}
 
 	// Check that the storage volume type is valid.
-	if !shared.ValueInSlice(volumeType, []int{cluster.StoragePoolVolumeTypeCustom, cluster.StoragePoolVolumeTypeContainer, cluster.StoragePoolVolumeTypeVM}) {
+	if !shared.ValueInSlice(volumeType, []int{int(types.StoragePoolVolumeTypeCustom), int(types.StoragePoolVolumeTypeContainer), int(types.StoragePoolVolumeTypeVM)}) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", volumeTypeName))
 	}
 
@@ -120,7 +120,7 @@ func storagePoolVolumeTypeStateGet(d *Daemon, r *http.Request) response.Response
 
 	// Fetch the current usage.
 	var usage *storagePools.VolumeUsage
-	if volumeType == cluster.StoragePoolVolumeTypeCustom {
+	if volumeType == int(types.StoragePoolVolumeTypeCustom) {
 		// Custom volumes.
 		usage, err = pool.GetCustomVolumeUsage(projectName, volumeName)
 		if err != nil && err != storageDrivers.ErrNotSupported {

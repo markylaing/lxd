@@ -5,6 +5,7 @@ package openfga
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"net/url"
 	"strings"
@@ -443,7 +444,7 @@ FROM auth_groups_permissions
 JOIN auth_groups ON auth_groups_permissions.auth_group_id = auth_groups.id
 WHERE auth_groups_permissions.entitlement = ? AND auth_groups_permissions.entity_type = ? AND auth_groups_permissions.entity_id = ?
 `
-		groupNames, err = query.SelectStrings(ctx, tx.Tx(), q, entitlement, cluster.EntityType(entityType), entityRef.EntityID)
+		groupNames, err = query.SelectStrings(ctx, tx.Tx(), q, entitlement, types.EntityType(entityType), entityRef.EntityID)
 		if err != nil {
 			return err
 		}
@@ -695,7 +696,7 @@ func (o *openfgaStore) ReadStartingWithUser(ctx context.Context, store string, f
 	for _, entityID := range groupPermissionsOnEntitiesOfType[entitlement] {
 		permissions = append(permissions, cluster.Permission{
 			Entitlement: entitlement,
-			EntityType:  cluster.EntityType(entityType),
+			EntityType:  types.EntityType(entityType),
 			EntityID:    entityID,
 		})
 	}
@@ -750,7 +751,7 @@ JOIN auth_groups ON auth_groups_permissions.auth_group_id = auth_groups.id
 WHERE auth_groups_permissions.entitlement = ? AND auth_groups_permissions.entity_type = ? AND auth_groups.name = ?
 `
 	relation := string(entitlement)
-	args := []any{relation, cluster.EntityType(entityType), groupName}
+	args := []any{relation, types.EntityType(entityType), groupName}
 
 	var entityURLs map[entity.Type]map[int]*api.URL
 	var permissions []cluster.Permission

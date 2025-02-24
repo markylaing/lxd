@@ -7,6 +7,7 @@ package cluster
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,6 +19,9 @@ import (
 	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/osarch"
 )
+
+//go:embed schema.sql
+var freshSchema string
 
 // Schema for the cluster database.
 func Schema() *schema.Schema {
@@ -31,10 +35,10 @@ func FreshSchema() string {
 	return freshSchema
 }
 
-// SchemaDotGo refreshes the schema.go file in this package, using the updates
+// WriteSchema refreshes the schema.sql file in this package, using the updates
 // defined here.
-func SchemaDotGo() error {
-	return schema.DotGo(updates, "cluster", "schema.go")
+func WriteSchema() error {
+	return schema.WriteSQL(updates, "schema.sql")
 }
 
 // SchemaVersion is the current version of the cluster database schema.
@@ -114,6 +118,119 @@ var updates = map[int]schema.Update{
 	71: updateFromV70,
 	72: updateFromV71,
 	73: updateFromV72,
+	74: updateFromV73,
+}
+
+func updateFromV73(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id, creation_date FROM storage_volumes`)
+	if err != nil {
+		return err
+	}
+
+	volIDToCreationDate := make(map[int64]sql.NullTime)
+	for rows.Next() {
+		var id int64
+		var creationDate sql.NullTime
+		err = rows.Scan(&id, &creationDate)
+		if err != nil {
+			return err
+		}
+
+		volIDToCreationDate[id] = creationDate
+	}
+
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+
+	rows, err = tx.QueryContext(ctx, `SELECT id, creation_date FROM storage_volumes_snapshots`)
+	if err != nil {
+		return err
+	}
+
+	snapIDToCreationDate := make(map[int64]sql.NullTime)
+	for rows.Next() {
+		var id int64
+		var creationDate sql.NullTime
+		err = rows.Scan(&id, &creationDate)
+		if err != nil {
+			return err
+		}
+
+		snapIDToCreationDate[id] = creationDate
+	}
+
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+
+	_, err = tx.ExecContext(ctx, `
+DROP VIEW storage_volumes_all;
+ALTER TABLE identities DROP COLUMN first_seen_date;
+ALTER TABLE identities DROP COLUMN last_seen_date;
+ALTER TABLE identities DROP COLUMN updated_date;
+ALTER TABLE storage_volumes DROP COLUMN creation_date;
+ALTER TABLE storage_volumes_snapshots DROP COLUMN creation_date;
+ALTER TABLE identities ADD COLUMN first_seen_date DATETIME NOT NULL DEFAULT 0;
+ALTER TABLE identities ADD COLUMN last_seen_date DATETIME NOT NULL DEFAULT 0;
+ALTER TABLE identities ADD COLUMN updated_date DATETIME NOT NULL DEFAULT 0;
+ALTER TABLE storage_volumes ADD COLUMN creation_date DATETIME NOT NULL DEFAULT 0;
+ALTER TABLE storage_volumes_snapshots ADD COLUMN creation_date DATETIME NOT NULL DEFAULT 0;
+CREATE VIEW storage_volumes_all (
+         id,
+         name,
+         storage_pool_id,
+         node_id,
+         type,
+         description,
+         project_id,
+         content_type,
+         creation_date) AS
+  SELECT id,
+         name,
+         storage_pool_id,
+         node_id,
+         type,
+         description,
+         project_id,
+         content_type,
+         creation_date
+    FROM storage_volumes UNION
+  SELECT storage_volumes_snapshots.id,
+         printf('%s/%s', storage_volumes.name, storage_volumes_snapshots.name),
+         storage_volumes.storage_pool_id,
+         storage_volumes.node_id,
+         storage_volumes.type,
+         storage_volumes_snapshots.description,
+         storage_volumes.project_id,
+         storage_volumes.content_type,
+         storage_volumes_snapshots.creation_date
+    FROM storage_volumes
+    JOIN storage_volumes_snapshots ON storage_volumes.id = storage_volumes_snapshots.storage_volume_id;
+`)
+	if err != nil {
+		return err
+	}
+
+	for volID, creationDate := range volIDToCreationDate {
+		if creationDate.Valid {
+			_, err = tx.ExecContext(ctx, `UPDATE storage_volumes SET creation_date = ? WHERE id = ?`, creationDate, volID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for snapID, creationDate := range snapIDToCreationDate {
+		if creationDate.Valid {
+			_, err = tx.ExecContext(ctx, `UPDATE storage_volumes_snapshots SET creation_date = ? WHERE id = ?`, creationDate, snapID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func updateFromV72(ctx context.Context, tx *sql.Tx) error {

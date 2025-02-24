@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -869,7 +870,7 @@ func patchZfsSetContentTypeUserProperty(name string, d *Daemon) error {
 		return fmt.Errorf("Failed getting storage pool names: %w", err)
 	}
 
-	volTypeCustom := dbCluster.StoragePoolVolumeTypeCustom
+	volTypeCustom := int(types.StoragePoolVolumeTypeCustom)
 	customPoolVolumes := make(map[string][]*db.StorageVolume, 0)
 
 	err = s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
@@ -965,8 +966,8 @@ func patchStorageZfsUnsetInvalidBlockSettingsV2(_ string, d *Daemon) error {
 		return fmt.Errorf("Failed getting storage pool names: %w", err)
 	}
 
-	volTypeCustom := dbCluster.StoragePoolVolumeTypeCustom
-	volTypeVM := dbCluster.StoragePoolVolumeTypeVM
+	volTypeCustom := int(types.StoragePoolVolumeTypeCustom)
+	volTypeVM := int(types.StoragePoolVolumeTypeVM)
 
 	poolIDNameMap := make(map[int64]string, 0)
 	poolVolumes := make(map[int64][]*db.StorageVolume, 0)
@@ -1021,7 +1022,7 @@ func patchStorageZfsUnsetInvalidBlockSettingsV2(_ string, d *Daemon) error {
 
 			// Only check zfs.block_mode for custom volumes. VMs should never have any block.* settings
 			// regardless of the zfs.block_mode setting.
-			if shared.IsTrue(config["zfs.block_mode"]) && vol.Type == dbCluster.StoragePoolVolumeTypeNameCustom {
+			if shared.IsTrue(config["zfs.block_mode"]) && vol.Type == types.StoragePoolVolumeTypeNameCustom {
 				continue
 			}
 
@@ -1038,9 +1039,9 @@ func patchStorageZfsUnsetInvalidBlockSettingsV2(_ string, d *Daemon) error {
 				continue
 			}
 
-			if vol.Type == dbCluster.StoragePoolVolumeTypeNameVM {
+			if vol.Type == types.StoragePoolVolumeTypeNameVM {
 				volType = volTypeVM
-			} else if vol.Type == dbCluster.StoragePoolVolumeTypeNameCustom {
+			} else if vol.Type == types.StoragePoolVolumeTypeNameCustom {
 				volType = volTypeCustom
 			} else {
 				// Should not happen.
@@ -1218,7 +1219,7 @@ func patchStorageRenameCustomISOBlockVolumesV2(name string, d *Daemon) error {
 		return fmt.Errorf("Failed getting storage pool names: %w", err)
 	}
 
-	volTypeCustom := dbCluster.StoragePoolVolumeTypeCustom
+	volTypeCustom := int(types.StoragePoolVolumeTypeCustom)
 	customPoolVolumes := make(map[string][]*db.StorageVolume, 0)
 
 	err = s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
@@ -1274,7 +1275,7 @@ func patchStorageRenameCustomISOBlockVolumesV2(name string, d *Daemon) error {
 			}
 
 			// Exclude non-ISO custom volumes.
-			if vol.ContentType != dbCluster.StoragePoolVolumeContentTypeNameISO {
+			if vol.ContentType != types.StoragePoolVolumeContentTypeNameISO {
 				continue
 			}
 
@@ -1420,11 +1421,11 @@ UPDATE OR REPLACE auth_groups_permissions
 `
 
 		// Set entity type to:
-		certificateEntityTypeCode, _ := dbCluster.EntityType(entity.TypeCertificate).Value()
+		certificateEntityTypeCode, _ := types.EntityType(entity.TypeCertificate).Value()
 		// where entity type is:
-		identityEntityTypeCode, _ := dbCluster.EntityType(entity.TypeIdentity).Value()
+		identityEntityTypeCode, _ := types.EntityType(entity.TypeIdentity).Value()
 		// and authentication method is:
-		tlsAuthMethodCode, _ := dbCluster.AuthMethod(api.AuthenticationMethodTLS).Value()
+		tlsAuthMethodCode, _ := types.AuthMethod(api.AuthenticationMethodTLS).Value()
 		_, err := tx.Tx().Exec(stmt, []any{certificateEntityTypeCode, identityEntityTypeCode, tlsAuthMethodCode}...)
 		return err
 	})

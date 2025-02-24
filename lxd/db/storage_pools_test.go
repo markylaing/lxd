@@ -4,6 +4,7 @@ package db_test
 
 import (
 	"context"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"testing"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/canonical/lxd/lxd/db"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/lxd/shared/api"
 )
@@ -192,7 +192,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 	var volumeID int64
 
 	_ = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		volumeID, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID, config, cluster.StoragePoolVolumeContentTypeFS, time.Now())
+		volumeID, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID, config, types.StoragePoolVolumeContentTypeFS, time.Now())
 
 		return err
 	})
@@ -267,10 +267,10 @@ func TestCreateStoragePoolVolume_Snapshot(t *testing.T) {
 
 		config := map[string]string{"k": "v"}
 
-		_, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID, config, cluster.StoragePoolVolumeContentTypeFS, time.Now())
+		_, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID, config, types.StoragePoolVolumeContentTypeFS, time.Now())
 		require.NoError(t, err)
 
-		_, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID1, config, cluster.StoragePoolVolumeContentTypeFS, time.Now())
+		_, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID1, config, types.StoragePoolVolumeContentTypeFS, time.Now())
 		require.NoError(t, err)
 
 		config = map[string]string{"k": "v"}

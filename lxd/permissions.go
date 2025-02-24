@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"slices"
 
@@ -206,7 +207,7 @@ func getPermissions(d *Daemon, r *http.Request) response.Response {
 						// in scope here. That's why we set it to zero above.
 						Groups: assignedPermissions[cluster.Permission{
 							Entitlement: entitlement,
-							EntityType:  cluster.EntityType(entityType),
+							EntityType:  types.EntityType(entityType),
 							EntityID:    entityID,
 						}],
 					}

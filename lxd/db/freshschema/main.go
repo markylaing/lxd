@@ -26,9 +26,9 @@ func freshSchema(args []string) error {
 	var err error
 	switch kind {
 	case "node":
-		err = node.SchemaDotGo()
+		err = node.WriteSchema()
 	case "cluster":
-		err = cluster.SchemaDotGo()
+		err = cluster.WriteSchema()
 	default:
 		return fmt.Errorf(`No such schema kind %q (must be "node", or "cluster")`, kind)
 	}

@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"github.com/canonical/lxd/lxd/db/types"
 	"slices"
 	"strings"
 
 	"github.com/canonical/lxd/lxd/backup"
 	"github.com/canonical/lxd/lxd/db"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/instance"
 	"github.com/canonical/lxd/lxd/state"
 	storagePools "github.com/canonical/lxd/lxd/storage"
@@ -18,7 +18,7 @@ import (
 	"github.com/canonical/lxd/shared/version"
 )
 
-var supportedVolumeTypes = []int{cluster.StoragePoolVolumeTypeContainer, cluster.StoragePoolVolumeTypeVM, cluster.StoragePoolVolumeTypeCustom, cluster.StoragePoolVolumeTypeImage}
+var supportedVolumeTypes = []int{int(types.StoragePoolVolumeTypeContainer), int(types.StoragePoolVolumeTypeVM), int(types.StoragePoolVolumeTypeCustom), int(types.StoragePoolVolumeTypeImage)}
 
 func storagePoolVolumeUpdateUsers(s *state.State, projectName string, oldPoolName string, oldVol *api.StorageVolume, newPoolName string, newVol *api.StorageVolume) (revert.Hook, error) {
 	revert := revert.New()
@@ -129,7 +129,7 @@ func storagePoolVolumeUpdateUsers(s *state.State, projectName string, oldPoolNam
 
 // storagePoolVolumeUsedByGet returns a list of URL resources that use the volume.
 func storagePoolVolumeUsedByGet(s *state.State, requestProjectName string, vol *db.StorageVolume) ([]string, error) {
-	if vol.Type == cluster.StoragePoolVolumeTypeNameContainer {
+	if vol.Type == types.StoragePoolVolumeTypeNameContainer {
 		volName, snapName, isSnap := api.GetParentAndSnapshotName(vol.Name)
 		if isSnap {
 			return []string{api.NewURL().Path(version.APIVersion, "instances", volName, "snapshots", snapName).Project(vol.Project).String()}, nil
@@ -139,7 +139,7 @@ func storagePoolVolumeUsedByGet(s *state.State, requestProjectName string, vol *
 	}
 
 	// Handle image volumes.
-	if vol.Type == cluster.StoragePoolVolumeTypeNameImage {
+	if vol.Type == types.StoragePoolVolumeTypeNameImage {
 		return []string{api.NewURL().Path(version.APIVersion, "images", vol.Name).Project(requestProjectName).Target(vol.Location).String()}, nil
 	}
 
@@ -175,7 +175,7 @@ func storagePoolVolumeUsedByGet(s *state.State, requestProjectName string, vol *
 	}
 
 	// Handle instance volumes.
-	if vol.Type == cluster.StoragePoolVolumeTypeNameVM {
+	if vol.Type == types.StoragePoolVolumeTypeNameVM {
 		volName, snapName, isSnap := api.GetParentAndSnapshotName(vol.Name)
 		if isSnap {
 			return []string{api.NewURL().Path(version.APIVersion, "instances", volName, "snapshots", snapName).Project(vol.Project).String()}, nil

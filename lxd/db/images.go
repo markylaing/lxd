@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"strings"
 	"time"
@@ -982,7 +983,7 @@ func (c *ClusterTx) CreateImage(ctx context.Context, project string, fp string, 
 // GetPoolsWithImage get the IDs of all storage pools on which a given image exists.
 func (c *ClusterTx) GetPoolsWithImage(ctx context.Context, imageFingerprint string) ([]int64, error) {
 	q := "SELECT storage_pool_id FROM storage_volumes WHERE (node_id=? OR node_id IS NULL) AND name=? AND type=?"
-	ids, err := query.SelectIntegers(ctx, c.tx, q, c.nodeID, imageFingerprint, cluster.StoragePoolVolumeTypeImage)
+	ids, err := query.SelectIntegers(ctx, c.tx, q, c.nodeID, imageFingerprint, types.StoragePoolVolumeTypeImage)
 	if err != nil {
 		return nil, err
 	}

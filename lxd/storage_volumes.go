@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"io"
 	"net/http"
 	"net/url"
@@ -694,7 +695,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 
 			// The project name used for custom volumes varies based on whether the
 			// project has the featues.storage.volumes feature enabled.
-			customVolProjectName = project.StorageVolumeProjectFromRecord(p, cluster.StoragePoolVolumeTypeCustom)
+			customVolProjectName = project.StorageVolumeProjectFromRecord(p, int(types.StoragePoolVolumeTypeCustom))
 
 			projectImages, err = tx.GetImagesFingerprints(ctx, requestProjectName, false)
 			if err != nil {
@@ -712,8 +713,8 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 			}
 
 			switch supportedVolType {
-			case cluster.StoragePoolVolumeTypeCustom:
-				volTypeCustom := cluster.StoragePoolVolumeTypeCustom
+			case int(types.StoragePoolVolumeTypeCustom):
+				volTypeCustom := int(types.StoragePoolVolumeTypeCustom)
 				filter := db.StorageVolumeFilter{
 					Type: &volTypeCustom,
 				}
@@ -723,10 +724,10 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 				}
 
 				filters = append(filters, filter)
-			case cluster.StoragePoolVolumeTypeImage:
+			case int(types.StoragePoolVolumeTypeImage):
 				// Image volumes are effectively a cache and are always linked to default project.
 				// We filter the ones relevant to requested project below after the query has run.
-				volTypeImage := cluster.StoragePoolVolumeTypeImage
+				volTypeImage := int(types.StoragePoolVolumeTypeImage)
 				filters = append(filters, db.StorageVolumeFilter{
 					Type: &volTypeImage,
 				})
@@ -879,7 +880,7 @@ func filterVolumes(volumes []*db.StorageVolume, clauses *filter.ClauseSet, allPr
 	filtered := []*db.StorageVolume{}
 	for _, volume := range volumes {
 		// Filter out image volumes that are not used by this project.
-		if volume.Type == cluster.StoragePoolVolumeTypeNameImage && !allProjects && !shared.ValueInSlice(volume.Name, filterProjectImages) {
+		if volume.Type == types.StoragePoolVolumeTypeNameImage && !allProjects && !shared.ValueInSlice(volume.Name, filterProjectImages) {
 			continue
 		}
 
@@ -993,7 +994,7 @@ func storagePoolVolumesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	projectName, err := project.StorageVolumeProject(s.DB.Cluster, requestProjectName, cluster.StoragePoolVolumeTypeCustom)
+	projectName, err := project.StorageVolumeProject(s.DB.Cluster, requestProjectName, int(types.StoragePoolVolumeTypeCustom))
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1028,7 +1029,7 @@ func storagePoolVolumesPost(d *Daemon, r *http.Request) response.Response {
 
 	// Backward compatibility.
 	if req.ContentType == "" {
-		req.ContentType = cluster.StoragePoolVolumeContentTypeNameFS
+		req.ContentType = types.StoragePoolVolumeContentTypeNameFS
 	}
 
 	_, err = storagePools.VolumeContentTypeNameToContentType(req.ContentType)
@@ -1047,7 +1048,7 @@ func storagePoolVolumesPost(d *Daemon, r *http.Request) response.Response {
 
 	// We currently only allow to create storage volumes of type storagePoolVolumeTypeCustom.
 	// So check, that nothing else was requested.
-	if req.Type != cluster.StoragePoolVolumeTypeNameCustom {
+	if req.Type != types.StoragePoolVolumeTypeNameCustom {
 		return response.BadRequest(fmt.Errorf("Currently not allowed to create storage volumes of type %q", req.Type))
 	}
 
@@ -1061,7 +1062,7 @@ func storagePoolVolumesPost(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Check if destination volume exists.
-		dbVolume, err = tx.GetStoragePoolVolume(ctx, poolID, projectName, cluster.StoragePoolVolumeTypeCustom, req.Name, true)
+		dbVolume, err = tx.GetStoragePoolVolume(ctx, poolID, projectName, int(types.StoragePoolVolumeTypeCustom), req.Name, true)
 		if err != nil && !response.IsNotFoundError(err) {
 			return err
 		}
@@ -1184,7 +1185,7 @@ func doCustomVolumeRefresh(s *state.State, r *http.Request, requestProjectName s
 
 	var srcProjectName string
 	if req.Source.Project != "" {
-		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, cluster.StoragePoolVolumeTypeCustom)
+		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, int(types.StoragePoolVolumeTypeCustom))
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1223,7 +1224,7 @@ func doVolumeCreateOrCopy(s *state.State, r *http.Request, requestProjectName st
 
 	var srcProjectName string
 	if req.Source.Project != "" {
-		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, cluster.StoragePoolVolumeTypeCustom)
+		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, int(types.StoragePoolVolumeTypeCustom))
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1420,7 +1421,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 
 	// We currently only allow to create storage volumes of type storagePoolVolumeTypeCustom.
 	// So check, that nothing else was requested.
-	if details.volumeTypeName != cluster.StoragePoolVolumeTypeNameCustom {
+	if details.volumeTypeName != types.StoragePoolVolumeTypeNameCustom {
 		return response.BadRequest(fmt.Errorf("Renaming storage volumes of type %q is not allowed", details.volumeTypeName))
 	}
 
@@ -1432,7 +1433,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 
 	targetProjectName := effectiveProjectName
 	if req.Project != "" {
-		targetProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Project, cluster.StoragePoolVolumeTypeCustom)
+		targetProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Project, int(types.StoragePoolVolumeTypeCustom))
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1515,7 +1516,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 				var targetIsSet bool
 
 				err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-					dbVolume, err = tx.GetStoragePoolVolume(ctx, details.pool.ID(), effectiveProjectName, cluster.StoragePoolVolumeTypeCustom, details.volumeName, true)
+					dbVolume, err = tx.GetStoragePoolVolume(ctx, details.pool.ID(), effectiveProjectName, int(types.StoragePoolVolumeTypeCustom), details.volumeName, true)
 					if err != nil {
 						// Check if the user provided an incorrect target query parameter and return a helpful error message.
 						_, volumeNotFound = api.StatusErrorMatch(err, http.StatusNotFound)
@@ -1911,7 +1912,7 @@ func storagePoolVolumeTypePostRename(s *state.State, r *http.Request, poolName s
 
 	revert.Success()
 
-	u := api.NewURL().Path(version.APIVersion, "storage-pools", pool.Name(), "volumes", cluster.StoragePoolVolumeTypeNameCustom, req.Name).Project(projectName)
+	u := api.NewURL().Path(version.APIVersion, "storage-pools", pool.Name(), "volumes", types.StoragePoolVolumeTypeNameCustom, req.Name).Project(projectName)
 
 	return response.SyncResponseLocation(true, nil, u.String())
 }
@@ -2172,7 +2173,7 @@ func storagePoolVolumePut(d *Daemon, r *http.Request) response.Response {
 	op := &operations.Operation{}
 	op.SetRequestor(r)
 
-	if details.volumeType == cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType == int(types.StoragePoolVolumeTypeCustom) {
 		// Restore custom volume from snapshot if requested. This should occur first
 		// before applying config changes so that changes are applied to the
 		// restored volume.
@@ -2200,7 +2201,7 @@ func storagePoolVolumePut(d *Daemon, r *http.Request) response.Response {
 				return response.SmartError(err)
 			}
 		}
-	} else if details.volumeType == cluster.StoragePoolVolumeTypeContainer || details.volumeType == cluster.StoragePoolVolumeTypeVM {
+	} else if details.volumeType == int(types.StoragePoolVolumeTypeContainer) || details.volumeType == int(types.StoragePoolVolumeTypeVM) {
 		inst, err := instance.LoadByProjectAndName(s, effectiveProjectName, dbVolume.Name)
 		if err != nil {
 			return response.SmartError(err)
@@ -2211,7 +2212,7 @@ func storagePoolVolumePut(d *Daemon, r *http.Request) response.Response {
 		if err != nil {
 			return response.SmartError(err)
 		}
-	} else if details.volumeType == cluster.StoragePoolVolumeTypeImage {
+	} else if details.volumeType == int(types.StoragePoolVolumeTypeImage) {
 		// Handle image update requests.
 		err = details.pool.UpdateImage(dbVolume.Name, req.Description, req.Config, op)
 		if err != nil {
@@ -2276,7 +2277,7 @@ func storagePoolVolumePatch(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Check that the storage volume type is custom.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -2405,7 +2406,7 @@ func storagePoolVolumeDelete(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom && details.volumeType != cluster.StoragePoolVolumeTypeImage {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) && details.volumeType != int(types.StoragePoolVolumeTypeImage) {
 		return response.BadRequest(fmt.Errorf("Storage volumes of type %q cannot be deleted with the storage API", details.volumeTypeName))
 	}
 
@@ -2436,7 +2437,7 @@ func storagePoolVolumeDelete(d *Daemon, r *http.Request) response.Response {
 	}
 
 	if len(volumeUsedBy) > 0 {
-		if len(volumeUsedBy) != 1 || details.volumeType != cluster.StoragePoolVolumeTypeImage || !isImageURL(volumeUsedBy[0], dbVolume.Name) {
+		if len(volumeUsedBy) != 1 || details.volumeType != int(types.StoragePoolVolumeTypeImage) || !isImageURL(volumeUsedBy[0], dbVolume.Name) {
 			return response.BadRequest(fmt.Errorf("The storage volume is still in use"))
 		}
 	}
@@ -2446,9 +2447,9 @@ func storagePoolVolumeDelete(d *Daemon, r *http.Request) response.Response {
 	op.SetRequestor(r)
 
 	switch details.volumeType {
-	case cluster.StoragePoolVolumeTypeCustom:
+	case int(types.StoragePoolVolumeTypeCustom):
 		err = details.pool.DeleteCustomVolume(effectiveProjectName, details.volumeName, op)
-	case cluster.StoragePoolVolumeTypeImage:
+	case int(types.StoragePoolVolumeTypeImage):
 		err = details.pool.DeleteImage(details.volumeName, op)
 	default:
 		return response.BadRequest(fmt.Errorf(`Storage volumes of type %q cannot be deleted with the storage API`, details.volumeTypeName))

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"io"
 	"io/fs"
 	"net/http"
@@ -276,7 +277,7 @@ func (b *lxdBackend) GetResources() (*api.ResourcesStoragePool, error) {
 
 // IsUsed returns whether the storage pool is used by any volumes or profiles (excluding image volumes).
 func (b *lxdBackend) IsUsed() (bool, error) {
-	usedBy, err := UsedBy(context.TODO(), b.state, b, true, true, cluster.StoragePoolVolumeTypeNameImage)
+	usedBy, err := UsedBy(context.TODO(), b.state, b, true, true, types.StoragePoolVolumeTypeNameImage)
 	if err != nil {
 		return false, err
 	}
@@ -341,7 +342,7 @@ func (b *lxdBackend) Update(clientType request.ClientType, newDesc string, newCo
 // warningsDelete deletes any persistent warnings for the pool.
 func (b *lxdBackend) warningsDelete() error {
 	err := b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		return cluster.DeleteWarnings(ctx, tx.Tx(), cluster.EntityType(entity.TypeStoragePool), int(b.ID()))
+		return cluster.DeleteWarnings(ctx, tx.Tx(), types.EntityType(entity.TypeStoragePool), int(b.ID()))
 	})
 	if err != nil {
 		return fmt.Errorf("Failed deleting persistent warnings: %w", err)
@@ -2951,7 +2952,7 @@ func (b *lxdBackend) UpdateInstance(inst instance.Instance, newDesc string, newC
 			return fmt.Errorf(`Instance volume "volatile.uuid" property cannot be changed`)
 		}
 
-		if shared.IsFalseOrEmpty(changedConfig["security.shared"]) && volDBType == cluster.StoragePoolVolumeTypeVM {
+		if shared.IsFalseOrEmpty(changedConfig["security.shared"]) && volDBType == int(types.StoragePoolVolumeTypeVM) {
 			err = allowRemoveSecurityShared(b.state, inst.Project().Name, &dbVol.StorageVolume)
 			if err != nil {
 				return err
@@ -4225,7 +4226,7 @@ func (b *lxdBackend) EnsureImage(fingerprint string, op *operations.Operation) e
 		imgVol.Config()["volatile.rootfs.size"] = strconv.FormatInt(volFiller.Size, 10)
 
 		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-			return tx.UpdateStoragePoolVolume(ctx, api.ProjectDefaultName, image.Fingerprint, cluster.StoragePoolVolumeTypeImage, b.id, "", imgVol.Config())
+			return tx.UpdateStoragePoolVolume(ctx, api.ProjectDefaultName, image.Fingerprint, int(types.StoragePoolVolumeTypeImage), b.id, "", imgVol.Config())
 		})
 		if err != nil {
 			return err
@@ -5929,7 +5930,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 		_, snapName, _ := api.GetParentAndSnapshotName(srcSnapshot.Name)
 		newSnapVolName := drivers.GetSnapshotVolumeName(newVolName, snapName)
 		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-			return tx.RenameStoragePoolVolume(ctx, projectName, srcSnapshot.Name, newSnapVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
+			return tx.RenameStoragePoolVolume(ctx, projectName, srcSnapshot.Name, newSnapVolName, int(types.StoragePoolVolumeTypeCustom), b.ID())
 		})
 		if err != nil {
 			return err
@@ -5937,7 +5938,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 
 		revert.Add(func() {
 			_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-				return tx.RenameStoragePoolVolume(ctx, projectName, newSnapVolName, srcSnapshot.Name, cluster.StoragePoolVolumeTypeCustom, b.ID())
+				return tx.RenameStoragePoolVolume(ctx, projectName, newSnapVolName, srcSnapshot.Name, int(types.StoragePoolVolumeTypeCustom), b.ID())
 			})
 		})
 	}
@@ -5970,7 +5971,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 	}
 
 	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
+		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, int(types.StoragePoolVolumeTypeCustom), b.ID())
 	})
 	if err != nil {
 		return err
@@ -5978,7 +5979,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 
 	revert.Add(func() {
 		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-			return tx.RenameStoragePoolVolume(ctx, projectName, newVolName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID())
+			return tx.RenameStoragePoolVolume(ctx, projectName, newVolName, volName, int(types.StoragePoolVolumeTypeCustom), b.ID())
 		})
 	})
 
@@ -6042,7 +6043,7 @@ func allowRemoveSecurityShared(s *state.State, projectName string, volume *api.S
 
 	err = VolumeUsedByInstanceDevices(s, volume.Pool, projectName, volume, true, func(inst db.InstanceArgs, project api.Project, usedByDevices []string) error {
 		// Don't consider a virtual-machine to be using its root volume if security.protection.start=true
-		if volume.Type == cluster.StoragePoolVolumeTypeNameVM && inst.Type == instancetype.VM && volume.Project == inst.Project && volume.Name == inst.Name {
+		if volume.Type == types.StoragePoolVolumeTypeNameVM && inst.Type == instancetype.VM && volume.Project == inst.Project && volume.Name == inst.Name {
 			apiInst, err := inst.ToAPI()
 			if err != nil {
 				return err
@@ -6146,7 +6147,7 @@ func (b *lxdBackend) UpdateCustomVolume(projectName string, volName string, newD
 		}
 
 		sharedVolume, ok := changedConfig["security.shared"]
-		if ok && shared.IsFalseOrEmpty(sharedVolume) && curVol.ContentType == cluster.StoragePoolVolumeContentTypeNameBlock {
+		if ok && shared.IsFalseOrEmpty(sharedVolume) && curVol.ContentType == types.StoragePoolVolumeContentTypeNameBlock {
 			err = allowRemoveSecurityShared(b.state, projectName, &curVol.StorageVolume)
 			if err != nil {
 				return err
@@ -6171,7 +6172,7 @@ func (b *lxdBackend) UpdateCustomVolume(projectName string, volName string, newD
 	// Update the database if something changed.
 	if len(changedConfig) != 0 || newDesc != curVol.Description {
 		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-			return tx.UpdateStoragePoolVolume(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), newDesc, newConfig)
+			return tx.UpdateStoragePoolVolume(ctx, projectName, volName, int(types.StoragePoolVolumeTypeCustom), b.ID(), newDesc, newConfig)
 		})
 		if err != nil {
 			return err
@@ -6221,7 +6222,7 @@ func (b *lxdBackend) UpdateCustomVolumeSnapshot(projectName string, volName stri
 	// Update the database if description changed. Use current config.
 	if newDesc != curVol.Description || newExpiryDate != curExpiryDate {
 		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-			return tx.UpdateStorageVolumeSnapshot(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), newDesc, curVol.Config, newExpiryDate)
+			return tx.UpdateStorageVolumeSnapshot(ctx, projectName, volName, int(types.StoragePoolVolumeTypeCustom), b.ID(), newDesc, curVol.Config, newExpiryDate)
 		})
 		if err != nil {
 			return err
@@ -6625,7 +6626,7 @@ func (b *lxdBackend) RenameCustomVolumeSnapshot(projectName, volName string, new
 
 	newVolName := drivers.GetSnapshotVolumeName(parentName, newSnapshotName)
 	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
+		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, int(types.StoragePoolVolumeTypeCustom), b.ID())
 	})
 	if err != nil {
 		// Get the volume name on storage.
@@ -6823,7 +6824,7 @@ func (b *lxdBackend) GenerateCustomVolumeBackupConfig(projectName string, volNam
 		return nil, err
 	}
 
-	if vol.Type != cluster.StoragePoolVolumeTypeNameCustom {
+	if vol.Type != types.StoragePoolVolumeTypeNameCustom {
 		return nil, fmt.Errorf("Unsupported volume type %q", vol.Type)
 	}
 
@@ -7300,11 +7301,11 @@ func (b *lxdBackend) detectUnknownCustomVolume(vol *drivers.Volume, projectVols 
 	var apiContentType string
 
 	if contentType == drivers.ContentTypeBlock {
-		apiContentType = cluster.StoragePoolVolumeContentTypeNameBlock
+		apiContentType = types.StoragePoolVolumeContentTypeNameBlock
 	} else if contentType == drivers.ContentTypeISO {
-		apiContentType = cluster.StoragePoolVolumeContentTypeNameISO
+		apiContentType = types.StoragePoolVolumeContentTypeNameISO
 	} else if contentType == drivers.ContentTypeFS {
-		apiContentType = cluster.StoragePoolVolumeContentTypeNameFS
+		apiContentType = types.StoragePoolVolumeContentTypeNameFS
 
 		// Detect block volume filesystem (by mounting it (if not already) with filesystem probe mode).
 		if vol.IsBlockBacked() {
@@ -7352,7 +7353,7 @@ func (b *lxdBackend) detectUnknownCustomVolume(vol *drivers.Volume, projectVols 
 	backupConf := &backupConfig.Config{
 		Volume: &api.StorageVolume{
 			Name:        volName,
-			Type:        cluster.StoragePoolVolumeTypeNameCustom,
+			Type:        types.StoragePoolVolumeTypeNameCustom,
 			ContentType: apiContentType,
 			Config:      vol.Config(),
 		},

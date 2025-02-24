@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/canonical/lxd/lxd/db"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/node"
 	"github.com/canonical/lxd/lxd/project"
 	"github.com/canonical/lxd/lxd/rsync"
@@ -186,16 +186,16 @@ func daemonStorageValidate(s *state.State, target string) (validatedTarget strin
 
 	err = s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Confirm volume exists.
-		dbVol, err = tx.GetStoragePoolVolume(ctx, pool.ID(), api.ProjectDefaultName, cluster.StoragePoolVolumeTypeCustom, volumeName, true)
+		dbVol, err = tx.GetStoragePoolVolume(ctx, pool.ID(), api.ProjectDefaultName, int(types.StoragePoolVolumeTypeCustom), volumeName, true)
 		if err != nil {
 			return fmt.Errorf("Failed loading storage volume %q in %q project: %w", target, api.ProjectDefaultName, err)
 		}
 
-		if dbVol.ContentType != cluster.StoragePoolVolumeContentTypeNameFS {
+		if dbVol.ContentType != types.StoragePoolVolumeContentTypeNameFS {
 			return fmt.Errorf("Storage volume %q in %q project is not filesystem content type", target, api.ProjectDefaultName)
 		}
 
-		snapshots, err = tx.GetLocalStoragePoolVolumeSnapshotsWithType(ctx, api.ProjectDefaultName, volumeName, cluster.StoragePoolVolumeTypeCustom, pool.ID())
+		snapshots, err = tx.GetLocalStoragePoolVolumeSnapshotsWithType(ctx, api.ProjectDefaultName, volumeName, int(types.StoragePoolVolumeTypeCustom), pool.ID())
 		if err != nil {
 			return fmt.Errorf("Unable to load storage volume snapshots %q in %q project: %w", target, api.ProjectDefaultName, err)
 		}

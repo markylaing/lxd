@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net"
 	"testing"
 	"time"
@@ -144,7 +145,7 @@ func TestImportPreClusteringData(t *testing.T) {
 
 	var dbVolumes []*db.StorageVolume
 	err = c.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		volumeType := cluster.StoragePoolVolumeTypeImage
+		volumeType := types.StoragePoolVolumeTypeImage
 		filters := []db.StorageVolumeFilter{{
 			Type:   &volumeType,
 			PoolID: &id,

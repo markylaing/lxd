@@ -6,11 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
@@ -121,7 +121,7 @@ WHERE volumes.id=?
 		return args, fmt.Errorf("Volume is not a snapshot")
 	}
 
-	args.TypeName = cluster.StoragePoolVolumeTypeNames[args.Type]
+	args.TypeName = string(types.StoragePoolVolumeTypeNames[int64(args.Type)])
 
 	return args, nil
 }
@@ -168,7 +168,7 @@ func (c *ClusterTx) GetExpiredStorageVolumeSnapshots(ctx context.Context, member
 	WHERE storage_volumes.type = ? AND storage_volumes_snapshots.expiry_date != '0001-01-01T00:00:00Z'
 	`)
 
-	args := []any{cluster.StoragePoolVolumeTypeCustom}
+	args := []any{types.StoragePoolVolumeTypeCustom}
 
 	if memberSpecific {
 		q.WriteString("AND (storage_volumes.node_id = ? OR storage_volumes.node_id IS NULL) ")

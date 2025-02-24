@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -100,7 +101,7 @@ func storagePoolVolumeSnapshotsTypePost(d *Daemon, r *http.Request) response.Res
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != dbCluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -507,7 +508,7 @@ func storagePoolVolumeSnapshotTypePost(d *Daemon, r *http.Request) response.Resp
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != dbCluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -925,7 +926,7 @@ func doStoragePoolVolumeSnapshotUpdate(s *state.State, r *http.Request, projectN
 	op.SetRequestor(r)
 
 	// Update the database.
-	if volumeType == dbCluster.StoragePoolVolumeTypeCustom {
+	if volumeType == int(types.StoragePoolVolumeTypeCustom) {
 		err = details.pool.UpdateCustomVolumeSnapshot(projectName, volName, req.Description, nil, expiry, op)
 		if err != nil {
 			return response.SmartError(err)
@@ -991,7 +992,7 @@ func storagePoolVolumeSnapshotTypeDelete(d *Daemon, r *http.Request) response.Re
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != dbCluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -1068,7 +1069,7 @@ func pruneExpiredAndAutoCreateCustomVolumeSnapshotsTask(d *Daemon) (task.Func, t
 				}
 			}
 
-			allVolumes, err := tx.GetStoragePoolVolumesWithType(ctx, dbCluster.StoragePoolVolumeTypeCustom, true)
+			allVolumes, err := tx.GetStoragePoolVolumesWithType(ctx, int(types.StoragePoolVolumeTypeCustom), true)
 			if err != nil {
 				return fmt.Errorf("Failed getting volumes for auto custom volume snapshot task: %w", err)
 			}
@@ -1340,7 +1341,7 @@ func volumeDetermineNextSnapshotName(s *state.State, volume db.StorageVolumeArgs
 	} else if count == 1 {
 		var i int
 		_ = s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
-			i = tx.GetNextStorageVolumeSnapshotIndex(ctx, volume.PoolName, volume.Name, dbCluster.StoragePoolVolumeTypeCustom, pattern)
+			i = tx.GetNextStorageVolumeSnapshotIndex(ctx, volume.PoolName, volume.Name, int(types.StoragePoolVolumeTypeCustom), pattern)
 
 			return nil
 		})
@@ -1381,7 +1382,7 @@ func volumeDetermineNextSnapshotName(s *state.State, volume db.StorageVolumeArgs
 			}
 
 			for _, project := range projects {
-				snaps, err := tx.GetLocalStoragePoolVolumeSnapshotsWithType(ctx, project, volume.Name, dbCluster.StoragePoolVolumeTypeCustom, poolID)
+				snaps, err := tx.GetLocalStoragePoolVolumeSnapshotsWithType(ctx, project, volume.Name, int(types.StoragePoolVolumeTypeCustom), poolID)
 				if err != nil {
 					return err
 				}
@@ -1409,7 +1410,7 @@ func volumeDetermineNextSnapshotName(s *state.State, volume db.StorageVolumeArgs
 		var i int
 
 		_ = s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
-			i = tx.GetNextStorageVolumeSnapshotIndex(ctx, volume.PoolName, volume.Name, dbCluster.StoragePoolVolumeTypeCustom, pattern)
+			i = tx.GetNextStorageVolumeSnapshotIndex(ctx, volume.PoolName, volume.Name, int(types.StoragePoolVolumeTypeCustom), pattern)
 
 			return nil
 		})

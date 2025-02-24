@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"strings"
 
 	"github.com/canonical/lxd/lxd/db"
@@ -76,7 +77,7 @@ func StorageVolumeParts(projectStorageVolumeName string) (projectName string, st
 func StorageVolumeProject(c *db.Cluster, projectName string, volumeType int) (string, error) {
 	// Image volumes are effectively a cache and so are always linked to default project.
 	// Optimisation to avoid loading project record.
-	if volumeType == cluster.StoragePoolVolumeTypeImage {
+	if volumeType == int(types.StoragePoolVolumeTypeImage) {
 		return api.ProjectDefaultName, nil
 	}
 
@@ -105,12 +106,12 @@ func StorageVolumeProject(c *db.Cluster, projectName string, volumeType int) (st
 // For all other volume types the supplied project's name is returned.
 func StorageVolumeProjectFromRecord(p *api.Project, volumeType int) string {
 	// Image volumes are effectively a cache and so are always linked to default project.
-	if volumeType == cluster.StoragePoolVolumeTypeImage {
+	if volumeType == int(types.StoragePoolVolumeTypeImage) {
 		return api.ProjectDefaultName
 	}
 
 	// Non-custom volumes always use the project specified.
-	if volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return p.Name
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/backup"
 	"github.com/canonical/lxd/lxd/db"
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/operationtype"
 	"github.com/canonical/lxd/lxd/lifecycle"
 	"github.com/canonical/lxd/lxd/operations"
@@ -180,7 +180,7 @@ func storagePoolVolumeTypeCustomBackupsGet(d *Daemon, r *http.Request) response.
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -298,7 +298,7 @@ func storagePoolVolumeTypeCustomBackupsPost(d *Daemon, r *http.Request) response
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -505,7 +505,7 @@ func storagePoolVolumeTypeCustomBackupGet(d *Daemon, r *http.Request) response.R
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -594,7 +594,7 @@ func storagePoolVolumeTypeCustomBackupPost(d *Daemon, r *http.Request) response.
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -704,7 +704,7 @@ func storagePoolVolumeTypeCustomBackupDelete(d *Daemon, r *http.Request) respons
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 
@@ -796,7 +796,7 @@ func storagePoolVolumeTypeCustomBackupExportGet(d *Daemon, r *http.Request) resp
 	}
 
 	// Check that the storage volume type is valid.
-	if details.volumeType != cluster.StoragePoolVolumeTypeCustom {
+	if details.volumeType != int(types.StoragePoolVolumeTypeCustom) {
 		return response.BadRequest(fmt.Errorf("Invalid storage volume type %q", details.volumeTypeName))
 	}
 

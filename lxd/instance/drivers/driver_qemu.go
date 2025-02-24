@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"io"
 	"io/fs"
 	"net"
@@ -5368,7 +5369,7 @@ func allowRemoveSecurityProtectionStart(state *state.State, poolName string, vol
 		return err
 	}
 
-	volumeType := dbCluster.StoragePoolVolumeTypeVM
+	volumeType := int(types.StoragePoolVolumeTypeVM)
 	volumeProject := project.StorageVolumeProjectFromRecord(proj, volumeType)
 
 	var dbVolume *db.StorageVolume
@@ -5377,7 +5378,7 @@ func allowRemoveSecurityProtectionStart(state *state.State, poolName string, vol
 		return err
 	})
 	if err != nil {
-		volumeTypeName := dbCluster.StoragePoolVolumeTypeNames[volumeType]
+		volumeTypeName := string(types.StoragePoolVolumeTypeNames[int64(volumeType)])
 		return fmt.Errorf(`Failed loading "%s/%s" from project %q: %w`, volumeTypeName, volumeName, volumeProject, err)
 	}
 
@@ -6880,7 +6881,7 @@ func (d *qemu) migrateSendLive(pool storagePools.Pool, clusterMoveSourceName str
 	}
 
 	// Derive the effective storage project name from the instance config's project.
-	storageProjectName, err := project.StorageVolumeProject(d.state.DB.Cluster, d.project.Name, dbCluster.StoragePoolVolumeTypeCustom)
+	storageProjectName, err := project.StorageVolumeProject(d.state.DB.Cluster, d.project.Name, int(types.StoragePoolVolumeTypeCustom))
 	if err != nil {
 		return err
 	}
@@ -7406,7 +7407,7 @@ func (d *qemu) MigrateReceive(args instance.MigrateReceiveArgs) error {
 		}
 
 		// Derive the effective storage project name from the instance config's project.
-		storageProjectName, err := project.StorageVolumeProject(d.state.DB.Cluster, d.project.Name, dbCluster.StoragePoolVolumeTypeCustom)
+		storageProjectName, err := project.StorageVolumeProject(d.state.DB.Cluster, d.project.Name, int(types.StoragePoolVolumeTypeCustom))
 		if err != nil {
 			return err
 		}

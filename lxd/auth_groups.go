@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"net/url"
 	"strings"
@@ -880,7 +881,7 @@ func upsertPermissions(ctx context.Context, tx *sql.Tx, groupID int, permissions
 	authGroupPermissions := make([]dbCluster.Permission, 0, len(permissions))
 	for permission, apiURL := range permissionToURL {
 		entitlement := auth.Entitlement(permission.Entitlement)
-		entityType := dbCluster.EntityType(permission.EntityType)
+		entityType := types.EntityType(permission.EntityType)
 		entityRef, ok := entityReferences[apiURL]
 		if !ok {
 			return api.StatusErrorf(http.StatusBadRequest, "Missing entity ID for permission with URL %q", permission.EntityReference)

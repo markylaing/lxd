@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"strconv"
 
@@ -110,13 +111,13 @@ func (cert Certificate) ToIdentity() (*Identity, error) {
 var getCertificateIdentitiesStmt = `
 SELECT identities.id, identities.auth_method, identities.type, identities.identifier, identities.name, identities.metadata
 	FROM identities
-	WHERE auth_method = ` + strconv.Itoa(int(authMethodTLS)) + `
+	WHERE auth_method = ` + strconv.FormatInt(types.AuthMethodTLS, 10) + `
 	AND type in (` +
-	strconv.Itoa(int(identityTypeCertificateServer)) + `, ` +
-	strconv.Itoa(int(identityTypeCertificateClientUnrestricted)) + `, ` +
-	strconv.Itoa(int(identityTypeCertificateClientRestricted)) + `, ` +
-	strconv.Itoa(int(identityTypeCertificateMetricsUnrestricted)) + `, ` +
-	strconv.Itoa(int(identityTypeCertificateMetricsRestricted)) + `)
+	strconv.FormatInt(types.IdentityTypeCertificateServer, 10) + `, ` +
+	strconv.FormatInt(types.IdentityTypeCertificateClientUnrestricted, 10) + `, ` +
+	strconv.FormatInt(types.IdentityTypeCertificateClientRestricted, 10) + `, ` +
+	strconv.FormatInt(types.IdentityTypeCertificateMetricsUnrestricted, 10) + `, ` +
+	strconv.FormatInt(types.IdentityTypeCertificateMetricsRestricted, 10) + `)
 `
 
 // GetCertificateByFingerprintPrefix gets a Certificate from the database.

@@ -1,0 +1,18 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "queries.sql"
+    schema: "../cluster/schema.sql"
+    gen:
+      go:
+        overrides:
+          - column: identities.auth_method
+            go_type: github.com/canonical/lxd/lxd/db/types.AuthMethod
+          - column: identities.type
+            go_type: github.com/canonical/lxd/lxd/db/types.IdentityType
+          - column: auth_groups_permissions.entity_type
+            go_type: github.com/canonical/lxd/lxd/db/types.EntityType
+        package: "clustergen"
+        out: "."
+        emit_methods_with_db_argument: true
+        build_tags: linux && cgo && !agent

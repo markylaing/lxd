@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,14 +75,14 @@ func ConfigDiff(oldConfig map[string]string, newConfig map[string]string) ([]str
 // VolumeTypeNameToDBType converts a volume type string to internal volume type DB code.
 func VolumeTypeNameToDBType(volumeTypeName string) (int, error) {
 	switch volumeTypeName {
-	case cluster.StoragePoolVolumeTypeNameContainer:
-		return cluster.StoragePoolVolumeTypeContainer, nil
-	case cluster.StoragePoolVolumeTypeNameVM:
-		return cluster.StoragePoolVolumeTypeVM, nil
-	case cluster.StoragePoolVolumeTypeNameImage:
-		return cluster.StoragePoolVolumeTypeImage, nil
-	case cluster.StoragePoolVolumeTypeNameCustom:
-		return cluster.StoragePoolVolumeTypeCustom, nil
+	case types.StoragePoolVolumeTypeNameContainer:
+		return int(types.StoragePoolVolumeTypeContainer), nil
+	case types.StoragePoolVolumeTypeNameVM:
+		return int(types.StoragePoolVolumeTypeVM), nil
+	case types.StoragePoolVolumeTypeNameImage:
+		return int(types.StoragePoolVolumeTypeImage), nil
+	case types.StoragePoolVolumeTypeNameCustom:
+		return int(types.StoragePoolVolumeTypeCustom), nil
 	}
 
 	return -1, fmt.Errorf("Invalid storage volume type name")
@@ -91,13 +92,13 @@ func VolumeTypeNameToDBType(volumeTypeName string) (int, error) {
 func VolumeTypeToDBType(volType drivers.VolumeType) (int, error) {
 	switch volType {
 	case drivers.VolumeTypeContainer:
-		return cluster.StoragePoolVolumeTypeContainer, nil
+		return int(types.StoragePoolVolumeTypeContainer), nil
 	case drivers.VolumeTypeVM:
-		return cluster.StoragePoolVolumeTypeVM, nil
+		return int(types.StoragePoolVolumeTypeVM), nil
 	case drivers.VolumeTypeImage:
-		return cluster.StoragePoolVolumeTypeImage, nil
+		return int(types.StoragePoolVolumeTypeImage), nil
 	case drivers.VolumeTypeCustom:
-		return cluster.StoragePoolVolumeTypeCustom, nil
+		return int(types.StoragePoolVolumeTypeCustom), nil
 	}
 
 	return -1, fmt.Errorf("Invalid storage volume type: %q", volType)
@@ -106,13 +107,13 @@ func VolumeTypeToDBType(volType drivers.VolumeType) (int, error) {
 // VolumeDBTypeToType converts internal volume type DB code to storage driver volume type.
 func VolumeDBTypeToType(volDBType int) (drivers.VolumeType, error) {
 	switch volDBType {
-	case cluster.StoragePoolVolumeTypeContainer:
+	case int(types.StoragePoolVolumeTypeContainer):
 		return drivers.VolumeTypeContainer, nil
-	case cluster.StoragePoolVolumeTypeVM:
+	case int(types.StoragePoolVolumeTypeVM):
 		return drivers.VolumeTypeVM, nil
-	case cluster.StoragePoolVolumeTypeImage:
+	case int(types.StoragePoolVolumeTypeImage):
 		return drivers.VolumeTypeImage, nil
-	case cluster.StoragePoolVolumeTypeCustom:
+	case int(types.StoragePoolVolumeTypeCustom):
 		return drivers.VolumeTypeCustom, nil
 	}
 
@@ -147,11 +148,11 @@ func VolumeTypeToAPIInstanceType(volType drivers.VolumeType) (api.InstanceType, 
 func VolumeContentTypeToDBContentType(contentType drivers.ContentType) (int, error) {
 	switch contentType {
 	case drivers.ContentTypeBlock:
-		return cluster.StoragePoolVolumeContentTypeBlock, nil
+		return int(types.StoragePoolVolumeContentTypeBlock), nil
 	case drivers.ContentTypeFS:
-		return cluster.StoragePoolVolumeContentTypeFS, nil
+		return int(types.StoragePoolVolumeContentTypeFS), nil
 	case drivers.ContentTypeISO:
-		return cluster.StoragePoolVolumeContentTypeISO, nil
+		return int(types.StoragePoolVolumeContentTypeISO), nil
 	}
 
 	return -1, fmt.Errorf("Invalid volume content type")
@@ -159,12 +160,12 @@ func VolumeContentTypeToDBContentType(contentType drivers.ContentType) (int, err
 
 // VolumeDBContentTypeToContentType converts internal content type DB code to driver representation.
 func VolumeDBContentTypeToContentType(volDBType int) (drivers.ContentType, error) {
-	switch volDBType {
-	case cluster.StoragePoolVolumeContentTypeBlock:
+	switch int64(volDBType) {
+	case types.StoragePoolVolumeContentTypeBlock:
 		return drivers.ContentTypeBlock, nil
-	case cluster.StoragePoolVolumeContentTypeFS:
+	case types.StoragePoolVolumeContentTypeFS:
 		return drivers.ContentTypeFS, nil
-	case cluster.StoragePoolVolumeContentTypeISO:
+	case types.StoragePoolVolumeContentTypeISO:
 		return drivers.ContentTypeISO, nil
 	}
 
@@ -174,12 +175,12 @@ func VolumeDBContentTypeToContentType(volDBType int) (drivers.ContentType, error
 // VolumeContentTypeNameToContentType converts volume content type string internal code.
 func VolumeContentTypeNameToContentType(contentTypeName string) (int, error) {
 	switch contentTypeName {
-	case cluster.StoragePoolVolumeContentTypeNameFS:
-		return cluster.StoragePoolVolumeContentTypeFS, nil
-	case cluster.StoragePoolVolumeContentTypeNameBlock:
-		return cluster.StoragePoolVolumeContentTypeBlock, nil
-	case cluster.StoragePoolVolumeContentTypeNameISO:
-		return cluster.StoragePoolVolumeContentTypeISO, nil
+	case types.StoragePoolVolumeContentTypeNameFS:
+		return int(types.StoragePoolVolumeContentTypeFS), nil
+	case types.StoragePoolVolumeContentTypeNameBlock:
+		return int(types.StoragePoolVolumeContentTypeBlock), nil
+	case types.StoragePoolVolumeContentTypeNameISO:
+		return int(types.StoragePoolVolumeContentTypeISO), nil
 	}
 
 	return -1, fmt.Errorf("Invalid volume content type name")
@@ -964,12 +965,12 @@ func volumeIsUsedByDevice(vol api.StorageVolume, inst *db.InstanceArgs, dev map[
 			return false, err
 		}
 
-		if inst.Name == vol.Name && cluster.StoragePoolVolumeTypeNames[rootVolumeDBType] == vol.Type {
+		if inst.Name == vol.Name && string(types.StoragePoolVolumeTypeNames[int64(rootVolumeDBType)]) == vol.Type {
 			return true, nil
 		}
 	}
 
-	volumeTypeName := cluster.StoragePoolVolumeTypeNameCustom
+	volumeTypeName := types.StoragePoolVolumeTypeNameCustom
 	if dev["source.type"] != "" {
 		volumeTypeName = dev["source.type"]
 	}

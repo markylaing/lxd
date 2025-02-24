@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"os"
 	"sort"
 
@@ -109,7 +110,7 @@ func UsedBy(ctx context.Context, s *state.State, pool Pool, firstOnly bool, memb
 			}
 
 			// Generate URL for volume based on types that map to other entities.
-			if vol.Type == cluster.StoragePoolVolumeTypeNameContainer || vol.Type == cluster.StoragePoolVolumeTypeNameVM {
+			if vol.Type == types.StoragePoolVolumeTypeNameContainer || vol.Type == types.StoragePoolVolumeTypeNameVM {
 				volName, snapName, isSnap := api.GetParentAndSnapshotName(vol.Name)
 				if isSnap {
 					u = api.NewURL().Path(version.APIVersion, "instances", volName, "snapshots", snapName).Project(vol.Project)
@@ -118,7 +119,7 @@ func UsedBy(ctx context.Context, s *state.State, pool Pool, firstOnly bool, memb
 				}
 
 				usedBy = append(usedBy, u.String())
-			} else if vol.Type == cluster.StoragePoolVolumeTypeNameImage {
+			} else if vol.Type == types.StoragePoolVolumeTypeNameImage {
 				imgProjectNames, err := tx.GetProjectsUsingImage(ctx, vol.Name)
 				if err != nil {
 					return fmt.Errorf("Failed loading projects using image %q: %w", vol.Name, err)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 )
 
 // RegisterStmt register a SQL statement.
@@ -67,8 +68,8 @@ func StmtString(code int) (string, error) {
 // Warning: These triggers are applied separately to the schema update mechanism. Changes to these triggers (especially their names)
 // may require a patch.
 func applyTriggers(ctx context.Context, tx *sql.Tx) error {
-	for entityType, entityTypeInfo := range entityTypes {
-		triggerName, triggerSQL := entityTypeInfo.onDeleteTriggerSQL()
+	for entityType, entityTypeInfo := range types.EntityTypes() {
+		triggerName, triggerSQL := entityTypeInfo.OnDeleteTriggerSQL()
 		if triggerName == "" && triggerSQL == "" {
 			continue
 		} else if triggerName == "" || triggerSQL == "" {

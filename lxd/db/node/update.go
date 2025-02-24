@@ -5,6 +5,7 @@ package node
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -18,6 +19,9 @@ import (
 	"github.com/canonical/lxd/shared/units"
 )
 
+//go:embed schema.sql
+var freshSchema string
+
 // Schema for the local database.
 func Schema() *schema.Schema {
 	schema := schema.NewFromMap(updates)
@@ -30,10 +34,10 @@ func FreshSchema() string {
 	return freshSchema
 }
 
-// SchemaDotGo refreshes the schema.go file in this package, using the updates
+// WriteSchema refreshes the schema.sql file in this package, using the updates
 // defined here.
-func SchemaDotGo() error {
-	return schema.DotGo(updates, "node", "schema.go")
+func WriteSchema() error {
+	return schema.WriteSQL(updates, "schema.sql")
 }
 
 /* Database updates are one-time actions that are needed to move an

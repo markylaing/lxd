@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1100,7 +1101,7 @@ func (d *common) onStopOperationSetup(target string) (*operationlock.InstanceOpe
 // warningsDelete deletes any persistent warnings for the instance.
 func (d *common) warningsDelete() error {
 	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
-		return dbCluster.DeleteWarnings(ctx, tx.Tx(), dbCluster.EntityType(entity.TypeInstance), d.ID())
+		return dbCluster.DeleteWarnings(ctx, tx.Tx(), types.EntityType(entity.TypeInstance), d.ID())
 	})
 	if err != nil {
 		return fmt.Errorf("Failed deleting persistent warnings: %w", err)

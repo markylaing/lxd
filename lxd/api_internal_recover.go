@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -417,7 +418,7 @@ func internalRecoverScan(s *state.State, userPools []api.StoragePoolsPost, valid
 			}
 
 			profileProjectName := project.ProfileProjectFromRecord(projectInfo)
-			customStorageProjectName := project.StorageVolumeProjectFromRecord(projectInfo, dbCluster.StoragePoolVolumeTypeCustom)
+			customStorageProjectName := project.StorageVolumeProjectFromRecord(projectInfo, int(types.StoragePoolVolumeTypeCustom))
 
 			// Recover unknown custom volumes (do this first before recovering instances so that any
 			// instances that reference unknown custom volume disk devices can be created).

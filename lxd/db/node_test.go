@@ -4,6 +4,7 @@ package db_test
 
 import (
 	"context"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"testing"
 	"time"
@@ -297,7 +298,7 @@ INSERT INTO storage_pools (id, name, driver, description) VALUES (1, 'local', 'z
 
 	_, err = tx.Tx().Exec(`
 INSERT INTO storage_volumes(name, storage_pool_id, node_id, type, project_id, description)
-  VALUES ('data', 1, ?, ?, 1, '')`, id, cluster.StoragePoolVolumeTypeCustom)
+  VALUES ('data', 1, ?, ?, 1, '')`, id, types.StoragePoolVolumeTypeCustom)
 	require.NoError(t, err)
 
 	message, err := tx.NodeIsEmpty(context.Background(), id)

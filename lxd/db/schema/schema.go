@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -420,15 +421,19 @@ func checkAllUpdatesAreApplied(ctx context.Context, tx *sql.Tx, updates []Update
 	return nil
 }
 
+var quotedWord = regexp.MustCompile(`"(\w+)"`)
+
 // Format the given SQL statement in a human-readable way.
 //
 // In particular make sure that each column definition in a CREATE TABLE clause
-// is in its own row, since SQLite dumps occasionally stuff more than one
-// column in the same line.
+// is in its own row, since SQLite dumps stuff more than one column in the same line.
+// This only seems to happen on lines where a DATETIME is defined.
+//
+// Additionally, there is no reason to quote table names.
 func formatSQL(statement string) string {
 	lines := strings.Split(statement, "\n")
 	for i, line := range lines {
-		if strings.Contains(line, "UNIQUE") {
+		if !strings.Contains(line, "DATETIME") {
 			// Let UNIQUE(x, y) constraints alone.
 			continue
 		}
@@ -436,5 +441,5 @@ func formatSQL(statement string) string {
 		lines[i] = strings.Replace(line, ", ", ",\n    ", -1)
 	}
 
-	return strings.Join(lines, "\n")
+	return quotedWord.ReplaceAllString(strings.Join(lines, "\n"), "$1")
 }

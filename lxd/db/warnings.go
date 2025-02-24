@@ -5,6 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"time"
 
@@ -53,7 +54,7 @@ func (c *ClusterTx) UpsertWarning(ctx context.Context, nodeName string, projectN
 		}
 	}
 
-	clusterEntityType := cluster.EntityType(entityType)
+	clusterEntityType := types.EntityType(entityType)
 	filter := cluster.WarningFilter{
 		TypeCode:   &typeCode,
 		Node:       &nodeName,

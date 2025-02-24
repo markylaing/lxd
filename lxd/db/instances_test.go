@@ -5,6 +5,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"github.com/canonical/lxd/lxd/db/types"
 	"testing"
 	"time"
 
@@ -447,7 +448,7 @@ func TestGetInstancePool(t *testing.T) {
 			return err
 		}
 
-		_, err = tx.CreateStoragePoolVolume(ctx, "default", "c1", "", cluster.StoragePoolVolumeTypeContainer, poolID, nil, cluster.StoragePoolVolumeContentTypeFS, time.Now())
+		_, err = tx.CreateStoragePoolVolume(ctx, "default", "c1", "", types.StoragePoolVolumeTypeContainer, poolID, nil, types.StoragePoolVolumeContentTypeFS, time.Now())
 		if err != nil {
 			return err
 		}

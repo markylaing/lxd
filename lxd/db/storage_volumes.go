@@ -7,11 +7,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/db/types"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
@@ -106,7 +106,7 @@ WHERE storage_volumes.id = ?
 		return StorageVolumeArgs{}, err
 	}
 
-	response.TypeName = cluster.StoragePoolVolumeTypeNames[response.Type]
+	response.TypeName = string(types.StoragePoolVolumeTypeNames[int64(response.Type)])
 
 	return response, nil
 }
@@ -779,15 +779,15 @@ func storageVolumeConfigClear(tx *sql.Tx, volumeID int64, isSnapshot bool) error
 
 // Convert a volume integer type code to its human-readable name.
 func storagePoolVolumeTypeToName(volumeType int) (string, error) {
-	switch volumeType {
-	case cluster.StoragePoolVolumeTypeContainer:
-		return cluster.StoragePoolVolumeTypeNameContainer, nil
-	case cluster.StoragePoolVolumeTypeVM:
-		return cluster.StoragePoolVolumeTypeNameVM, nil
-	case cluster.StoragePoolVolumeTypeImage:
-		return cluster.StoragePoolVolumeTypeNameImage, nil
-	case cluster.StoragePoolVolumeTypeCustom:
-		return cluster.StoragePoolVolumeTypeNameCustom, nil
+	switch int64(volumeType) {
+	case types.StoragePoolVolumeTypeContainer:
+		return types.StoragePoolVolumeTypeNameContainer, nil
+	case types.StoragePoolVolumeTypeVM:
+		return types.StoragePoolVolumeTypeNameVM, nil
+	case types.StoragePoolVolumeTypeImage:
+		return types.StoragePoolVolumeTypeNameImage, nil
+	case types.StoragePoolVolumeTypeCustom:
+		return types.StoragePoolVolumeTypeNameCustom, nil
 	}
 
 	return "", fmt.Errorf("Invalid storage volume type")
@@ -795,13 +795,13 @@ func storagePoolVolumeTypeToName(volumeType int) (string, error) {
 
 // Convert a volume integer content type code to its human-readable name.
 func storagePoolVolumeContentTypeToName(contentType int) (string, error) {
-	switch contentType {
-	case cluster.StoragePoolVolumeContentTypeFS:
-		return cluster.StoragePoolVolumeContentTypeNameFS, nil
-	case cluster.StoragePoolVolumeContentTypeBlock:
-		return cluster.StoragePoolVolumeContentTypeNameBlock, nil
-	case cluster.StoragePoolVolumeContentTypeISO:
-		return cluster.StoragePoolVolumeContentTypeNameISO, nil
+	switch int64(contentType) {
+	case types.StoragePoolVolumeContentTypeFS:
+		return types.StoragePoolVolumeContentTypeNameFS, nil
+	case types.StoragePoolVolumeContentTypeBlock:
+		return types.StoragePoolVolumeContentTypeNameBlock, nil
+	case types.StoragePoolVolumeContentTypeISO:
+		return types.StoragePoolVolumeContentTypeNameISO, nil
 	}
 
 	return "", fmt.Errorf("Invalid storage volume content type")
@@ -833,7 +833,7 @@ WHERE storage_volumes.type = ? AND projects.name = ?
 		volumes = append(volumes, volume)
 
 		return nil
-	}, cluster.StoragePoolVolumeTypeCustom, project)
+	}, types.StoragePoolVolumeTypeCustom, project)
 	if err != nil {
 		return nil, fmt.Errorf("Fetch custom volumes: %w", err)
 	}
