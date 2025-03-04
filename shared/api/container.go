@@ -76,7 +76,7 @@ type Container struct {
 	ExpandedDevices map[string]map[string]string `json:"expanded_devices" yaml:"expanded_devices"`
 	Name            string                       `json:"name" yaml:"name"`
 	Status          string                       `json:"status" yaml:"status"`
-	StatusCode      StatusCode                   `json:"status_code" yaml:"status_code"`
+	StatusCode      StatusCode                   `json:"status_code" yaml:"status_code" shadow:"status_code"`
 
 	// API extension: container_last_used_at
 	LastUsedAt time.Time `json:"last_used_at" yaml:"last_used_at"`

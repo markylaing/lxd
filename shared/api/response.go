@@ -6,7 +6,7 @@ import (
 
 // ResponseRaw represents a LXD operation in its original form.
 type ResponseRaw struct {
-	Type ResponseType `json:"type" yaml:"type"`
+	Type ResponseType `json:"type" yaml:"type" shadow:"response_type"`
 
 	// Valid only for Sync responses
 	Status     string `json:"status" yaml:"status"`
@@ -24,7 +24,7 @@ type ResponseRaw struct {
 
 // Response represents a LXD operation.
 type Response struct {
-	Type ResponseType `json:"type" yaml:"type"`
+	Type ResponseType `json:"type" yaml:"type" shadow:"response_type"`
 
 	// Valid only for Sync responses
 	Status     string `json:"status" yaml:"status"`

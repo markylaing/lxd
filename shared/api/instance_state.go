@@ -35,7 +35,7 @@ type InstanceState struct {
 
 	// Numeric status code (101, 102, 110, 112)
 	// Example: 101
-	StatusCode StatusCode `json:"status_code" yaml:"status_code"`
+	StatusCode StatusCode `json:"status_code" yaml:"status_code" shadow:"status_code"`
 
 	// Disk usage key/value pairs
 	Disk map[string]InstanceStateDisk `json:"disk" yaml:"disk"`

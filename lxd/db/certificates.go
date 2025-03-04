@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 
 	"github.com/canonical/lxd/lxd/certificate"
 	"github.com/canonical/lxd/lxd/db/cluster"
@@ -16,7 +17,7 @@ func (n *NodeTx) GetCertificates(ctx context.Context) ([]cluster.Certificate, er
 		fingerprint string
 		certType    certificate.Type
 		name        string
-		certificate string
+		certificate types.X509CertificatePEM
 	}
 
 	sql := "SELECT fingerprint, type, name, certificate FROM certificates"

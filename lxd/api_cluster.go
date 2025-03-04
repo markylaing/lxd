@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"net/http"
 	"net/url"
 	"os"
@@ -739,12 +740,17 @@ func clusterPutJoin(d *Daemon, r *http.Request, req api.ClusterPut) response.Res
 					return err
 				}
 
+				trustedCertX509, err := shared.ParseCert([]byte(trustedCert.Certificate))
+				if err != nil {
+					return fmt.Errorf("Received invalid certificate from joining cluster: %w", err)
+				}
+
 				// Store the certificate in the local database.
 				dbCert := dbCluster.Certificate{
 					Fingerprint: trustedCert.Fingerprint,
 					Type:        dbType,
 					Name:        trustedCert.Name,
-					Certificate: trustedCert.Certificate,
+					Certificate: types.X509CertificatePEM{trustedCertX509},
 					Restricted:  trustedCert.Restricted,
 				}
 

@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/canonical/lxd/lxd/shadowapi"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"net/http"
 	"strconv"
 
@@ -20,7 +22,7 @@ type Certificate struct {
 	Fingerprint string `db:"primary=yes"`
 	Type        certificate.Type
 	Name        string
-	Certificate string
+	Certificate types.X509CertificatePEM
 	Restricted  bool
 }
 
@@ -62,13 +64,13 @@ func (cert *Certificate) ToIdentityType() (IdentityType, error) {
 
 // ToAPI converts the database Certificate struct to an api.Certificate
 // entry filling fields from the database as necessary.
-func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificate, error) {
-	resp := api.Certificate{}
+func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*shadowapi.Certificate, error) {
+	resp := shadowapi.Certificate{}
 	resp.Fingerprint = cert.Fingerprint
 	resp.Certificate = cert.Certificate
 	resp.Name = cert.Name
 	resp.Restricted = cert.Restricted
-	resp.Type = cert.ToAPIType()
+	resp.Type = cert.Type
 
 	projects, err := GetCertificateProjects(ctx, tx, cert.ID)
 	if err != nil {

@@ -28,7 +28,7 @@ type CertificatesPost struct {
 
 	// Usage type for the certificate
 	// Example: client
-	Type string `json:"type" yaml:"type"`
+	Type string `json:"type" yaml:"type" shadow:"certificate_type"`
 
 	// Whether to limit the certificate to listed projects
 	// Example: true
@@ -46,7 +46,7 @@ type CertificatesPost struct {
 	// Example: base64 encoded X509 PEM certificate
 	//
 	// API extension: certificate_self_renewal
-	Certificate string `json:"certificate" yaml:"certificate"`
+	Certificate string `json:"certificate" yaml:"certificate" shadow:"base64_encoded_x509_certificate"`
 
 	// Server trust password (used to add an untrusted client, deprecated, use trust_token)
 	// Example: blah
@@ -79,7 +79,7 @@ type CertificatePut struct {
 
 	// Usage type for the certificate
 	// Example: client
-	Type string `json:"type" yaml:"type"`
+	Type string `json:"type" yaml:"type" shadow:"certificate_type"`
 
 	// Whether to limit the certificate to listed projects
 	// Example: true
@@ -97,7 +97,7 @@ type CertificatePut struct {
 	// Example: X509 PEM certificate
 	//
 	// API extension: certificate_self_renewal
-	Certificate string `json:"certificate" yaml:"certificate"`
+	Certificate string `json:"certificate" yaml:"certificate" shadow:"pem_encoded_x509_certificate"`
 }
 
 // Certificate represents a LXD certificate
@@ -112,7 +112,7 @@ type Certificate struct {
 
 	// Usage type for the certificate
 	// Example: client
-	Type string `json:"type" yaml:"type"`
+	Type string `json:"type" yaml:"type" shadow:"certificate_type"`
 
 	// Whether to limit the certificate to listed projects
 	// Example: true
@@ -130,7 +130,7 @@ type Certificate struct {
 	// Example: X509 PEM certificate
 	//
 	// API extension: certificate_self_renewal
-	Certificate string `json:"certificate" yaml:"certificate"`
+	Certificate string `json:"certificate" yaml:"certificate" shadow:"pem_encoded_x509_certificate"`
 
 	// SHA256 fingerprint of the certificate
 	// Read only: true

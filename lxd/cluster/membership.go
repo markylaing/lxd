@@ -3,9 +3,9 @@ package cluster
 import (
 	"context"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"math"
 	"os"
 	"path/filepath"
@@ -193,7 +193,7 @@ func EnsureServerCertificateTrusted(serverName string, serverCert *shared.CertIn
 		Fingerprint: fingerprint,
 		Type:        certificate.TypeServer, // Server type for intra-member communication.
 		Name:        serverName,
-		Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverCertx509.Raw})),
+		Certificate: types.X509CertificatePEM{Certificate: serverCertx509},
 	}
 
 	// Add our server cert to the DB trust store (so when other members join this cluster they will be

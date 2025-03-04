@@ -65,7 +65,7 @@ type InstancesPost struct {
 
 	// Type (container or virtual-machine)
 	// Example: container
-	Type InstanceType `json:"type" yaml:"type"`
+	Type InstanceType `json:"type" yaml:"type" shadow:"instance_type"`
 
 	// Whether to start the instance after creation
 	// Example: true
@@ -242,7 +242,7 @@ type Instance struct {
 
 	// Instance status code (see instance_state)
 	// Example: 101
-	StatusCode StatusCode `json:"status_code" yaml:"status_code"`
+	StatusCode StatusCode `json:"status_code" yaml:"status_code" shadow:"status_code"`
 
 	// Instance creation timestamp
 	// Example: 2021-03-23T20:00:00-04:00

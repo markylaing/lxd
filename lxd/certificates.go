@@ -6,17 +6,12 @@ import (
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
-
-	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
 	"github.com/canonical/lxd/lxd/auth"
@@ -29,6 +24,8 @@ import (
 	"github.com/canonical/lxd/lxd/operations"
 	"github.com/canonical/lxd/lxd/request"
 	"github.com/canonical/lxd/lxd/response"
+	"github.com/canonical/lxd/lxd/shadowapi"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"github.com/canonical/lxd/lxd/state"
 	"github.com/canonical/lxd/lxd/util"
 	"github.com/canonical/lxd/shared"
@@ -150,7 +147,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	if recursion {
-		var certResponses []*api.Certificate
+		var certResponses []*shadowapi.Certificate
 		var baseCerts []dbCluster.Certificate
 		urlToCertificate := make(map[*api.URL]auth.EntitlementReporter)
 		var err error
@@ -160,7 +157,7 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 				return err
 			}
 
-			certResponses = make([]*api.Certificate, 0, len(baseCerts))
+			certResponses = make([]*shadowapi.Certificate, 0, len(baseCerts))
 			for _, baseCert := range baseCerts {
 				if !userHasPermission(entity.CertificateURL(baseCert.Fingerprint)) {
 					continue
@@ -293,7 +290,7 @@ func clusterMemberJoinTokenValid(s *state.State, r *http.Request, projectName st
 // certificateTokenValid searches for certificate token that matches the add token provided.
 // If an operation is found it is cancelled and the request metadata is returned. If no operation is found then a nil value
 // is returned. An error is only returned if an internal error occurs, or if a token is found but is not valid.
-func certificateTokenValid(s *state.State, r *http.Request, addToken *api.CertificateAddToken) (*api.CertificatesPost, error) {
+func certificateTokenValid(s *state.State, r *http.Request, addToken *api.CertificateAddToken) (*shadowapi.CertificatesPost, error) {
 	ops, err := operationsGetByType(s, r, api.ProjectDefaultName, operationtype.CertificateAddToken)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting certificate token operations: %w", err)
@@ -376,12 +373,12 @@ func certificateTokenValid(s *state.State, r *http.Request, addToken *api.Certif
 		return nil, fmt.Errorf(`Missing "request" key in certificate add operation data`)
 	}
 
-	var tokenReq api.CertificatesPost
+	var tokenReq shadowapi.CertificatesPost
 
 	// Depending on whether it's a local operation or not, request field will either be a api.CertificatesPost
 	// or a JSON string of api.CertificatesPost.
 	if s.ServerName == foundOp.Location {
-		tokenReq, ok = tokenReqAny.(api.CertificatesPost)
+		tokenReq, ok = tokenReqAny.(shadowapi.CertificatesPost)
 		if !ok {
 			return nil, fmt.Errorf("Unexpected request type in certificate add operation: %T", tokenReqAny)
 		}
@@ -472,7 +469,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
 	// Parse the request.
-	req := api.CertificatesPost{}
+	req := shadowapi.CertificatesPost{}
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		return response.BadRequest(err)
@@ -490,12 +487,12 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 	localHTTPSAddress := s.LocalConfig.HTTPSAddress()
 
 	// Quick check.
-	if req.Token && req.Certificate != "" {
+	if req.Token && !req.Certificate.IsEmpty() {
 		return response.BadRequest(fmt.Errorf("Can't use certificate if token is requested"))
 	}
 
 	if req.Token {
-		if req.Type != "client" {
+		if req.Type != certificate.TypeClient {
 			return response.BadRequest(fmt.Errorf("Tokens can only be issued for client certificates"))
 		}
 
@@ -541,7 +538,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// If caller is already trusted and does not have permission to create certificates, they cannot create more certificates.
-	if trusted && !userCanCreateCertificates && req.Certificate == "" && !req.Token {
+	if trusted && !userCanCreateCertificates && req.Certificate.IsEmpty() && !req.Token {
 		return response.BadRequest(fmt.Errorf("Client is already trusted"))
 	}
 
@@ -586,7 +583,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 			}
 
 			// Create a new request from the token data as the user isn't allowed to override anything.
-			req = api.CertificatesPost{
+			req = shadowapi.CertificatesPost{
 				Name:       tokenReq.Name,
 				Type:       tokenReq.Type,
 				Restricted: tokenReq.Restricted,
@@ -595,89 +592,75 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 		}
 	}
 
-	dbReqType, err := certificate.FromAPIType(req.Type)
-	if err != nil {
-		return response.BadRequest(err)
-	}
-
 	// Extract the certificate.
-	var cert *x509.Certificate
-	if req.Certificate != "" {
-		// Add supplied certificate.
-		data, err := base64.StdEncoding.DecodeString(req.Certificate)
-		if err != nil {
-			return response.BadRequest(err)
-		}
-
-		cert, err = x509.ParseCertificate(data)
-		if err != nil {
-			return response.BadRequest(fmt.Errorf("Invalid certificate material: %w", err))
-		}
-	} else if req.Token {
-		// Get all addresses the server is listening on. This is encoded in the certificate token,
-		// so that the client will not have to specify a server address. The client will iterate
-		// through all these addresses until it can connect to one of them.
-		addresses, err := util.ListenAddresses(localHTTPSAddress)
-		if err != nil {
-			return response.InternalError(err)
-		}
-
-		// Generate join secret for new client. This will be stored inside the join token operation and will be
-		// supplied by the joining client (encoded inside the join token) which will allow us to lookup the correct
-		// operation in order to validate the requested joining client name is correct and authorised.
-		joinSecret, err := shared.RandomCryptoString()
-		if err != nil {
-			return response.InternalError(err)
-		}
-
-		// Generate fingerprint of network certificate so joining member can automatically trust the correct
-		// certificate when it is presented during the join process.
-		fingerprint, err := shared.CertFingerprintStr(string(s.Endpoints.NetworkPublicKey()))
-		if err != nil {
-			return response.InternalError(err)
-		}
-
-		if req.Projects == nil {
-			req.Projects = []string{}
-		}
-
-		meta := map[string]any{
-			"secret":      joinSecret,
-			"fingerprint": fingerprint,
-			"addresses":   addresses,
-			"request":     req,
-		}
-
-		// If tokens should expire, add the expiry date to the op's metadata.
-		expiry := s.GlobalConfig.RemoteTokenExpiry()
-
-		if expiry != "" {
-			expiresAt, err := shared.GetExpiry(time.Now(), expiry)
+	cert := req.Certificate.Certificate
+	if req.Certificate.IsEmpty() {
+		if req.Token {
+			// Get all addresses the server is listening on. This is encoded in the certificate token,
+			// so that the client will not have to specify a server address. The client will iterate
+			// through all these addresses until it can connect to one of them.
+			addresses, err := util.ListenAddresses(localHTTPSAddress)
 			if err != nil {
 				return response.InternalError(err)
 			}
 
-			meta["expiresAt"] = expiresAt
-		}
+			// Generate join secret for new client. This will be stored inside the join token operation and will be
+			// supplied by the joining client (encoded inside the join token) which will allow us to lookup the correct
+			// operation in order to validate the requested joining client name is correct and authorised.
+			joinSecret, err := shared.RandomCryptoString()
+			if err != nil {
+				return response.InternalError(err)
+			}
 
-		op, err := operations.OperationCreate(s, api.ProjectDefaultName, operations.OperationClassToken, operationtype.CertificateAddToken, nil, meta, nil, nil, nil, r)
-		if err != nil {
-			return response.InternalError(err)
-		}
+			// Generate fingerprint of network certificate so joining member can automatically trust the correct
+			// certificate when it is presented during the join process.
+			fingerprint, err := shared.CertFingerprintStr(string(s.Endpoints.NetworkPublicKey()))
+			if err != nil {
+				return response.InternalError(err)
+			}
 
-		return operations.OperationResponse(op)
-	} else if r.TLS != nil {
-		// Add client's certificate.
-		if len(r.TLS.PeerCertificates) < 1 {
-			// This can happen if the client doesn't send a client certificate or if the server is in
-			// CA mode. We rely on this check to prevent non-CA trusted client certificates from being
-			// added when in CA mode.
-			return response.BadRequest(fmt.Errorf("No client certificate provided"))
-		}
+			if req.Projects == nil {
+				req.Projects = []string{}
+			}
 
-		cert = r.TLS.PeerCertificates[len(r.TLS.PeerCertificates)-1]
-	} else {
-		return response.BadRequest(fmt.Errorf("Can't use TLS data on non-TLS link"))
+			meta := map[string]any{
+				"secret":      joinSecret,
+				"fingerprint": fingerprint,
+				"addresses":   addresses,
+				"request":     req,
+			}
+
+			// If tokens should expire, add the expiry date to the op's metadata.
+			expiry := s.GlobalConfig.RemoteTokenExpiry()
+
+			if expiry != "" {
+				expiresAt, err := shared.GetExpiry(time.Now(), expiry)
+				if err != nil {
+					return response.InternalError(err)
+				}
+
+				meta["expiresAt"] = expiresAt
+			}
+
+			op, err := operations.OperationCreate(s, api.ProjectDefaultName, operations.OperationClassToken, operationtype.CertificateAddToken, nil, meta, nil, nil, nil, r)
+			if err != nil {
+				return response.InternalError(err)
+			}
+
+			return operations.OperationResponse(op)
+		} else if r.TLS != nil {
+			// Add client's certificate.
+			if len(r.TLS.PeerCertificates) < 1 {
+				// This can happen if the client doesn't send a client certificate or if the server is in
+				// CA mode. We rely on this check to prevent non-CA trusted client certificates from being
+				// added when in CA mode.
+				return response.BadRequest(fmt.Errorf("No client certificate provided"))
+			}
+
+			cert = r.TLS.PeerCertificates[len(r.TLS.PeerCertificates)-1]
+		} else {
+			return response.BadRequest(fmt.Errorf("Can't use TLS data on non-TLS link"))
+		}
 	}
 
 	// Check validity.
@@ -716,9 +699,9 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 		// Store the certificate in the cluster database.
 		dbCert := dbCluster.Certificate{
 			Fingerprint: shared.CertFingerprint(cert),
-			Type:        dbReqType,
+			Type:        req.Type,
 			Name:        name,
-			Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})),
+			Certificate: types.X509CertificatePEM{Certificate: cert},
 			Restricted:  req.Restricted,
 		}
 
@@ -735,10 +718,10 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	req = api.CertificatesPost{
-		Certificate: base64.StdEncoding.EncodeToString(cert.Raw),
+	req = shadowapi.CertificatesPost{
+		Certificate: types.X509CertificateBase64{Certificate: cert},
 		Name:        name,
-		Type:        api.CertificateTypeClient,
+		Type:        certificate.TypeClient,
 	}
 
 	err = notifier(func(member db.NodeInfo, client lxd.InstanceServer) error {
@@ -793,8 +776,8 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 //	  "500":
 //	    $ref: "#/responses/InternalServerError"
 func certificateGet(d *Daemon, r *http.Request) response.Response {
-	s := d.State()
-	fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+	var fingerprint string
+	err := request.NewParser().WithRequiredPathArgument("fingerprint", &fingerprint).Parse(r)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -804,7 +787,8 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	var cert *api.Certificate
+	s := d.State()
+	var cert *shadowapi.Certificate
 	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		dbCertInfo, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
@@ -863,13 +847,15 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 //	  "500":
 //	    $ref: "#/responses/InternalServerError"
 func certificatePut(d *Daemon, r *http.Request) response.Response {
-	fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+	var fingerprint string
+	var req shadowapi.CertificatePut
+	err := request.NewParser().WithRequiredPathArgument("fingerprint", &fingerprint).WithBody(&req).Parse(r)
 	if err != nil {
 		return response.SmartError(err)
 	}
 
 	// Get current database record.
-	var apiEntry *api.Certificate
+	var apiEntry *shadowapi.Certificate
 	err = d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		oldEntry, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
@@ -887,13 +873,6 @@ func certificatePut(d *Daemon, r *http.Request) response.Response {
 	err = util.EtagCheck(r, apiEntry)
 	if err != nil {
 		return response.PreconditionFailed(err)
-	}
-
-	// Parse the request.
-	req := api.CertificatePut{}
-	err = json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		return response.BadRequest(err)
 	}
 
 	// Apply the update.
@@ -930,13 +909,14 @@ func certificatePut(d *Daemon, r *http.Request) response.Response {
 //	  "500":
 //	    $ref: "#/responses/InternalServerError"
 func certificatePatch(d *Daemon, r *http.Request) response.Response {
-	fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+	var fingerprint string
+	err := request.NewParser().WithRequiredPathArgument("fingerprint", &fingerprint).Parse(r)
 	if err != nil {
 		return response.SmartError(err)
 	}
 
 	// Get current database record.
-	var apiEntry *api.Certificate
+	var apiEntry *shadowapi.Certificate
 	err = d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		oldEntry, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
@@ -958,7 +938,7 @@ func certificatePatch(d *Daemon, r *http.Request) response.Response {
 
 	// Apply the changes.
 	req := *apiEntry
-	err = json.NewDecoder(r.Body).Decode(&req)
+	err = request.NewParser().WithBody(&req).Parse(r)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -966,13 +946,8 @@ func certificatePatch(d *Daemon, r *http.Request) response.Response {
 	return doCertificateUpdate(r.Context(), d, *apiEntry, req.Writable(), r)
 }
 
-func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate, req api.CertificatePut, r *http.Request) response.Response {
+func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo shadowapi.Certificate, req shadowapi.CertificatePut, r *http.Request) response.Response {
 	s := d.State()
-
-	reqDBType, err := certificate.FromAPIType(req.Type)
-	if err != nil {
-		return response.BadRequest(err)
-	}
 
 	// Convert to the database type.
 	dbCert := dbCluster.Certificate{
@@ -980,11 +955,11 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate,
 		Fingerprint: dbInfo.Fingerprint,
 		Restricted:  req.Restricted,
 		Name:        req.Name,
-		Type:        reqDBType,
+		Type:        req.Type,
 	}
 
 	var userCanEditCertificate bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(dbInfo.Fingerprint), auth.EntitlementCanEdit)
+	err := s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(dbInfo.Fingerprint), auth.EntitlementCanEdit)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err == nil {
@@ -1017,22 +992,14 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate,
 			Fingerprint: dbInfo.Fingerprint,
 			Restricted:  dbInfo.Restricted,
 			Name:        dbInfo.Name,
-			Type:        reqDBType,
+			Type:        dbInfo.Type,
 		}
 
 		certProjects = dbInfo.Projects
 
-		if req.Certificate != "" && dbInfo.Certificate != req.Certificate {
-			certBlock, _ := pem.Decode([]byte(dbInfo.Certificate))
-
-			oldCert, err := x509.ParseCertificate(certBlock.Bytes)
-			if err != nil {
-				// This should not happen
-				return response.InternalError(err)
-			}
-
+		if !req.Certificate.IsEmpty() && dbInfo.Certificate != req.Certificate {
 			trustedCerts := map[string]x509.Certificate{
-				dbInfo.Name: *oldCert,
+				dbInfo.Name: *req.Certificate.Certificate,
 			}
 
 			trusted := false
@@ -1051,20 +1018,12 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate,
 	}
 
 	networkCert := d.endpoints.NetworkCert()
-	if req.Certificate != "" && dbInfo.Certificate != req.Certificate {
-		// Add supplied certificate.
-		block, _ := pem.Decode([]byte(req.Certificate))
-
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return response.BadRequest(fmt.Errorf("Invalid certificate material: %w", err))
-		}
-
-		dbCert.Certificate = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))
-		dbCert.Fingerprint = shared.CertFingerprint(cert)
+	if !req.Certificate.IsEmpty() && dbInfo.Certificate != req.Certificate {
+		dbCert.Certificate = req.Certificate
+		dbCert.Fingerprint = shared.CertFingerprint(req.Certificate.Certificate)
 
 		// Check validity.
-		err = certificateValidate(networkCert, cert)
+		err = certificateValidate(networkCert, req.Certificate.Certificate)
 		if err != nil {
 			return response.BadRequest(err)
 		}
@@ -1131,7 +1090,8 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate,
 func certificateDelete(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	fingerprint, err := url.PathUnescape(mux.Vars(r)["fingerprint"])
+	var fingerprint string
+	err := request.NewParser().WithRequiredPathArgument("fingerprint", &fingerprint).Parse(r)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1165,16 +1125,8 @@ func certificateDelete(d *Daemon, r *http.Request) response.Response {
 			response.Forbidden(fmt.Errorf("Cannot delete certificate"))
 		}
 
-		certBlock, _ := pem.Decode([]byte(certInfo.Certificate))
-
-		cert, err := x509.ParseCertificate(certBlock.Bytes)
-		if err != nil {
-			// This should not happen
-			return response.InternalError(err)
-		}
-
 		trustedCerts := map[string]x509.Certificate{
-			certInfo.Name: *cert,
+			certInfo.Name: *certInfo.Certificate.Certificate,
 		}
 
 		trusted := false

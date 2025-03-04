@@ -4,16 +4,13 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/shadowapi"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"net/http"
-	"net/url"
 	"slices"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
 	"github.com/canonical/lxd/lxd/auth"
@@ -31,6 +28,7 @@ import (
 	"github.com/canonical/lxd/shared/entity"
 	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/revert"
+	"github.com/google/uuid"
 )
 
 var identitiesCmd = APIEndpoint{
@@ -143,8 +141,8 @@ const (
 // of the identity matching what is expected by the authorizer. It returns the Identity for convenience, and also adds
 // it to the request context with the ctxClusterDBIdentity context key for later use.
 func addIdentityDetailsToContext(s *state.State, r *http.Request, authenticationMethod string) (*dbCluster.Identity, error) {
-	muxVars := mux.Vars(r)
-	nameOrID, err := url.PathUnescape(muxVars["nameOrIdentifier"])
+	var nameOrID string
+	err := request.NewParser().WithRequiredPathArgument("nameOrIdentifier", &nameOrID).Parse(r)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to unescape path argument: %w", err)
 	}
@@ -266,7 +264,7 @@ func createIdentityTLS(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
 	// Parse the request.
-	req := api.IdentitiesTLSPost{}
+	req := shadowapi.IdentitiesTLSPost{}
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		return response.BadRequest(err)
@@ -284,14 +282,14 @@ func createIdentityTLS(d *Daemon, r *http.Request) response.Response {
 }
 
 // createIdentityTLSUntrusted handles requests to create an identity when the caller is not trusted.
-func createIdentityTLSUntrusted(ctx context.Context, s *state.State, peerCertificates []*x509.Certificate, networkCert *shared.CertInfo, req api.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
+func createIdentityTLSUntrusted(ctx context.Context, s *state.State, peerCertificates []*x509.Certificate, networkCert *shared.CertInfo, req shadowapi.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
 	// If not trusted a token must be provided.
 	if req.TrustToken == "" {
 		return response.Forbidden(errors.New("Trust token required"))
 	}
 
 	// If not trusted other fields must not be populated.
-	if req.Token || req.Certificate != "" || req.Name != "" || len(req.Groups) > 0 {
+	if req.Token || !req.Certificate.IsEmpty() || req.Name != "" || len(req.Groups) > 0 {
 		return response.Forbidden(errors.New("Only trust token must be provided"))
 	}
 
@@ -322,7 +320,7 @@ func createIdentityTLSUntrusted(ctx context.Context, s *state.State, peerCertifi
 
 	// Activate the pending identity with the certificate.
 	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
-		return dbCluster.ActivateTLSIdentity(ctx, tx.Tx(), identifier, cert)
+		return dbCluster.ActivateTLSIdentity(ctx, tx.Tx(), identifier, types.X509CertificatePEM{Certificate: cert})
 	})
 	if err != nil {
 		return response.SmartError(err)
@@ -338,7 +336,7 @@ func createIdentityTLSUntrusted(ctx context.Context, s *state.State, peerCertifi
 }
 
 // createIdentityTLSTrusted handles requests to create an identity when the caller is trusted.
-func createIdentityTLSTrusted(ctx context.Context, s *state.State, networkCert *shared.CertInfo, req api.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
+func createIdentityTLSTrusted(ctx context.Context, s *state.State, networkCert *shared.CertInfo, req shadowapi.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
 	// Check if the caller has permission to create identities.
 	err := s.Authorizer.CheckPermission(ctx, entity.ServerURL(), auth.EntitlementCanCreateIdentities)
 	if err != nil {
@@ -356,7 +354,7 @@ func createIdentityTLSTrusted(ctx context.Context, s *state.State, networkCert *
 	}
 
 	// Can't request a token if a certificate is provided.
-	if req.Token && req.Certificate != "" {
+	if req.Token && !req.Certificate.IsEmpty() {
 		return response.BadRequest(fmt.Errorf("Can't use certificate if token is requested"))
 	}
 
@@ -408,7 +406,7 @@ func createIdentityTLSTrusted(ctx context.Context, s *state.State, networkCert *
 	return response.SyncResponseLocation(true, nil, lc.Source)
 }
 
-func createIdentityTLSPending(ctx context.Context, s *state.State, req api.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
+func createIdentityTLSPending(ctx context.Context, s *state.State, req shadowapi.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
 	localHTTPSAddress := s.LocalConfig.HTTPSAddress()
 
 	// Tokens are useless if the server isn't listening (how will the untrusted client contact the server?)
@@ -485,7 +483,7 @@ func createIdentityTLSPending(ctx context.Context, s *state.State, req api.Ident
 	}
 
 	// Return the CertificateAddToken.
-	token := api.CertificateAddToken{
+	token := shadowapi.CertificateAddToken{
 		ClientName:  req.Name,
 		Fingerprint: fingerprint,
 		Addresses:   addresses,
@@ -822,7 +820,7 @@ func getIdentities(authenticationMethod string) func(d *Daemon, r *http.Request)
 
 		var identities []dbCluster.Identity
 		var groupsByIdentityID map[int][]dbCluster.AuthGroup
-		var apiIdentity *api.Identity
+		var apiIdentity *shadowapi.Identity
 		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get all identities, filter by authentication method if present.
 			var filters []dbCluster.IdentityFilter
@@ -880,7 +878,7 @@ func getIdentities(authenticationMethod string) func(d *Daemon, r *http.Request)
 				}
 			}
 
-			return response.SyncResponse(true, []api.Identity{*apiIdentity})
+			return response.SyncResponse(true, []shadowapi.Identity{*apiIdentity})
 		}
 
 		if recursion {
@@ -894,10 +892,10 @@ func getIdentities(authenticationMethod string) func(d *Daemon, r *http.Request)
 				}
 			}
 
-			apiIdentities := make([]*api.Identity, 0, len(identities))
+			apiIdentities := make([]*shadowapi.Identity, 0, len(identities))
 			urlToIdentity := make(map[*api.URL]auth.EntitlementReporter, len(identities))
 			for _, id := range identities {
-				var certificate string
+				var certificate types.X509CertificatePEM
 				if id.AuthMethod == api.AuthenticationMethodTLS && id.Type != api.IdentityTypeCertificateClientPending {
 					metadata, err := id.CertificateMetadata()
 					if err != nil {
@@ -907,7 +905,7 @@ func getIdentities(authenticationMethod string) func(d *Daemon, r *http.Request)
 					certificate = metadata.Certificate
 				}
 
-				identity := &api.Identity{
+				identity := &shadowapi.Identity{
 					AuthenticationMethod: string(id.AuthMethod),
 					Type:                 string(id.Type),
 					Identifier:           id.Identifier,
@@ -1025,7 +1023,7 @@ func getIdentity(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	var apiIdentity *api.Identity
+	var apiIdentity *shadowapi.Identity
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		apiIdentity, err = id.ToAPI(ctx, tx.Tx(), canViewGroup)
@@ -1104,9 +1102,9 @@ func getCurrentIdentityInfo(d *Daemon, r *http.Request) response.Response {
 	identityProviderGroupNames, _ := request.GetCtxValue[[]string](r.Context(), request.CtxIdentityProviderGroups)
 
 	s := d.State()
-	var apiIdentity *api.Identity
+	var apiIdentity *shadowapi.Identity
 	var effectiveGroups []string
-	var effectivePermissions []api.Permission
+	var effectivePermissions []shadowapi.Permission
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		id, err := dbCluster.GetIdentity(ctx, tx.Tx(), dbCluster.AuthMethod(protocol), identifier)
 		if err != nil {
@@ -1142,9 +1140,9 @@ func getCurrentIdentityInfo(d *Daemon, r *http.Request) response.Response {
 			return fmt.Errorf("Failed to get entity URLs for effective permissions: %w", err)
 		}
 
-		effectivePermissions = make([]api.Permission, 0, len(permissions))
+		effectivePermissions = make([]shadowapi.Permission, 0, len(permissions))
 		for _, permission := range permissions {
-			effectivePermissions = append(effectivePermissions, api.Permission{
+			effectivePermissions = append(effectivePermissions, shadowapi.Permission{
 				EntityType:      string(permission.EntityType),
 				EntityReference: entityURLs[entity.Type(permission.EntityType)][permission.EntityID].String(),
 				Entitlement:     string(permission.Entitlement),
@@ -1157,7 +1155,7 @@ func getCurrentIdentityInfo(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	return response.SyncResponse(true, api.IdentityInfo{
+	return response.SyncResponse(true, shadowapi.IdentityInfo{
 		Identity:             *apiIdentity,
 		EffectiveGroups:      effectiveGroups,
 		EffectivePermissions: effectivePermissions,
@@ -1238,13 +1236,13 @@ func updateIdentity(authenticationMethod string) func(d *Daemon, r *http.Request
 			return response.NotImplemented(fmt.Errorf("Identities of type %q cannot be modified via this API", id.Type))
 		}
 
-		var identityPut api.IdentityPut
+		var identityPut shadowapi.IdentityPut
 		err = json.NewDecoder(r.Body).Decode(&identityPut)
 		if err != nil {
 			return response.BadRequest(fmt.Errorf("Failed to unmarshal request body: %w", err))
 		}
 
-		if id.Type != api.IdentityTypeCertificateClient && identityPut.TLSCertificate != "" {
+		if id.Type != api.IdentityTypeCertificateClient && !identityPut.TLSCertificate.IsEmpty() {
 			return response.BadRequest(fmt.Errorf("Cannot update certificate for identities of type %q", id.Type))
 		}
 
@@ -1276,7 +1274,7 @@ func updateIdentity(authenticationMethod string) func(d *Daemon, r *http.Request
 
 // updateSelfIdentityUnprivileged is only invoked when an identity of type api.IdentityTypeClientCertificate updates their
 // own identity and does not have permission to change their own groups.
-func updateSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut api.IdentityPut) response.Response {
+func updateSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut shadowapi.IdentityPut) response.Response {
 	// Validate the given certificate
 	fingerprint, metadata, err := validateIdentityCert(s.Endpoints.NetworkCert(), identityPut.TLSCertificate)
 	if err != nil {
@@ -1335,11 +1333,11 @@ func updateSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluste
 }
 
 // updateIdentityPrivileged is called when the caller has `can_edit` on the identity. It must account for both OIDC and TLS identities.
-func updateIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut api.IdentityPut) response.Response {
+func updateIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut shadowapi.IdentityPut) response.Response {
 	// Validate certificate if given (not present for OIDC or pending TLS identities).
 	var fingerprint string
 	var metadata string
-	if identityPut.TLSCertificate != "" {
+	if !identityPut.TLSCertificate.IsEmpty() {
 		var err error
 		fingerprint, metadata, err = validateIdentityCert(s.Endpoints.NetworkCert(), identityPut.TLSCertificate)
 		if err != nil {
@@ -1371,7 +1369,7 @@ func updateIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Iden
 			return err
 		}
 
-		if identityPut.TLSCertificate == "" || fingerprint == id.Identifier {
+		if identityPut.TLSCertificate.IsEmpty() || fingerprint == id.Identifier {
 			return nil
 		}
 
@@ -1471,17 +1469,17 @@ func patchIdentity(authenticationMethod string) func(d *Daemon, r *http.Request)
 			return response.NotImplemented(fmt.Errorf("Identities of type %q cannot be modified via this API", id.Type))
 		}
 
-		var identityPut api.IdentityPut
+		var identityPut shadowapi.IdentityPut
 		err = json.NewDecoder(r.Body).Decode(&identityPut)
 		if err != nil {
 			return response.BadRequest(fmt.Errorf("Failed to unmarshal request body: %w", err))
 		}
 
-		if id.Type != api.IdentityTypeCertificateClient && identityPut.TLSCertificate != "" {
+		if id.Type != api.IdentityTypeCertificateClient && !identityPut.TLSCertificate.IsEmpty() {
 			return response.BadRequest(fmt.Errorf("Cannot update certificate for identities of type %q", id.Type))
 		}
 
-		if len(identityPut.Groups) == 0 && identityPut.TLSCertificate == "" {
+		if len(identityPut.Groups) == 0 && identityPut.TLSCertificate.IsEmpty() {
 			// Nothing to do
 			return response.EmptySyncResponse
 		}
@@ -1513,11 +1511,11 @@ func patchIdentity(authenticationMethod string) func(d *Daemon, r *http.Request)
 }
 
 // patchIdentityPrivileged is invoked when the caller has `can_edit` on the identity. It must handle both OIDC and TLS identities.
-func patchIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut api.IdentityPut) response.Response {
+func patchIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut shadowapi.IdentityPut) response.Response {
 	// Parse the certificate if given.
 	var fingerprint string
 	var metadata string
-	if identityPut.TLSCertificate != "" {
+	if !identityPut.TLSCertificate.IsEmpty() {
 		var err error
 		fingerprint, metadata, err = validateIdentityCert(s.Endpoints.NetworkCert(), identityPut.TLSCertificate)
 		if err != nil {
@@ -1532,7 +1530,7 @@ func patchIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Ident
 		return response.SmartError(err)
 	}
 
-	var apiIdentity *api.Identity
+	var apiIdentity *shadowapi.Identity
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		apiIdentity, err = id.ToAPI(ctx, tx.Tx(), canViewGroup)
 		if err != nil {
@@ -1557,7 +1555,7 @@ func patchIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Ident
 
 		// Only update the certificate if it is given. Additionally, we don't need to update it if it's the same as the
 		// existing one.
-		if identityPut.TLSCertificate != "" && fingerprint != id.Identifier {
+		if !identityPut.TLSCertificate.IsEmpty() && fingerprint != id.Identifier {
 			return dbCluster.UpdateIdentity(ctx, tx.Tx(), id.AuthMethod, id.Identifier, dbCluster.Identity{
 				AuthMethod: id.AuthMethod,
 				Type:       id.Type,
@@ -1585,12 +1583,12 @@ func patchIdentityPrivileged(s *state.State, r *http.Request, id dbCluster.Ident
 
 // patchSelfIdentityUnprivileged is only invoked when an identity of type api.IdentityTypeClientCertificate updates their
 // own identity and does not have permission to change their own groups.
-func patchSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut api.IdentityPut) response.Response {
+func patchSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluster.Identity, identityPut shadowapi.IdentityPut) response.Response {
 	if len(identityPut.Groups) > 0 {
 		return response.Forbidden(errors.New("Only the certificate may be changed"))
 	}
 
-	if identityPut.TLSCertificate == "" {
+	if identityPut.TLSCertificate.IsEmpty() {
 		// Can only edit the TLS certificate, if one wasn't provided there's nothing to do.
 		return response.EmptySyncResponse
 	}
@@ -1612,7 +1610,7 @@ func patchSelfIdentityUnprivileged(s *state.State, r *http.Request, id dbCluster
 	// all groups that they are a member of, so we can return true for any url here.
 	canViewGroup := func(entityURL *api.URL) bool { return true }
 
-	var apiIdentity *api.Identity
+	var apiIdentity *shadowapi.Identity
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		apiIdentity, err = id.ToAPI(ctx, tx.Tx(), canViewGroup)
 		if err != nil {
@@ -1747,17 +1745,12 @@ func newIdentityNotificationFunc(s *state.State, r *http.Request, networkCert *s
 
 // validateIdentityCert validates the certificate and returns the fingerprint and dbCluster.CertificateMetadata for the
 // identity encoded as JSON.
-func validateIdentityCert(networkCert *shared.CertInfo, cert string) (fingerprint string, metadataJSON string, err error) {
-	if cert == "" {
+func validateIdentityCert(networkCert *shared.CertInfo, cert types.X509CertificatePEM) (fingerprint string, metadataJSON string, err error) {
+	if cert.IsEmpty() {
 		return "", "", api.NewStatusError(http.StatusBadRequest, "Must provide a certificate")
 	}
 
-	x509Cert, err := shared.ParseCert([]byte(cert))
-	if err != nil {
-		return "", "", api.StatusErrorf(http.StatusBadRequest, "Failed to parse certificate: %w", err)
-	}
-
-	err = certificateValidate(networkCert, x509Cert)
+	err = certificateValidate(networkCert, cert.Certificate)
 	if err != nil {
 		return "", "", fmt.Errorf("Invalid certificate: %w", err)
 	}
@@ -1767,7 +1760,7 @@ func validateIdentityCert(networkCert *shared.CertInfo, cert string) (fingerprin
 		return "", "", fmt.Errorf("Failed to encode certificate metadata: %w", err)
 	}
 
-	return shared.CertFingerprint(x509Cert), string(b), nil
+	return shared.CertFingerprint(cert.Certificate), string(b), nil
 }
 
 // updateIdentityCache reads all identities from the database and sets them in the identity.Cache.
@@ -1923,18 +1916,6 @@ func updateIdentityCacheFromLocal(d *Daemon) error {
 	// identityCacheEntries needs to be pre-allocated.
 	identityCacheEntries := make([]identity.CacheEntry, 0, len(localServerCerts))
 	for _, dbCert := range localServerCerts {
-		certBlock, _ := pem.Decode([]byte(dbCert.Certificate))
-		if certBlock == nil {
-			logger.Warn("Failed decoding certificate", logger.Ctx{"name": dbCert.Name, "err": err})
-			continue
-		}
-
-		cert, err := x509.ParseCertificate(certBlock.Bytes)
-		if err != nil {
-			logger.Warn("Failed parsing certificate", logger.Ctx{"name": dbCert.Name, "err": err})
-			continue
-		}
-
 		id, err := dbCert.ToIdentity()
 		if err != nil {
 			logger.Warn("Failed to convert node certificate into identity entry", logger.Ctx{"err": err})
@@ -1945,7 +1926,7 @@ func updateIdentityCacheFromLocal(d *Daemon) error {
 			Identifier:           id.Identifier,
 			AuthenticationMethod: string(id.AuthMethod),
 			IdentityType:         string(id.Type),
-			Certificate:          cert,
+			Certificate:          dbCert.Certificate.Certificate,
 		})
 	}
 

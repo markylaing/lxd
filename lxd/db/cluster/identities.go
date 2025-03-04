@@ -8,9 +8,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/shadowapi"
+	"github.com/canonical/lxd/lxd/shadowapi/types"
 	"net/http"
 	"strings"
 	"time"
@@ -232,22 +233,12 @@ type IdentityFilter struct {
 
 // CertificateMetadata contains metadata for certificate identities. Currently this is only the certificate itself.
 type CertificateMetadata struct {
-	Certificate string `json:"cert"`
+	Certificate types.X509CertificatePEM `json:"cert"`
 }
 
 // X509 returns an x509.Certificate from the CertificateMetadata.
 func (c CertificateMetadata) X509() (*x509.Certificate, error) {
-	certBlock, _ := pem.Decode([]byte(c.Certificate))
-	if certBlock == nil {
-		return nil, errors.New("Failed decoding certificate")
-	}
-
-	cert, err := x509.ParseCertificate(certBlock.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("Failed parsing certificate: %w", err)
-	}
-
-	return cert, nil
+	return c.Certificate.Certificate, nil
 }
 
 // ToCertificate converts an Identity to a Certificate.
@@ -360,7 +351,7 @@ func (i Identity) PendingTLSMetadata() (*PendingTLSMetadata, error) {
 }
 
 // ToAPI converts an Identity to an api.Identity, executing database queries as necessary.
-func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.PermissionChecker) (*api.Identity, error) {
+func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.PermissionChecker) (*shadowapi.Identity, error) {
 	groups, err := GetAuthGroupsByIdentityID(ctx, tx, i.ID)
 	if err != nil {
 		return nil, err
@@ -373,7 +364,7 @@ func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.Perm
 		}
 	}
 
-	var tlsCertificate string
+	var tlsCertificate types.X509CertificatePEM
 	if i.AuthMethod == api.AuthenticationMethodTLS && i.Type != api.IdentityTypeCertificateClientPending {
 		metadata, err := i.CertificateMetadata()
 		if err != nil {
@@ -383,7 +374,7 @@ func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.Perm
 		tlsCertificate = metadata.Certificate
 	}
 
-	return &api.Identity{
+	return &shadowapi.Identity{
 		AuthenticationMethod: string(i.AuthMethod),
 		Type:                 string(i.Type),
 		Identifier:           i.Identifier,
@@ -395,14 +386,18 @@ func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.Perm
 
 // ActivateTLSIdentity updates a TLS identity to make it valid by adding the fingerprint, PEM encoded certificate, and setting
 // the type to api.IdentityTypeCertificateClient.
-func ActivateTLSIdentity(ctx context.Context, tx *sql.Tx, identifier uuid.UUID, cert *x509.Certificate) error {
-	fingerprint := shared.CertFingerprint(cert)
+func ActivateTLSIdentity(ctx context.Context, tx *sql.Tx, identifier uuid.UUID, cert types.X509CertificatePEM) error {
+	if cert.IsEmpty() {
+		return fmt.Errorf("Cannot activate TLS identity: Certificate missing")
+	}
+
+	fingerprint := shared.CertFingerprint(cert.Certificate)
 	_, err := GetIdentityID(ctx, tx, api.AuthenticationMethodTLS, fingerprint)
 	if err == nil {
 		return api.StatusErrorf(http.StatusConflict, "Identity already exists")
 	}
 
-	metadata := CertificateMetadata{Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}))}
+	metadata := CertificateMetadata{Certificate: cert}
 	b, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("Failed to encode certificate metadata: %w", err)

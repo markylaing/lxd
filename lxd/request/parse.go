@@ -1,6 +1,8 @@
 package request
 
 import (
+	"github.com/canonical/lxd/lxd/request/parser"
+	"github.com/gorilla/mux"
 	"net/http"
 	"net/url"
 
@@ -37,4 +39,12 @@ func QueryParam(request *http.Request, key string) string {
 	}
 
 	return values.Get(key)
+}
+
+func NewParser() *parser.Parser {
+	return parser.New().WithPathArgumentMapGetter(func(r *http.Request) map[string]string {
+		return mux.Vars(r)
+	}, func(s string) (string, error) {
+		return url.PathUnescape(s)
+	})
 }

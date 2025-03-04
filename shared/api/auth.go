@@ -43,7 +43,7 @@ const (
 type WithEntitlements struct {
 	// AccessEntitlements represents the entitlements that are granted to the requesting user on the attached entity.
 	// Example: ["can_view", "can_edit"]
-	AccessEntitlements []string `json:"access_entitlements,omitempty" yaml:"access_entitlements,omitempty"`
+	AccessEntitlements []string `json:"access_entitlements,omitempty" yaml:"access_entitlements,omitempty" shadow:"auth_entitlements"`
 }
 
 // ReportEntitlements adds entitlements to the identity.
@@ -84,7 +84,7 @@ type Identity struct {
 	// TLSCertificate is a PEM encoded x509 certificate. This is only set if the AuthenticationMethod is AuthenticationMethodTLS.
 	//
 	// API extension: access_management_tls.
-	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate"`
+	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate" shadow:"pem_encoded_x509_certificate"`
 }
 
 // Writable converts a Identity struct into a IdentityPut struct (filters read-only fields).
@@ -137,7 +137,7 @@ type IdentityPut struct {
 	// TLSCertificate is a base64 encoded x509 certificate. This can only be set if the authentication method of the identity is AuthenticationMethodTLS.
 	//
 	// API extension: access_management_tls.
-	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate"`
+	TLSCertificate string `json:"tls_certificate" yaml:"tls_certificate" shadow:"pem_encoded_x509_certificate"`
 }
 
 // IdentitiesTLSPost contains required information for the creation of a TLS identity.
@@ -159,7 +159,7 @@ type IdentitiesTLSPost struct {
 	Token bool `json:"token" yaml:"token"`
 
 	// The PEM encoded x509 certificate of the identity
-	Certificate string `json:"certificate" yaml:"certificate"`
+	Certificate string `json:"certificate" yaml:"certificate" shadow:"pem_encoded_x509_certificate"`
 
 	// Groups is the list of groups for which the identity is a member.
 	// Example: ["foo", "bar"]
