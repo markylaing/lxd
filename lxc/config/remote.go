@@ -224,25 +224,6 @@ func (c *Config) connectRemote(remote Remote, args *lxd.ConnectionArgs) (lxd.Ins
 	return d, nil
 }
 
-// GetInstanceServerWithTransportWrapper returns a lxd.InstanceServer for the remote with the given name and adds the
-// given transport wrapper to the lxd.ConnectionArgs.
-func (c *Config) GetInstanceServerWithTransportWrapper(name string, wrapper func(*http.Transport) lxd.HTTPTransporter) (lxd.InstanceServer, error) {
-	remote, err := c.getPrivateRemoteByName(name)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get connection arguments
-	args, err := c.getConnectionArgs(name)
-	if err != nil {
-		return nil, err
-	}
-
-	args.TransportWrapper = wrapper
-
-	return c.connectRemote(*remote, args)
-}
-
 // GetImageServer returns a ImageServer struct for the remote.
 func (c *Config) GetImageServer(name string) (lxd.ImageServer, error) {
 	remote, err := c.getPublicRemoteByName(name)
