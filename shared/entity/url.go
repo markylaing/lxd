@@ -16,7 +16,7 @@ import (
 func nRequiredPathArguments(t typeInfo) int {
 	nRequiredPathArguments := 0
 	for _, element := range t.path() {
-		if element == pathPlaceholder {
+		if element[0] == '{' {
 			nRequiredPathArguments++
 		}
 	}
@@ -48,7 +48,7 @@ func (t Type) URL(projectName string, location string, pathArguments ...string) 
 	argIdx := 0
 	path := []string{version.APIVersion}
 	for _, pathPart := range pathParts {
-		if pathPart == pathPlaceholder {
+		if pathPart[0] == '{' {
 			pathPart = pathArguments[argIdx]
 			argIdx++
 		}
@@ -101,7 +101,7 @@ entityTypeLoop:
 
 		var pathArgs []string
 		for i, entityPathPart := range entityPath {
-			if entityPathPart == pathPlaceholder {
+			if entityPathPart[0] == '{' {
 				pathArgument, err := url.PathUnescape(pathParts[i])
 				if err != nil {
 					return "", "", "", nil, fmt.Errorf("Failed to unescape path element %q from url %q: %w", pathParts[i], u.String(), err)

@@ -1506,3 +1506,370 @@ func (g *cmdGlobal) cmpFiles(toComplete string, includeLocalFiles bool) ([]strin
 
 	return append(instances, files...), directives
 }
+
+func (g *cmdGlobal) cmpPermissionEntities(remote string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(metadata.Entities))
+	for entityName, v := range metadata.Entities {
+		if len(v.Entitlements) > 0 && strings.HasPrefix(entityName, toComplete) {
+			results = append(results, entityName)
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpEntitlements(remote string, entityType string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	entity, ok := metadata.Entities[entityType]
+	if !ok {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(entity.Entitlements))
+	for _, entitlement := range entity.Entitlements {
+		if strings.HasPrefix(entitlement.Name, toComplete) {
+			results = append(results, entitlement.Name)
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpPermissionEntitySelectors(remote string, entityType string, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	existing, partial, ok := strings.Cut(toComplete, "=")
+	if ok {
+		var results []string
+		var directive cobra.ShellCompDirective
+		switch existing {
+		case "project":
+			results, directive = g.cmpTopLevelResourceInRemote(remote, "project", partial)
+		case "pool":
+			results, directive = g.cmpTopLevelResourceInRemote(remote, "storage_pool", partial)
+		default:
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if directive == cobra.ShellCompDirectiveError {
+			return nil, directive
+		}
+
+		joinedResults := make([]string, 0, len(results))
+		for _, result := range results {
+			joinedResults = append(joinedResults, strings.Join([]string{existing, result}, "="))
+		}
+
+		return joinedResults, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	entity, ok := metadata.Entities[entityType]
+	if !ok {
+		return handleCompletionError(err)
+	}
+
+	var existingProperties []string
+	for _, arg := range args {
+		propertyName, _, ok := strings.Cut(arg, "=")
+		if !ok {
+			continue
+		}
+
+		existingProperties = append(existingProperties, propertyName)
+	}
+
+	results := make([]string, 0, len(entity.Properties))
+	for _, property := range entity.Properties {
+		if !(property.InURLQuery || property.InURLPath) {
+			continue
+		}
+
+		if shared.ValueInSlice(property.Name, existingProperties) {
+			continue
+		}
+
+		if strings.HasPrefix(property.Name, toComplete) {
+			results = append(results, property.Name+"=")
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoSpace | cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpGroupPermissionEntityType(remote string, groupName string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	group, _, err := server.GetAuthGroup(groupName)
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(group.Permissions))
+	for _, p := range group.Permissions {
+		if strings.HasPrefix(p.EntityType, toComplete) && !shared.ValueInSlice(p.EntityType, results) {
+			results = append(results, p.EntityType)
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpGroupPermissionEntitlement(remote string, groupName string, entityType string, entityName string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	if entityType == "server" {
+		group, _, err := server.GetAuthGroup(groupName)
+		if err != nil {
+			return handleCompletionError(err)
+		}
+
+		results := make([]string, 0, len(group.Permissions))
+		for _, p := range group.Permissions {
+			if p.EntityType != entityType {
+				continue
+			}
+
+			if strings.HasPrefix(p.Entitlement, toComplete) {
+				results = append(results, p.Entitlement)
+			}
+		}
+
+		return results, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	entityMetadata, ok := metadata.Entities[entityType]
+	if !ok {
+		return handleCompletionError(err)
+	}
+
+	group, _, err := server.GetAuthGroup(groupName)
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(group.Permissions))
+	for _, p := range group.Permissions {
+		if p.EntityType != entityType {
+			continue
+		}
+
+		s, err := selectorFromMetadata(p.EntityReference, entityMetadata)
+		if err != nil {
+			return handleCompletionError(err)
+		}
+
+		if entityName != nameFromTemplate(entityMetadata.CLINameTemplate, s) {
+			continue
+		}
+
+		if strings.HasPrefix(p.Entitlement, toComplete) {
+			results = append(results, p.Entitlement)
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpGroupPermissionEntityName(remote string, groupName string, entityType string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if entityType == "server" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	entityMetadata, ok := metadata.Entities[entityType]
+	if !ok {
+		return handleCompletionError(err)
+	}
+
+	group, _, err := server.GetAuthGroup(groupName)
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(group.Permissions))
+	for _, p := range group.Permissions {
+		if p.EntityType != entityType {
+			continue
+		}
+
+		s, err := selectorFromMetadata(p.EntityReference, entityMetadata)
+		if err != nil {
+			return handleCompletionError(err)
+		}
+
+		name := nameFromTemplate(entityMetadata.CLINameTemplate, s)
+		if strings.HasPrefix(name, toComplete) {
+			results = append(results, name)
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (g *cmdGlobal) cmpGroupPermissionEntitySelectors(remote string, groupName string, entityType string, entityName string, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if entityType == "server" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	server, err := g.conf.GetInstanceServerWithAdditionalConnectionArgs(remote, &lxd.ConnectionArgs{SkipGetServer: true})
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	metadata, err := server.GetMetadataConfiguration()
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	entityMetadata, ok := metadata.Entities[entityType]
+	if !ok {
+		return handleCompletionError(err)
+	}
+
+	relevantProperties := make([]api.MetadataConfigurationEntityProperties, 0, len(entityMetadata.Properties))
+	for _, p := range entityMetadata.Properties {
+		if !(p.InURLPath || p.InURLQuery) {
+			continue
+		}
+
+		relevantProperties = append(relevantProperties, p)
+	}
+
+	existingProperties := make(map[string]string)
+	for _, arg := range args {
+		propertyName, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			continue
+		}
+
+		existingProperties[propertyName] = value
+	}
+
+	if len(relevantProperties) == 0 || len(existingProperties) == len(relevantProperties) {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	group, _, err := server.GetAuthGroup(groupName)
+	if err != nil {
+		return handleCompletionError(err)
+	}
+
+	results := make([]string, 0, len(group.Permissions))
+	for _, p := range group.Permissions {
+		if p.EntityType != entityType {
+			continue
+		}
+
+		s, err := selectorFromMetadata(p.EntityReference, entityMetadata)
+		if err != nil {
+			return handleCompletionError(err)
+		}
+
+	selectorLoop:
+		for k, v := range s {
+			_, ok := existingProperties[k]
+			if ok {
+				continue
+			}
+
+			for ek, ev := range existingProperties {
+				if s[ek] != ev {
+					continue selectorLoop
+				}
+			}
+
+			completion := strings.Join([]string{k, v}, "=")
+			if strings.HasPrefix(completion, toComplete) {
+				results = append(results, completion)
+			}
+		}
+	}
+
+	return results, cobra.ShellCompDirectiveNoFileComp
+}
+
+func selectorFromMetadata(rawURL string, entity api.MetadataConfigurationEntity) (map[string]string, error) {
+	pURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	templateElements := strings.Split(entity.URLPathTemplate, "/")
+	urlElements := strings.Split(pURL.Path, "/")
+	if len(templateElements) != len(urlElements) {
+		return nil, fmt.Errorf("Unexpected number of path elements")
+	}
+
+	m := make(map[string]string)
+	for i, te := range templateElements[1:] {
+		if te[0] == '{' {
+			m[strings.Trim(te, "{}")] = urlElements[i+1]
+		}
+	}
+
+	for _, s := range entity.Properties {
+		if s.InURLPath {
+			continue
+		}
+
+		if s.InURLQuery {
+			v := pURL.Query().Get(s.URLName)
+			if v == "" && s.RequiredInURL {
+				return nil, fmt.Errorf("Missing required URL query parameter %q in entity URL %q", s.URLName, rawURL)
+			}
+
+			if v != "" {
+				m[s.Name] = v
+			}
+		}
+	}
+
+	return m, nil
+}

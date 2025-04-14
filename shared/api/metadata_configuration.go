@@ -85,6 +85,37 @@ type MetadataConfigurationEntity struct {
 
 	// Entitlements contains a list of entitlements that apply to a specific entity type.
 	Entitlements []MetadataConfigurationEntityEntitlement `json:"entitlements" yaml:"entitlements"`
+
+	// URLPathTemplate is a template of the API path to the entity type.
+	// This can be used to construct a URL to an entity from the
+	URLPathTemplate string `json:"url_path_template" yaml:"url_path_template"`
+
+	// Properties contains properties of an entity type.
+	//
+	// Example: ["name"]
+	// API extension: metadata_entity_properties.
+	Properties []MetadataConfigurationEntityProperties `json:"properties" yaml:"properties"`
+}
+
+// MetadataConfigurationEntityProperties contains information about the properties of an entity type.
+//
+// API extension: metadata_entity_properties.
+type MetadataConfigurationEntityProperties struct {
+	// Name is the name of the property.
+	Name string `json:"name" yaml:"name"`
+
+	// InURLPath is true if the property is part of the URL path for the entity.
+	InURLPath bool `json:"in_url_path" yaml:"in_url_path"`
+
+	// IsURLQuery is true if the property an allowed query parameter in the entity URL.
+	InURLQuery bool `json:"in_url_query" yaml:"in_url_query"`
+
+	// RequiredInURL is true if the property is required in the entity URL.
+	RequiredInURL bool `json:"required_in_url" yaml:"required_in_url"`
+
+	// URLName is set if the property is in the entity URL but has a name different to it's name in the URL.
+	// For example, the "location" property translates to "target" in the URL.
+	URLName string `json:"url_name" yaml:"url_name"`
 }
 
 // MetadataConfigurationEntityEntitlement contains metadata about a LXD server entitlement.

@@ -106,6 +106,10 @@ func (c *cmdGroupCreate) command() *cobra.Command {
 	cmd.Flags().StringVarP(&c.flagDescription, "description", "d", "", "Group description")
 	cmd.RunE = c.run
 
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
+
 	return cmd
 }
 
@@ -159,6 +163,9 @@ func (c *cmdGroupDelete) command() *cobra.Command {
 		`Delete groups`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("group", toComplete)
+	}
 
 	return cmd
 }
@@ -211,6 +218,9 @@ func (c *cmdGroupEdit) command() *cobra.Command {
    Update a group using the content of group.yaml`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("group", toComplete)
+	}
 
 	return cmd
 }
@@ -338,6 +348,9 @@ func (c *cmdGroupList) command() *cobra.Command {
 
 	cmd.RunE = c.run
 	cmd.Flags().StringVarP(&c.flagFormat, "format", "f", "table", i18n.G("Format (csv|json|table|yaml|compact)")+"``")
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -397,6 +410,9 @@ func (c *cmdGroupRename) command() *cobra.Command {
 		`Rename groups`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("group", toComplete)
+	}
 
 	return cmd
 }
@@ -446,6 +462,9 @@ func (c *cmdGroupShow) command() *cobra.Command {
 		`Show group configurations`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("group", toComplete)
+	}
 
 	return cmd
 }
@@ -522,6 +541,38 @@ func (c *cmdGroupPermissionAdd) command() *cobra.Command {
 
 	cmd.RunE = c.run
 
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		// The first argument is the auth group plus the remote
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("group", toComplete)
+		}
+
+		remotes, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(remotes) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		remote := remotes[0].remote
+		if len(args) == 1 {
+			return c.global.cmpPermissionEntities(remote, toComplete)
+		}
+
+		if len(args) == 2 {
+			// No entity name needed when adding server level entitlements
+			if args[1] == "server" {
+				return c.global.cmpEntitlements(remote, "server", toComplete)
+			}
+
+			return c.global.cmpTopLevelResourceInRemote(remote, args[1], toComplete)
+		}
+
+		if len(args) == 3 {
+			return c.global.cmpEntitlements(remote, args[1], toComplete)
+		}
+
+		return c.global.cmpPermissionEntitySelectors(remote, args[1], args[2:], toComplete)
+	}
+
 	return cmd
 }
 
@@ -580,6 +631,38 @@ func (c *cmdGroupPermissionRemove) command() *cobra.Command {
 		`Remove permissions from groups`))
 
 	cmd.RunE = c.run
+
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		// The first argument is the auth group plus the remote
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("group", toComplete)
+		}
+
+		remotes, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(remotes) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		remote := remotes[0].remote
+		groupName := remotes[0].name
+		if len(args) == 1 {
+			return c.global.cmpGroupPermissionEntityType(remote, groupName, toComplete)
+		}
+
+		if len(args) == 2 {
+			if args[1] == "server" {
+				return c.global.cmpGroupPermissionEntitlement(remote, groupName, "server", "", toComplete)
+			}
+
+			return c.global.cmpGroupPermissionEntityName(remote, groupName, args[1], toComplete)
+		}
+
+		if len(args) == 3 {
+			return c.global.cmpGroupPermissionEntitlement(remote, groupName, args[1], args[2], toComplete)
+		}
+
+		return c.global.cmpGroupPermissionEntitySelectors(remote, groupName, args[1], args[2], args[3:], toComplete)
+	}
 
 	return cmd
 }
@@ -776,6 +859,9 @@ func (c *cmdIdentityCreate) command() *cobra.Command {
 
 	cmd.RunE = c.run
 	cmd.Flags().StringSliceVarP(&c.flagGroups, "group", "g", []string{}, "Groups to add to the identity")
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -809,7 +895,7 @@ func (c *cmdIdentityCreate) run(cmd *cobra.Command, args []string) error {
 	}
 
 	transporter, wrapper := newLocationHeaderTransportWrapper()
-	client, err := c.global.conf.GetInstanceServerWithTransportWrapper(remoteName, wrapper)
+	client, err := c.global.conf.GetInstanceServerWithAdditionalConnectionArgs(remoteName, &lxd.ConnectionArgs{TransportWrapper: wrapper})
 	if err != nil {
 		return err
 	}
@@ -918,6 +1004,9 @@ func (c *cmdIdentityList) command() *cobra.Command {
 
 	cmd.RunE = c.run
 	cmd.Flags().StringVarP(&c.flagFormat, "format", "f", "table", i18n.G("Format (csv|json|table|yaml|compact)")+"``")
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -990,6 +1079,9 @@ method. Use the identifier instead if this occurs.
 `))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity", toComplete)
+	}
 
 	return cmd
 }
@@ -1052,6 +1144,9 @@ that are granted via identity provider group mappings.
 `))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -1111,6 +1206,9 @@ func (c *cmdIdentityEdit) command() *cobra.Command {
    Update an identity using the content of identity.yaml`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity", toComplete)
+	}
 
 	return cmd
 }
@@ -1248,6 +1346,9 @@ lxc auth identity delete my-remote:tls/jane-doe
 	Delete the TLS identity with name "jane-doe" in remote "my-remote" (there must be only one TLS identity on "my-remote" with this name).
 `)
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity", toComplete)
+	}
 
 	return cmd
 }
@@ -1314,6 +1415,23 @@ func (c *cmdIdentityGroupAdd) command() *cobra.Command {
 		`Add a group to an identity`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 2 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("identity", toComplete)
+		}
+
+		resources, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(resources) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		remote := resources[0].remote
+		return c.global.cmpTopLevelResourceInRemote(remote, "group", toComplete)
+	}
 
 	return cmd
 }
@@ -1372,6 +1490,36 @@ func (c *cmdIdentityGroupRemove) command() *cobra.Command {
 		`Remove a group from an identity`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 2 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("identity", toComplete)
+		}
+
+		resources, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(resources) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		server := resources[0].server
+		authMethod, identifier, _ := strings.Cut(args[0], "/")
+		id, _, err := server.GetIdentity(authMethod, identifier)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		results := make([]string, 0, len(id.Groups))
+		for _, group := range id.Groups {
+			if strings.HasPrefix(group, toComplete) {
+				results = append(results, group)
+			}
+		}
+
+		return results, cobra.ShellCompDirectiveNoFileComp
+	}
 
 	return cmd
 }
@@ -1465,6 +1613,59 @@ func (c *cmdPermissionList) command() *cobra.Command {
 	cmd.Flags().IntVar(&c.flagMaxEntitlements, "max-entitlements", 3, "Maximum number of unassigned entitlements to display before overflowing (set to zero to display all)")
 	cmd.Flags().StringVarP(&c.flagFormat, "format", "f", cli.TableFormatTable, "Display format (json, yaml, table, compact, csv)")
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 3 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if len(args) == 0 {
+			return c.global.cmpRemotes(toComplete, false)
+		}
+
+		resources, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(resources) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		remote := resources[0].remote
+
+		before, partial, ok := strings.Cut(toComplete, "=")
+		if !ok {
+			if strings.HasPrefix("project=", toComplete) {
+				return []string{"project="}, cobra.ShellCompDirectiveNoFileComp
+			}
+
+			if strings.HasPrefix("entity_type=", toComplete) {
+				return []string{"entity_type="}, cobra.ShellCompDirectiveNoFileComp
+			}
+		}
+
+		if !shared.ValueInSlice(before, []string{"project", "entity_type"}) {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		if before == "project" {
+			results, _ := c.global.cmpTopLevelResourceInRemote(remote, "project", partial)
+			completions := make([]string, 0, len(results))
+			for _, r := range results {
+				completions = append(completions, "project="+r)
+			}
+
+			return completions, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if before == "entity_type" {
+			results, _ := c.global.cmpPermissionEntities(remote, partial)
+			completions := make([]string, 0, len(results))
+			for _, r := range results {
+				completions = append(completions, "entity_type="+r)
+			}
+
+			return completions, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 
 	return cmd
 }
@@ -1680,6 +1881,9 @@ func (c *cmdIdentityProviderGroupCreate) command() *cobra.Command {
 	cmd.Long = cli.FormatSection(i18n.G("Description"), i18n.G(
 		`Create identity provider groups`))
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -1733,6 +1937,9 @@ func (c *cmdIdentityProviderGroupDelete) command() *cobra.Command {
 		`Delete identity provider groups`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+	}
 
 	return cmd
 }
@@ -1785,6 +1992,9 @@ func (c *cmdIdentityProviderGroupEdit) command() *cobra.Command {
    Update an identity provider group using the content of identity-provider-group.yaml`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+	}
 
 	return cmd
 }
@@ -1902,6 +2112,9 @@ func (c *cmdIdentityProviderGroupList) command() *cobra.Command {
 
 	cmd.RunE = c.run
 	cmd.Flags().StringVarP(&c.flagFormat, "format", "f", "table", i18n.G("Format (csv|json|table|yaml|compact)")+"``")
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpRemotes(toComplete, false)
+	}
 
 	return cmd
 }
@@ -1961,6 +2174,9 @@ func (c *cmdIdentityProviderGroupRename) command() *cobra.Command {
 		`Rename identity provider groups`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+	}
 
 	return cmd
 }
@@ -2010,6 +2226,9 @@ func (c *cmdIdentityProviderGroupShow) command() *cobra.Command {
 		`Show an identity provider group`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+	}
 
 	return cmd
 }
@@ -2084,6 +2303,23 @@ func (c *cmdIdentityProviderGroupGroupAdd) command() *cobra.Command {
 		`Add a group to an identity provider group`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 1 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+		}
+
+		resources, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(resources) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		remote := resources[0].remote
+		return c.global.cmpTopLevelResourceInRemote(remote, "group", toComplete)
+	}
 
 	return cmd
 }
@@ -2137,6 +2373,32 @@ func (c *cmdIdentityProviderGroupGroupRemove) command() *cobra.Command {
 		`Remove identities from groups`))
 
 	cmd.RunE = c.run
+	cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		if len(args) > 1 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if len(args) == 0 {
+			return c.global.cmpTopLevelResource("identity_provider_group", toComplete)
+		}
+
+		resources, err := c.global.ParseServersWithConnectionArgs(&lxd.ConnectionArgs{SkipGetServer: true}, args[0])
+		if err != nil || len(resources) == 0 {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		server := resources[0].server
+		idpGroup, _, err := server.GetIdentityProviderGroup(resources[0].name)
+
+		results := make([]string, 0, len(idpGroup.Groups))
+		for _, g := range idpGroup.Groups {
+			if strings.HasPrefix(g, toComplete) {
+				results = append(results, g)
+			}
+		}
+
+		return results, cobra.ShellCompDirectiveNoFileComp
+	}
 
 	return cmd
 }

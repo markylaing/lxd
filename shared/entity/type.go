@@ -2,6 +2,9 @@ package entity
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/canonical/lxd/shared/api"
 )
 
 // Type represents a resource type in LXD that is addressable via the API.
@@ -16,8 +19,15 @@ type typeInfo interface {
 	// specific, false if not.
 	requiresProject() bool
 
-	// path returns the API path for the resource. The pathPlaceholder constant should be used in place of mux variables.
+	// path returns the API path for the resource. Where path arguments are expected, this should be replaced with `{property_name}`.
+	// For example, in a storage volume URL, the storage pool path parameter is represented as `{pool}`.
 	path() []string
+
+	// propertyOverrides returns a list of properties for the entity type.
+	// This is used to override or append to the properties returned by Type.Properties, which attempts to generalise things
+	// based on other entity information, but isn't always 100% correct (e.g. operation doesn't require a project, so this isn't
+	// added as a property by default, so we need to add it by implementing this method for operation).
+	propertyOverrides() []api.MetadataConfigurationEntityProperties
 }
 
 const (
@@ -97,11 +107,6 @@ const (
 	TypeIdentityProviderGroup Type = "identity_provider_group"
 )
 
-const (
-	// pathPlaceholder is used to indicate that a path argument is expected in a URL.
-	pathPlaceholder = "{pathArgument}"
-)
-
 // String implements fmt.Stringer for Type.
 func (t Type) String() string {
 	return string(t)
@@ -127,6 +132,61 @@ func (t Type) RequiresProject() (bool, error) {
 	}
 
 	return entityTypes[t].requiresProject(), nil
+}
+
+// PathTemplate returns a template of the URL path to an entity of this type, not including query parameters.
+func (t Type) PathTemplate() (string, error) {
+	err := t.Validate()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.Join(append([]string{"/1.0"}, entityTypes[t].path()...), "/"), nil
+}
+
+// Properties returns a list of properties of the entity type, to be reported as entity metadata.
+func (t Type) Properties() ([]api.MetadataConfigurationEntityProperties, error) {
+	err := t.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	info := entityTypes[t]
+	propertyMap := make(map[string]api.MetadataConfigurationEntityProperties)
+	for _, e := range info.path() {
+		if e[0] != '{' {
+			continue
+		}
+
+		name := strings.Trim(e, `{}`)
+		propertyMap[name] = api.MetadataConfigurationEntityProperties{
+			Name:          name,
+			InURLPath:     true,
+			RequiredInURL: true,
+			URLName:       name,
+		}
+	}
+
+	if info.requiresProject() {
+		propertyMap["project"] = api.MetadataConfigurationEntityProperties{
+			Name:          "project",
+			InURLPath:     false,
+			InURLQuery:    true,
+			RequiredInURL: true,
+			URLName:       "project",
+		}
+	}
+
+	for _, override := range info.propertyOverrides() {
+		propertyMap[override.Name] = override
+	}
+
+	properties := make([]api.MetadataConfigurationEntityProperties, 0, len(propertyMap))
+	for _, property := range propertyMap {
+		properties = append(properties, property)
+	}
+
+	return properties, nil
 }
 
 // entityTypes is the source of truth for available entity types in LXD. This should never be modified at runtime.
@@ -158,6 +218,19 @@ var entityTypes = map[Type]typeInfo{
 	TypeIdentityProviderGroup: identityProviderGroup{},
 }
 
+func init() {
+	allEntityTypes = make([]Type, 0, len(entityTypes))
+	for t := range entityTypes {
+		allEntityTypes = append(allEntityTypes, t)
+	}
+}
+
+var allEntityTypes []Type
+
+func AllEntityTypes() []Type {
+	return allEntityTypes
+}
+
 // metricsEntityTypes is the source of truth for which entity types can be used to categorize endpoints
 // for the API metrics.
 var metricsEntityTypes = []Type{
@@ -180,197 +253,301 @@ func APIMetricsEntityTypes() []Type {
 	return metricsEntityTypes
 }
 
-type container struct{}
+type typeInfoCommon struct{}
+
+func (typeInfoCommon) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{}
+}
+
+type container struct {
+	typeInfoCommon
+}
 
 func (container) requiresProject() bool {
 	return true
 }
 
 func (container) path() []string {
-	return []string{"containers", pathPlaceholder}
+	return []string{"containers", "{name}"}
 }
 
-type image struct{}
+type image struct {
+	typeInfoCommon
+}
 
 func (image) requiresProject() bool {
 	return true
 }
 
 func (image) path() []string {
-	return []string{"images", pathPlaceholder}
+	return []string{"images", "{fingerprint}"}
 }
 
-type profile struct{}
+type profile struct {
+	typeInfoCommon
+}
 
 func (profile) requiresProject() bool {
 	return true
 }
 
 func (profile) path() []string {
-	return []string{"profiles", pathPlaceholder}
+	return []string{"profiles", "{name}"}
 }
 
-type project struct{}
+type project struct {
+	typeInfoCommon
+}
 
 func (project) requiresProject() bool {
 	return false
 }
 
 func (project) path() []string {
-	return []string{"projects", pathPlaceholder}
+	return []string{"projects", "{name}"}
 }
 
-type certificate struct{}
+type certificate struct {
+	typeInfoCommon
+}
 
 func (certificate) requiresProject() bool {
 	return false
 }
 
 func (certificate) path() []string {
-	return []string{"certificates", pathPlaceholder}
+	return []string{"certificates", "{fingerprint}"}
 }
 
-type instance struct{}
+type instance struct {
+	typeInfoCommon
+}
 
 func (instance) requiresProject() bool {
 	return true
 }
 
 func (instance) path() []string {
-	return []string{"instances", pathPlaceholder}
+	return []string{"instances", "{name}"}
 }
 
-type instanceBackup struct{}
+type instanceBackup struct {
+	typeInfoCommon
+}
 
 func (instanceBackup) requiresProject() bool {
 	return true
 }
 
 func (instanceBackup) path() []string {
-	return []string{"instances", pathPlaceholder, "backups", pathPlaceholder}
+	return []string{"instances", "{instance_name}", "backups", "{name}"}
 }
 
-type instanceSnapshot struct{}
+type instanceSnapshot struct {
+	typeInfoCommon
+}
 
 func (instanceSnapshot) requiresProject() bool {
 	return true
 }
 
 func (instanceSnapshot) path() []string {
-	return []string{"instances", pathPlaceholder, "snapshots", pathPlaceholder}
+	return []string{"instances", "{instance_name}", "snapshots", "{name}"}
 }
 
-type network struct{}
+type network struct {
+	typeInfoCommon
+}
 
 func (network) requiresProject() bool {
 	return true
 }
 
 func (network) path() []string {
-	return []string{"networks", pathPlaceholder}
+	return []string{"networks", "{name}"}
 }
 
-type networkACL struct{}
+type networkACL struct {
+	typeInfoCommon
+}
 
 func (networkACL) requiresProject() bool {
 	return true
 }
 
 func (networkACL) path() []string {
-	return []string{"network-acls", pathPlaceholder}
+	return []string{"network-acls", "{name}"}
 }
 
-type clusterMember struct{}
+type clusterMember struct {
+	typeInfoCommon
+}
 
 func (clusterMember) requiresProject() bool {
 	return false
 }
 
 func (clusterMember) path() []string {
-	return []string{"cluster", "members", pathPlaceholder}
+	return []string{"cluster", "members", "{name}"}
 }
 
-type operation struct{}
+type operation struct {
+	typeInfoCommon
+}
 
 func (operation) requiresProject() bool {
 	return false
 }
 
 func (operation) path() []string {
-	return []string{"operations", pathPlaceholder}
+	return []string{"operations", "{id}"}
 }
 
-type storagePool struct{}
+func (operation) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{
+		// Operations don't require a project but can have one.
+		{
+			Name:       "project",
+			InURLQuery: true,
+			URLName:    "project",
+		},
+	}
+}
+
+type storagePool struct {
+	typeInfoCommon
+}
 
 func (storagePool) requiresProject() bool {
 	return false
 }
 
 func (storagePool) path() []string {
-	return []string{"storage-pools", pathPlaceholder}
+	return []string{"storage-pools", "{name}"}
 }
 
-type storageVolume struct{}
+type storageVolume struct {
+	typeInfoCommon
+}
 
 func (storageVolume) requiresProject() bool {
 	return true
 }
 
 func (storageVolume) path() []string {
-	return []string{"storage-pools", pathPlaceholder, "volumes", pathPlaceholder, pathPlaceholder}
+	return []string{"storage-pools", "{pool}", "volumes", "{type}", "{name}"}
 }
 
-type storageVolumeBackup struct{}
+func (storageVolume) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{
+		// Local storage volumes may require a target query parameter to uniquely reference a single volume.
+		// Note that the property name is different to it's URL representation.
+		{
+			Name:       "location",
+			InURLQuery: true,
+			URLName:    "target",
+		},
+	}
+}
+
+type storageVolumeBackup struct {
+	typeInfoCommon
+}
 
 func (storageVolumeBackup) requiresProject() bool {
 	return true
 }
 
 func (storageVolumeBackup) path() []string {
-	return []string{"storage-pools", pathPlaceholder, "volumes", pathPlaceholder, pathPlaceholder, "backups", pathPlaceholder}
+	return []string{"storage-pools", "{pool}", "volumes", "{type}", "{volume_name}", "backups", "{name}"}
 }
 
-type storageVolumeSnapshot struct{}
+func (storageVolumeBackup) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{
+		// Local storage volume backups may require a target query parameter to uniquely reference a single volume.
+		// Note that the property name is different to it's URL representation.
+		{
+			Name:       "location",
+			InURLQuery: true,
+			URLName:    "target",
+		},
+	}
+}
+
+type storageVolumeSnapshot struct {
+	typeInfoCommon
+}
 
 func (storageVolumeSnapshot) requiresProject() bool {
 	return true
 }
 
 func (storageVolumeSnapshot) path() []string {
-	return []string{"storage-pools", pathPlaceholder, "volumes", pathPlaceholder, pathPlaceholder, "snapshots", pathPlaceholder}
+	return []string{"storage-pools", "{pool}", "volumes", "{type}", "{volume_name}", "snapshots", "{name}"}
 }
 
-type warning struct{}
+func (storageVolumeSnapshot) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{
+		// Local storage volume snapshots may require a target query parameter to uniquely reference a single volume.
+		// Note that the property name is different to it's URL representation.
+		{
+			Name:       "location",
+			InURLQuery: true,
+			URLName:    "target",
+		},
+	}
+}
+
+type warning struct {
+	typeInfoCommon
+}
 
 func (warning) requiresProject() bool {
 	return false
 }
 
 func (warning) path() []string {
-	return []string{"warnings", pathPlaceholder}
+	return []string{"warnings", "{id}"}
 }
 
-type clusterGroup struct{}
+func (warning) propertyOverrides() []api.MetadataConfigurationEntityProperties {
+	return []api.MetadataConfigurationEntityProperties{
+		// Warnings don't require a project but can have one.
+		{
+			Name:       "project",
+			InURLQuery: true,
+			URLName:    "project",
+		},
+	}
+}
+
+type clusterGroup struct {
+	typeInfoCommon
+}
 
 func (clusterGroup) requiresProject() bool {
 	return false
 }
 
 func (clusterGroup) path() []string {
-	return []string{"cluster", "groups", pathPlaceholder}
+	return []string{"cluster", "groups", "{name}"}
 }
 
-type storageBucket struct{}
+type storageBucket struct {
+	typeInfoCommon
+}
 
 func (storageBucket) requiresProject() bool {
 	return true
 }
 
 func (storageBucket) path() []string {
-	return []string{"storage-pools", pathPlaceholder, "buckets", pathPlaceholder}
+	return []string{"storage-pools", "{pool}", "buckets", "{name}"}
 }
 
-type server struct{}
+type server struct {
+	typeInfoCommon
+}
 
 func (server) requiresProject() bool {
 	return false
@@ -380,52 +557,62 @@ func (server) path() []string {
 	return []string{}
 }
 
-type imageAlias struct{}
+type imageAlias struct {
+	typeInfoCommon
+}
 
 func (imageAlias) requiresProject() bool {
 	return true
 }
 
 func (imageAlias) path() []string {
-	return []string{"images", "aliases", pathPlaceholder}
+	return []string{"images", "aliases", "{name}"}
 }
 
-type networkZone struct{}
+type networkZone struct {
+	typeInfoCommon
+}
 
 func (networkZone) requiresProject() bool {
 	return true
 }
 
 func (networkZone) path() []string {
-	return []string{"network-zones", pathPlaceholder}
+	return []string{"network-zones", "{name}"}
 }
 
-type identity struct{}
+type identity struct {
+	typeInfoCommon
+}
 
 func (identity) requiresProject() bool {
 	return false
 }
 
 func (identity) path() []string {
-	return []string{"auth", "identities", pathPlaceholder, pathPlaceholder}
+	return []string{"auth", "identities", "{auth_method}", "{identifier}"}
 }
 
-type authGroup struct{}
+type authGroup struct {
+	typeInfoCommon
+}
 
 func (authGroup) requiresProject() bool {
 	return false
 }
 
 func (authGroup) path() []string {
-	return []string{"auth", "groups", pathPlaceholder}
+	return []string{"auth", "groups", "{name}"}
 }
 
-type identityProviderGroup struct{}
+type identityProviderGroup struct {
+	typeInfoCommon
+}
 
 func (identityProviderGroup) requiresProject() bool {
 	return false
 }
 
 func (identityProviderGroup) path() []string {
-	return []string{"auth", "identity-provider-groups", pathPlaceholder}
+	return []string{"auth", "identity-provider-groups", "{name}"}
 }

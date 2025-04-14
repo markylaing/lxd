@@ -94,11 +94,24 @@ func main() {
 			}
 
 			metadata := make(map[string]api.MetadataConfigurationEntity)
-			for eType, entitlements := range entityToEntitlements {
-				projectSpecific, _ := eType.RequiresProject()
+			for _, eType := range entity.AllEntityTypes() {
+				projectSpecific, err := eType.RequiresProject()
+				if err != nil {
+					return err
+				}
 
-				apiEntitlements := make([]api.MetadataConfigurationEntityEntitlement, 0, len(entitlements))
-				for _, e := range entitlements {
+				selectorMatcherProperties, err := eType.Properties()
+				if err != nil {
+					return err
+				}
+
+				pathTemplate, err := eType.PathTemplate()
+				if err != nil {
+					return err
+				}
+
+				apiEntitlements := make([]api.MetadataConfigurationEntityEntitlement, 0, len(entityToEntitlements[eType]))
+				for _, e := range entityToEntitlements[eType] {
 					apiEntitlements = append(apiEntitlements, api.MetadataConfigurationEntityEntitlement{
 						Name:        e.Relation,
 						Description: e.Description,
@@ -107,6 +120,8 @@ func main() {
 
 				metadata[string(eType)] = api.MetadataConfigurationEntity{
 					ProjectSpecific: projectSpecific,
+					URLPathTemplate: pathTemplate,
+					Properties:      selectorMatcherProperties,
 					Entitlements:    apiEntitlements,
 				}
 			}
