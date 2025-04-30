@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"go.starlark.net/starlark"
+	"github.com/canonical/starlark/starlark"
 
 	"github.com/canonical/lxd/shared"
 )

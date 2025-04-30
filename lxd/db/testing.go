@@ -57,8 +57,20 @@ func NewTestNodeTx(t *testing.T) (*NodeTx, func()) {
 // NewTestCluster creates a new Cluster for testing purposes, along with a function
 // that can be used to clean it up when done.
 func NewTestCluster(t *testing.T) (*Cluster, func()) {
+	return newTestCluster(t, ":memory:")
+}
+
+// NewTestClusterWithDataSource creates a new Cluster for testing purposes, using the given datasource, along with a function
+// that can be used to clean it up when done.
+func NewTestClusterWithDataSource(t *testing.T, datasource string) (*Cluster, func()) {
+	return newTestCluster(t, datasource)
+}
+
+// NewTestCluster creates a new Cluster for testing purposes, along with a function
+// that can be used to clean it up when done.
+func newTestCluster(t *testing.T, datasource string) (*Cluster, func()) {
 	// Create an in-memory dqlite SQL server and associated store.
-	dir, store, serverCleanup := NewTestDqliteServer(t)
+	dir, store, serverCleanup := newTestDqliteServer(t, datasource)
 
 	log := newLogFunc(t)
 
@@ -102,6 +114,14 @@ func NewTestClusterTx(t *testing.T) (*ClusterTx, func()) {
 // Return the directory backing the test server and a newly created server
 // store that can be used to connect to it.
 func NewTestDqliteServer(t *testing.T) (string, driver.NodeStore, func()) {
+	return newTestDqliteServer(t, ":memory:")
+}
+
+// NewTestDqliteServer creates a new test dqlite server.
+//
+// Return the directory backing the test server and a newly created server
+// store that can be used to connect to it.
+func newTestDqliteServer(t *testing.T, datasource string) (string, driver.NodeStore, func()) {
 	t.Helper()
 
 	listener, err := net.Listen("unix", "")
@@ -126,7 +146,7 @@ func NewTestDqliteServer(t *testing.T) (string, driver.NodeStore, func()) {
 		dirCleanup()
 	}
 
-	store, err := driver.DefaultNodeStore(":memory:")
+	store, err := driver.DefaultNodeStore(datasource)
 	require.NoError(t, err)
 	ctx := context.Background()
 	require.NoError(t, store.Set(ctx, []driver.NodeInfo{{Address: address}}))

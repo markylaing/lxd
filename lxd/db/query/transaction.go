@@ -4,16 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
-	"time"
-
 	"github.com/canonical/lxd/shared/logger"
+	"strings"
 )
 
 // Transaction executes the given function within a database transaction with a 10s context timeout.
 func Transaction(ctx context.Context, db *sql.DB, f func(context.Context, *sql.Tx) error) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	//defer cancel()
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
