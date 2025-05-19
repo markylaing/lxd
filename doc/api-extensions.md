@@ -2672,3 +2672,8 @@ This adds support for listing networks across all projects using the `all-projec
 ## `clustering_restore_skip_mode`
 
 Adds a `skip` mode to the restore request. This mode restores a cluster member's status to `ONLINE` without restarting any of its stopped local instances or migrating back instances that were evacuated to other cluster members.
+
+## `instance_placement_groups`
+
+This API extension adds new APIs for the creation and management of instance placement groups.
+Placement groups may be referenced in instance and profile configuration as `placement.group` to control how instances are placed within the cluster.
