@@ -308,6 +308,15 @@ func TestURL(t *testing.T) {
 			expectedPathArgs:      []string{"my-cluster-group"},
 			expectedErr:           nil,
 		},
+		{
+			name:                  "placement groups",
+			rawURL:                "/1.0/placement-groups/my-placement-group?project=my-project",
+			expectedNormalisedURL: "/1.0/placement-groups/my-placement-group?project=my-project",
+			expectedEntityType:    TypePlacementGroup,
+			expectedProject:       "my-project",
+			expectedPathArgs:      []string{"my-placement-group"},
+			expectedErr:           nil,
+		},
 	}
 
 	for _, tt := range tests {
