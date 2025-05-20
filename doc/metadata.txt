@@ -1931,6 +1931,15 @@ The specified version expression is used to set `libnvidia-container NVIDIA_REQU
 ```
 
 <!-- config group instance-nvidia end -->
+<!-- config group instance-placement start -->
+```{config:option} placement.group instance-placement
+:liveupdate: "yes"
+:shortdesc: "The placement group to use when scheduling the instance"
+:type: "string"
+Configures the placement group that determines where in the cluster to schedule the instance.
+```
+
+<!-- config group instance-placement end -->
 <!-- config group instance-raw start -->
 ```{config:option} raw.apparmor instance-raw
 :liveupdate: "yes"
@@ -6641,6 +6650,18 @@ using the `zfs` command in the container.
 
 
 <!-- entity group network_zone end -->
+<!-- entity group placement_group start -->
+`can_edit`
+: Grants permissions to edit the placement group.
+
+`can_delete`
+: Grants permissions to delete the placement group.
+
+`can_view`
+: Grants permissions to view the placement group.
+
+
+<!-- entity group placement_group end -->
 <!-- entity group profile start -->
 `can_edit`
 : Grants permission to edit the profile.
@@ -6806,6 +6827,21 @@ using the `zfs` command in the container.
 
 `can_delete_storage_buckets`
 : Grants permission to delete storage buckets.
+
+`placement_group_manager`
+: Grants permission to create, view, edit, and delete all placement groups belonging to the project.
+
+`can_create_placement_groups`
+: Grants permission to create placement groups.
+
+`can_view_placement_groups`
+: Grants permission to view placement groups.
+
+`can_edit_placement_groups`
+: Grants permission to edit placement groups.
+
+`can_delete_placement_groups`
+: Grants permission to delete placement groups.
 
 `can_view_operations`
 : Grants permission to view operations relating to the project.

@@ -2207,6 +2207,18 @@
 					}
 				]
 			},
+			"placement": {
+				"keys": [
+					{
+						"placement.group": {
+							"liveupdate": "yes",
+							"longdesc": "Configures the placement group that determines where in the cluster to schedule the instance.",
+							"shortdesc": "The placement group to use when scheduling the instance",
+							"type": "string"
+						}
+					}
+				]
+			},
 			"raw": {
 				"keys": [
 					{
@@ -7384,6 +7396,23 @@
 				}
 			]
 		},
+		"placement_group": {
+			"project_specific": true,
+			"entitlements": [
+				{
+					"name": "can_edit",
+					"description": "Grants permissions to edit the placement group."
+				},
+				{
+					"name": "can_delete",
+					"description": "Grants permissions to delete the placement group."
+				},
+				{
+					"name": "can_view",
+					"description": "Grants permissions to view the placement group."
+				}
+			]
+		},
 		"profile": {
 			"project_specific": true,
 			"entitlements": [
@@ -7607,6 +7636,26 @@
 				{
 					"name": "can_delete_storage_buckets",
 					"description": "Grants permission to delete storage buckets."
+				},
+				{
+					"name": "placement_group_manager",
+					"description": "Grants permission to create, view, edit, and delete all placement groups belonging to the project."
+				},
+				{
+					"name": "can_create_placement_groups",
+					"description": "Grants permission to create placement groups."
+				},
+				{
+					"name": "can_view_placement_groups",
+					"description": "Grants permission to view placement groups."
+				},
+				{
+					"name": "can_edit_placement_groups",
+					"description": "Grants permission to edit placement groups."
+				},
+				{
+					"name": "can_delete_placement_groups",
+					"description": "Grants permission to delete placement groups."
 				},
 				{
 					"name": "can_view_operations",
