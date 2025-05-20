@@ -20,6 +20,7 @@ import (
 	clusterConfig "github.com/canonical/lxd/lxd/cluster/config"
 	"github.com/canonical/lxd/lxd/config"
 	"github.com/canonical/lxd/lxd/db"
+	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
 	instanceDrivers "github.com/canonical/lxd/lxd/instance/drivers"
 	"github.com/canonical/lxd/lxd/instance/instancetype"
 	"github.com/canonical/lxd/lxd/lifecycle"
@@ -1041,7 +1042,23 @@ func doAPI10UpdateTriggers(d *Daemon, nodeChanged, clusterChanged map[string]str
 	// Compile and load the instance placement scriptlet.
 	value, ok = clusterChanged["instances.placement.scriptlet"]
 	if ok {
-		err := scriptletLoad.InstancePlacementSet(value)
+		err := s.DB.Cluster.Transaction(s.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
+			placementGroupNameMap, err := dbCluster.GetPlacementGroupNames(ctx, tx.Tx(), nil)
+			if err != nil {
+				return err
+			}
+
+			if len(placementGroupNameMap) > 0 {
+				return api.StatusErrorf(http.StatusBadRequest, "Cannot set instance placement scriplet, all placement groups must be removed first.")
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		err = scriptletLoad.InstancePlacementSet(value)
 		if err != nil {
 			return fmt.Errorf("Failed saving instance placement scriptlet: %w", err)
 		}
