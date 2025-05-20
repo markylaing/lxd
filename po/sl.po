@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lxd\n"
 "Report-Msgid-Bugs-To: lxd@lists.canonical.com\n"
-"POT-Creation-Date: 2025-05-08 12:32-0600\n"
+"POT-Creation-Date: 2025-05-20 14:46+0100\n"
 "PO-Revision-Date: 2022-03-10 15:10+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Slovenian <https://hosted.weblate.org/projects/linux-"
@@ -366,6 +366,27 @@ msgid ""
 "### type: bridge\n"
 "###\n"
 "### Note that only the configuration can be changed."
+msgstr ""
+
+#: lxc/placement_group.go:339
+msgid ""
+"### This is a YAML representation of the placement group.\n"
+"### Any line starting with a '# will be ignored.\n"
+"###\n"
+"### An example placement group structure is shown below.\n"
+"### The name, project, and used_by fields cannot be modified.\n"
+"###\n"
+"### name: foo-HA\n"
+"### project: default\n"
+"### description: HA in cluster group foo\n"
+"### policy: distribute\n"
+"### scope: cluster-member\n"
+"### rigor: strict\n"
+"### cluster_group: foo\n"
+"### used_by:\n"
+"### - /1.0/instances/c1\n"
+"### - /1.0/instances/c2\n"
+"### - /1.0/profiles/p1\n"
 msgstr ""
 
 #: lxc/profile.go:529
@@ -939,6 +960,10 @@ msgstr ""
 msgid "CANCELABLE"
 msgstr ""
 
+#: lxc/placement_group.go:154
+msgid "CLUSTER GROUP"
+msgstr ""
+
 #: lxc/config_trust.go:408
 msgid "COMMON NAME"
 msgstr ""
@@ -1235,10 +1260,10 @@ msgstr ""
 #: lxc/config_trust.go:312 lxc/image.go:492 lxc/network.go:770
 #: lxc/network_acl.go:717 lxc/network_forward.go:777
 #: lxc/network_load_balancer.go:740 lxc/network_peer.go:699
-#: lxc/network_zone.go:640 lxc/network_zone.go:1335 lxc/profile.go:611
-#: lxc/project.go:371 lxc/storage.go:359 lxc/storage_bucket.go:349
-#: lxc/storage_bucket.go:1145 lxc/storage_volume.go:1179
-#: lxc/storage_volume.go:1211
+#: lxc/network_zone.go:640 lxc/network_zone.go:1335 lxc/placement_group.go:424
+#: lxc/profile.go:611 lxc/project.go:371 lxc/storage.go:359
+#: lxc/storage_bucket.go:349 lxc/storage_bucket.go:1145
+#: lxc/storage_volume.go:1179 lxc/storage_volume.go:1211
 #, c-format
 msgid "Config parsing error: %s"
 msgstr ""
@@ -1506,6 +1531,10 @@ msgstr ""
 msgid "Create new networks"
 msgstr ""
 
+#: lxc/placement_group.go:233 lxc/placement_group.go:234
+msgid "Create new placement groups"
+msgstr ""
+
 #: lxc/profile.go:368 lxc/profile.go:369
 msgid "Create profiles"
 msgstr ""
@@ -1555,8 +1584,8 @@ msgstr ""
 #: lxc/network_acl.go:172 lxc/network_forward.go:159
 #: lxc/network_load_balancer.go:162 lxc/network_peer.go:149
 #: lxc/network_zone.go:163 lxc/network_zone.go:847 lxc/operation.go:173
-#: lxc/profile.go:761 lxc/project.go:581 lxc/storage.go:723
-#: lxc/storage_bucket.go:528 lxc/storage_bucket.go:852
+#: lxc/placement_group.go:153 lxc/profile.go:761 lxc/project.go:581
+#: lxc/storage.go:723 lxc/storage_bucket.go:528 lxc/storage_bucket.go:852
 #: lxc/storage_volume.go:1764
 msgid "DESCRIPTION"
 msgstr ""
@@ -1655,6 +1684,10 @@ msgstr ""
 
 #: lxc/network.go:415 lxc/network.go:416
 msgid "Delete networks"
+msgstr ""
+
+#: lxc/placement_group.go:456 lxc/placement_group.go:457
+msgid "Delete placement groups"
 msgstr ""
 
 #: lxc/profile.go:450 lxc/profile.go:451
@@ -1758,20 +1791,24 @@ msgstr ""
 #: lxc/network_zone.go:1238 lxc/network_zone.go:1368 lxc/network_zone.go:1429
 #: lxc/network_zone.go:1444 lxc/network_zone.go:1502 lxc/operation.go:25
 #: lxc/operation.go:57 lxc/operation.go:107 lxc/operation.go:194
-#: lxc/profile.go:36 lxc/profile.go:111 lxc/profile.go:191 lxc/profile.go:287
-#: lxc/profile.go:369 lxc/profile.go:451 lxc/profile.go:509 lxc/profile.go:645
-#: lxc/profile.go:721 lxc/profile.go:878 lxc/profile.go:971 lxc/profile.go:1031
-#: lxc/profile.go:1120 lxc/profile.go:1184 lxc/project.go:32 lxc/project.go:98
-#: lxc/project.go:198 lxc/project.go:269 lxc/project.go:405 lxc/project.go:479
-#: lxc/project.go:599 lxc/project.go:664 lxc/project.go:752 lxc/project.go:796
-#: lxc/project.go:857 lxc/project.go:924 lxc/publish.go:34 lxc/query.go:35
-#: lxc/rebuild.go:28 lxc/remote.go:36 lxc/remote.go:92 lxc/remote.go:750
-#: lxc/remote.go:788 lxc/remote.go:874 lxc/remote.go:955 lxc/remote.go:1019
-#: lxc/remote.go:1068 lxc/rename.go:21 lxc/restore.go:22 lxc/snapshot.go:32
-#: lxc/storage.go:34 lxc/storage.go:97 lxc/storage.go:203 lxc/storage.go:261
-#: lxc/storage.go:393 lxc/storage.go:475 lxc/storage.go:655 lxc/storage.go:742
-#: lxc/storage.go:846 lxc/storage.go:940 lxc/storage_bucket.go:30
-#: lxc/storage_bucket.go:84 lxc/storage_bucket.go:189 lxc/storage_bucket.go:250
+#: lxc/placement_group.go:29 lxc/placement_group.go:75
+#: lxc/placement_group.go:178 lxc/placement_group.go:234
+#: lxc/placement_group.go:331 lxc/placement_group.go:457
+#: lxc/placement_group.go:506 lxc/profile.go:36 lxc/profile.go:111
+#: lxc/profile.go:191 lxc/profile.go:287 lxc/profile.go:369 lxc/profile.go:451
+#: lxc/profile.go:509 lxc/profile.go:645 lxc/profile.go:721 lxc/profile.go:878
+#: lxc/profile.go:971 lxc/profile.go:1031 lxc/profile.go:1120
+#: lxc/profile.go:1184 lxc/project.go:32 lxc/project.go:98 lxc/project.go:198
+#: lxc/project.go:269 lxc/project.go:405 lxc/project.go:479 lxc/project.go:599
+#: lxc/project.go:664 lxc/project.go:752 lxc/project.go:796 lxc/project.go:857
+#: lxc/project.go:924 lxc/publish.go:34 lxc/query.go:35 lxc/rebuild.go:28
+#: lxc/remote.go:36 lxc/remote.go:92 lxc/remote.go:750 lxc/remote.go:788
+#: lxc/remote.go:874 lxc/remote.go:955 lxc/remote.go:1019 lxc/remote.go:1068
+#: lxc/rename.go:21 lxc/restore.go:22 lxc/snapshot.go:32 lxc/storage.go:34
+#: lxc/storage.go:97 lxc/storage.go:203 lxc/storage.go:261 lxc/storage.go:393
+#: lxc/storage.go:475 lxc/storage.go:655 lxc/storage.go:742 lxc/storage.go:846
+#: lxc/storage.go:940 lxc/storage_bucket.go:30 lxc/storage_bucket.go:84
+#: lxc/storage_bucket.go:189 lxc/storage_bucket.go:250
 #: lxc/storage_bucket.go:383 lxc/storage_bucket.go:461
 #: lxc/storage_bucket.go:555 lxc/storage_bucket.go:649
 #: lxc/storage_bucket.go:718 lxc/storage_bucket.go:752
@@ -1923,6 +1960,10 @@ msgstr ""
 msgid "Display networks from all projects"
 msgstr ""
 
+#: lxc/placement_group.go:79
+msgid "Display placement groups from all projects"
+msgstr ""
+
 #: lxc/profile.go:739
 msgid "Display profiles from all projects"
 msgstr ""
@@ -2040,6 +2081,10 @@ msgstr ""
 
 #: lxc/network_zone.go:1237 lxc/network_zone.go:1238
 msgid "Edit network zone record configurations as YAML"
+msgstr ""
+
+#: lxc/placement_group.go:330 lxc/placement_group.go:331
+msgid "Edit placement group configurations as YAML"
 msgstr ""
 
 #: lxc/profile.go:508 lxc/profile.go:509
@@ -2422,7 +2467,7 @@ msgid "Fast mode (same as --columns=nsacPt)"
 msgstr ""
 
 #: lxc/network.go:1059 lxc/network_acl.go:136 lxc/network_zone.go:127
-#: lxc/operation.go:137
+#: lxc/operation.go:137 lxc/placement_group.go:114
 msgid "Filtering isn't supported yet"
 msgstr ""
 
@@ -2507,8 +2552,8 @@ msgstr ""
 #: lxc/network.go:1146 lxc/network_acl.go:100 lxc/network_allocations.go:59
 #: lxc/network_forward.go:95 lxc/network_load_balancer.go:99
 #: lxc/network_peer.go:85 lxc/network_zone.go:91 lxc/network_zone.go:789
-#: lxc/operation.go:109 lxc/profile.go:738 lxc/project.go:481
-#: lxc/project.go:926 lxc/remote.go:792 lxc/storage.go:657
+#: lxc/operation.go:109 lxc/placement_group.go:78 lxc/profile.go:738
+#: lxc/project.go:481 lxc/project.go:926 lxc/remote.go:792 lxc/storage.go:657
 #: lxc/storage_bucket.go:462 lxc/storage_bucket.go:794
 #: lxc/storage_volume.go:1640 lxc/warning.go:95
 msgid "Format (csv|json|table|yaml|compact)"
@@ -2834,7 +2879,7 @@ msgstr ""
 msgid "If the snapshot name already exists, delete and create a new one"
 msgstr ""
 
-#: lxc/main.go:444
+#: lxc/main.go:447
 msgid ""
 "If this is your first time running LXD on this machine, you should also run: "
 "lxd init"
@@ -3076,7 +3121,7 @@ msgstr ""
 msgid "Invalid new snapshot name, parent volume must be the same as source"
 msgstr ""
 
-#: lxc/main.go:547
+#: lxc/main.go:550
 msgid "Invalid number of arguments"
 msgstr ""
 
@@ -3250,6 +3295,14 @@ msgstr ""
 
 #: lxc/network.go:1017 lxc/network.go:1018
 msgid "List available networks"
+msgstr ""
+
+#: lxc/placement_group.go:75
+msgid "List available placement group"
+msgstr ""
+
+#: lxc/placement_group.go:74
+msgid "List available placement groups"
 msgstr ""
 
 #: lxc/storage.go:654 lxc/storage.go:655
@@ -3748,6 +3801,10 @@ msgstr ""
 msgid "Manage permissions"
 msgstr ""
 
+#: lxc/placement_group.go:28 lxc/placement_group.go:29
+msgid "Manage placement groups"
+msgstr ""
+
 #: lxc/profile.go:35 lxc/profile.go:36
 msgid "Manage profiles"
 msgstr ""
@@ -3984,6 +4041,12 @@ msgstr ""
 msgid "Missing peer name"
 msgstr ""
 
+#: lxc/placement_group.go:200 lxc/placement_group.go:264
+#: lxc/placement_group.go:376 lxc/placement_group.go:479
+#: lxc/placement_group.go:528
+msgid "Missing placement group name"
+msgstr ""
+
 #: lxc/storage.go:235 lxc/storage.go:313 lxc/storage.go:431 lxc/storage.go:509
 #: lxc/storage.go:780 lxc/storage.go:886 lxc/storage_bucket.go:113
 #: lxc/storage_bucket.go:213 lxc/storage_bucket.go:289
@@ -4132,9 +4195,10 @@ msgstr ""
 #: lxc/cluster.go:1075 lxc/cluster_group.go:509 lxc/config_trust.go:407
 #: lxc/config_trust.go:512 lxc/list.go:573 lxc/network.go:1115
 #: lxc/network_acl.go:171 lxc/network_peer.go:148 lxc/network_zone.go:162
-#: lxc/network_zone.go:846 lxc/profile.go:759 lxc/project.go:574
-#: lxc/remote.go:850 lxc/storage.go:715 lxc/storage_bucket.go:527
-#: lxc/storage_bucket.go:851 lxc/storage_volume.go:1763
+#: lxc/network_zone.go:846 lxc/placement_group.go:152 lxc/profile.go:759
+#: lxc/project.go:574 lxc/remote.go:850 lxc/storage.go:715
+#: lxc/storage_bucket.go:527 lxc/storage_bucket.go:851
+#: lxc/storage_volume.go:1763
 msgid "NAME"
 msgstr ""
 
@@ -4453,6 +4517,10 @@ msgstr ""
 msgid "PID: %d"
 msgstr ""
 
+#: lxc/placement_group.go:155
+msgid "POLICY"
+msgstr ""
+
 #: lxc/storage_volume.go:1782
 msgid "POOL"
 msgstr ""
@@ -4470,8 +4538,8 @@ msgid "PROFILES"
 msgstr ""
 
 #: lxc/image.go:1141 lxc/list.go:567 lxc/network.go:1126 lxc/network_acl.go:177
-#: lxc/network_zone.go:168 lxc/profile.go:760 lxc/storage_bucket.go:536
-#: lxc/storage_volume.go:1788 lxc/warning.go:214
+#: lxc/network_zone.go:168 lxc/placement_group.go:162 lxc/profile.go:760
+#: lxc/storage_bucket.go:536 lxc/storage_volume.go:1788 lxc/warning.go:214
 msgid "PROJECT"
 msgstr ""
 
@@ -4495,7 +4563,7 @@ msgstr ""
 msgid "Partitions:"
 msgstr ""
 
-#: lxc/main.go:405
+#: lxc/main.go:408
 #, c-format
 msgid "Password for %s: "
 msgstr ""
@@ -4506,6 +4574,21 @@ msgstr ""
 
 #: lxc/copy.go:65
 msgid "Perform an incremental copy"
+msgstr ""
+
+#: lxc/placement_group.go:315
+#, c-format
+msgid "Placement group %s created"
+msgstr ""
+
+#: lxc/placement_group.go:489
+#, c-format
+msgid "Placement group %s deleted"
+msgstr ""
+
+#: lxc/placement_group.go:538
+#, c-format
+msgid "Placement group %s renamed to %s"
 msgstr ""
 
 #: lxc/remote.go:196
@@ -4543,10 +4626,10 @@ msgstr ""
 #: lxc/config_trust.go:313 lxc/image.go:493 lxc/network.go:771
 #: lxc/network_acl.go:718 lxc/network_forward.go:778
 #: lxc/network_load_balancer.go:741 lxc/network_peer.go:700
-#: lxc/network_zone.go:641 lxc/network_zone.go:1336 lxc/profile.go:612
-#: lxc/project.go:372 lxc/storage.go:360 lxc/storage_bucket.go:350
-#: lxc/storage_bucket.go:1146 lxc/storage_volume.go:1180
-#: lxc/storage_volume.go:1212
+#: lxc/network_zone.go:641 lxc/network_zone.go:1336 lxc/placement_group.go:425
+#: lxc/profile.go:612 lxc/project.go:372 lxc/storage.go:360
+#: lxc/storage_bucket.go:350 lxc/storage_bucket.go:1146
+#: lxc/storage_volume.go:1180 lxc/storage_volume.go:1212
 msgid "Press enter to open the editor again or ctrl+c to abort change"
 msgstr ""
 
@@ -4797,6 +4880,10 @@ msgstr ""
 msgid "RESOURCE"
 msgstr ""
 
+#: lxc/placement_group.go:157
+msgid "RIGOR"
+msgstr ""
+
 #: lxc/storage_bucket.go:853
 msgid "ROLE"
 msgstr ""
@@ -4984,6 +5071,10 @@ msgstr ""
 msgid "Rename a cluster member"
 msgstr ""
 
+#: lxc/placement_group.go:506
+msgid "Rename a placement group"
+msgstr ""
+
 #: lxc/alias.go:158 lxc/alias.go:159 lxc/image_alias.go:287
 #: lxc/image_alias.go:288
 msgid "Rename aliases"
@@ -5007,6 +5098,10 @@ msgstr ""
 
 #: lxc/network.go:1222 lxc/network.go:1223
 msgid "Rename networks"
+msgstr ""
+
+#: lxc/placement_group.go:505
+msgid "Rename placement groups"
 msgstr ""
 
 #: lxc/profile.go:970 lxc/profile.go:971
@@ -5125,6 +5220,10 @@ msgstr ""
 
 #: lxc/network_allocations.go:61
 msgid "Run against all projects"
+msgstr ""
+
+#: lxc/placement_group.go:156
+msgid "SCOPE"
 msgstr ""
 
 #: lxc/warning.go:215
@@ -5579,7 +5678,7 @@ msgstr ""
 msgid "Show instance or server information"
 msgstr ""
 
-#: lxc/main.go:305 lxc/main.go:306
+#: lxc/main.go:308 lxc/main.go:309
 msgid "Show less common commands"
 msgstr ""
 
@@ -5621,6 +5720,10 @@ msgstr ""
 
 #: lxc/network_zone.go:864
 msgid "Show network zone record configurations"
+msgstr ""
+
+#: lxc/placement_group.go:177 lxc/placement_group.go:178
+msgid "Show placement group configurations"
 msgstr ""
 
 #: lxc/profile.go:1119 lxc/profile.go:1120
@@ -6124,7 +6227,7 @@ msgstr ""
 msgid "This LXD server is not available on the network"
 msgstr ""
 
-#: lxc/main.go:336
+#: lxc/main.go:339
 msgid ""
 "This client hasn't been configured to use a remote LXD server yet.\n"
 "As your platform can't run native Linux instances, you must connect to a "
@@ -6160,7 +6263,7 @@ msgstr ""
 msgid "To detach from the console, press: <ctrl>+a q"
 msgstr ""
 
-#: lxc/main.go:450
+#: lxc/main.go:453
 msgid ""
 "To start your first container, try: lxc launch ubuntu:24.04\n"
 "Or for a virtual machine: lxc launch ubuntu:24.04 --vm"
@@ -6280,8 +6383,8 @@ msgid "USAGE"
 msgstr ""
 
 #: lxc/network.go:1121 lxc/network_acl.go:173 lxc/network_allocations.go:24
-#: lxc/network_zone.go:164 lxc/profile.go:762 lxc/project.go:582
-#: lxc/storage.go:724 lxc/storage_volume.go:1766
+#: lxc/network_zone.go:164 lxc/placement_group.go:158 lxc/profile.go:762
+#: lxc/project.go:582 lxc/storage.go:724 lxc/storage_volume.go:1766
 msgid "USED BY"
 msgstr ""
 
@@ -6667,8 +6770,8 @@ msgstr ""
 #: lxc/cluster.go:121 lxc/cluster.go:981 lxc/cluster_group.go:443
 #: lxc/config_trust.go:345 lxc/config_trust.go:428 lxc/monitor.go:32
 #: lxc/network.go:1015 lxc/network_acl.go:94 lxc/network_zone.go:85
-#: lxc/operation.go:104 lxc/profile.go:718 lxc/project.go:476
-#: lxc/storage.go:652 lxc/version.go:20 lxc/warning.go:70
+#: lxc/operation.go:104 lxc/placement_group.go:72 lxc/profile.go:718
+#: lxc/project.go:476 lxc/storage.go:652 lxc/version.go:20 lxc/warning.go:70
 msgid "[<remote>:]"
 msgstr ""
 
@@ -7074,8 +7177,23 @@ msgstr ""
 msgid "[<remote>:]<network> [key=value...]"
 msgstr ""
 
+#: lxc/placement_group.go:503
+msgid "[<remote>:]<old_name> <new_name>"
+msgstr ""
+
 #: lxc/operation.go:54 lxc/operation.go:192
 msgid "[<remote>:]<operation>"
+msgstr ""
+
+#: lxc/placement_group.go:176 lxc/placement_group.go:329
+#: lxc/placement_group.go:454
+msgid "[<remote>:]<placement_group>"
+msgstr ""
+
+#: lxc/placement_group.go:232
+msgid ""
+"[<remote>:]<placement_group> <cluster_group> <policy> [--strict] [--scope "
+"<scope>]"
 msgstr ""
 
 #: lxc/storage.go:200 lxc/storage.go:259 lxc/storage.go:473 lxc/storage.go:844
@@ -7622,6 +7740,14 @@ msgstr ""
 msgid ""
 "lxc operation show 344a79e4-d88a-45bf-9c39-c72c26f6ab8a\n"
 "    Show details on that operation UUID"
+msgstr ""
+
+#: lxc/placement_group.go:235
+msgid ""
+"lxc placement group create my-group\n"
+"\n"
+"lxc placement group create my-group < config.yaml\n"
+"    Create placement group my-group with configuration from config.yaml"
 msgstr ""
 
 #: lxc/profile.go:193
