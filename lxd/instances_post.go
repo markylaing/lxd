@@ -28,6 +28,7 @@ import (
 	"github.com/canonical/lxd/lxd/instance/instancetype"
 	"github.com/canonical/lxd/lxd/instance/operationlock"
 	"github.com/canonical/lxd/lxd/operations"
+	"github.com/canonical/lxd/lxd/placement"
 	"github.com/canonical/lxd/lxd/project"
 	"github.com/canonical/lxd/lxd/project/limits"
 	"github.com/canonical/lxd/lxd/request"
@@ -1296,6 +1297,13 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	if s.ServerClustered && !clusterNotification && targetMemberInfo == nil {
+		var globalConfigDump map[string]any
+		if s.GlobalConfig != nil {
+			globalConfigDump = s.GlobalConfig.Dump()
+		}
+
+		expandedConfig := instancetype.ExpandInstanceConfig(globalConfigDump, req.Config, profiles)
+
 		// Run instance placement scriptlet if enabled and no cluster member selected yet.
 		if s.GlobalConfig.InstancesPlacementScriptlet() != "" {
 			leaderInfo, err := s.LeaderInfo()
@@ -1310,12 +1318,7 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 				Reason:        apiScriptlet.InstancePlacementReasonNew,
 			}
 
-			var globalConfigDump map[string]any
-			if s.GlobalConfig != nil {
-				globalConfigDump = s.GlobalConfig.Dump()
-			}
-
-			reqExpanded.Config = instancetype.ExpandInstanceConfig(globalConfigDump, reqExpanded.Config, profiles)
+			reqExpanded.Config = expandedConfig
 			reqExpanded.Devices = instancetype.ExpandInstanceDevices(deviceConfig.NewDevices(reqExpanded.Devices), profiles).CloneNative()
 
 			targetMemberInfo, err = scriptlet.InstancePlacementRun(r.Context(), logger.Log, s, &reqExpanded, candidateMembers, leaderInfo.Address)
@@ -1327,7 +1330,28 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 		// If no target member was selected yet, pick the member with the least number of instances.
 		if targetMemberInfo == nil {
 			err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-				targetMemberInfo, err = tx.GetNodeWithLeastInstances(ctx, candidateMembers)
+				placementGroupName, ok := expandedConfig["placement.group"]
+				if !ok {
+					targetMemberInfo, err = tx.GetNodeWithLeastInstances(ctx, candidateMembers)
+					return err
+				}
+
+				placementGroup, err := dbCluster.GetPlacementGroup(ctx, tx.Tx(), placementGroupName, targetProject.Name)
+				if err != nil {
+					return err
+				}
+
+				filteredCandidates, err := placement.Filter(ctx, tx.Tx(), candidateMembers, nil, *placementGroup)
+				if err != nil {
+					return err
+				}
+
+				if len(filteredCandidates) == 1 {
+					targetMemberInfo = &filteredCandidates[0]
+					return nil
+				}
+
+				targetMemberInfo, err = tx.GetNodeWithLeastInstances(ctx, filteredCandidates)
 				return err
 			})
 			if err != nil {
