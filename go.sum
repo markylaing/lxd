@@ -33,6 +33,10 @@ github.com/bmatcuk/doublestar/v4 v4.8.1 h1:54Bopc5c2cAvhLRAzqOGCYHYyhcDHsFF4wWIR
 github.com/bmatcuk/doublestar/v4 v4.8.1/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/canonical/go-dqlite/v3 v3.0.0 h1:Uf5TrpOb9YEXzN8AiOmf+TCPYCFVU3W4I2MpOks5iis=
 github.com/canonical/go-dqlite/v3 v3.0.0/go.mod h1:Kb/9JVog9XeIlnlnSyO1JgMoE4PoKXZCB8fJNcvvHAc=
+github.com/canonical/starform v0.0.0-20250428162619-69e4d8a22b98 h1:/ZJvmlN9CvIy8ifOjl8QWRc4rK9JSr5KQV6F20Bem6I=
+github.com/canonical/starform v0.0.0-20250428162619-69e4d8a22b98/go.mod h1:D0n/xpvuBbdMTygtdnratUr8kzXWo+FIayINJ/cOln8=
+github.com/canonical/starlark v0.0.0-20250411183636-e4fd77751876 h1:MpemwXL1H/5HrKAJFmDcOsTGVB+3kzqweoYXRP7SJ28=
+github.com/canonical/starlark v0.0.0-20250411183636-e4fd77751876/go.mod h1:fbhY9i7ZAcza52PfUCd9PDIBFJJMYsAj22/3Q3sU6IY=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cenkalti/backoff/v5 v5.0.2 h1:rIfFVxEf1QsI7E1ZHfp/B4DF/6QBAUhmgkxc0H7Zss8=

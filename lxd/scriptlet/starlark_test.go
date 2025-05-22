@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.starlark.net/starlark"
+	"github.com/canonical/starlark/starlark"
 )
 
 type starlarkMarshalTest struct {

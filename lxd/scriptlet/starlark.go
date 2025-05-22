@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.starlark.net/starlark"
+	"github.com/canonical/starlark/starlark"
 )
 
 // starlarkObject wraps a starlark.Dict and is used to provide custom object types to the Starlark scriptlets.

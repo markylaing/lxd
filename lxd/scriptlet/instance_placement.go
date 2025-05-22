@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go.starlark.net/starlark"
+	"github.com/canonical/starlark/starlark"
 
 	"github.com/canonical/lxd/lxd/cluster"
 	"github.com/canonical/lxd/lxd/db"

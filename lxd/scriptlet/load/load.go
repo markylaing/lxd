@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sync"
 
-	"go.starlark.net/starlark"
+	"github.com/canonical/starlark/starlark"
 )
 
 // nameInstancePlacement is the name used in Starlark for the instance placement scriptlet.
