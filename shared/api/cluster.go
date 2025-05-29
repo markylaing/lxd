@@ -322,6 +322,13 @@ type ClusterGroup struct {
 	// Example: ["node1", "node3"]
 	Members []string `json:"members" yaml:"members"`
 
+	// IsMember is a starlark script that returns True if the given member belongs to the cluster group.
+	//
+	// Example: return member.resources.gpu.total > 0
+	//
+	// API extension: cluster_group_scriptlet
+	IsMember string `json:"is_member" yaml:"is_member"`
+
 	// UsedBy is a list or LXD entity URLs that reference the cluster group.
 	//
 	// API extension: clustering_groups_used_by
@@ -352,6 +359,13 @@ type ClusterGroupPut struct {
 	// List of members in this group
 	// Example: ["node1", "node3"]
 	Members []string `json:"members" yaml:"members"`
+
+	// IsMember is a starlark script that returns True if the given member belongs to the cluster group.
+	//
+	// Example: return member.resources.gpu.total > 0
+	//
+	// API extension: cluster_group_scriptlet
+	IsMember string `json:"is_member" yaml:"is_member"`
 }
 
 // Writable converts a full ClusterGroup struct into a ClusterGroupPut struct (filters read-only fields).
@@ -359,6 +373,7 @@ func (c *ClusterGroup) Writable() ClusterGroupPut {
 	return ClusterGroupPut{
 		Description: c.Description,
 		Members:     c.Members,
+		IsMember:    c.IsMember,
 	}
 }
 
@@ -366,4 +381,5 @@ func (c *ClusterGroup) Writable() ClusterGroupPut {
 func (c *ClusterGroup) SetWritable(put ClusterGroupPut) {
 	c.Description = put.Description
 	c.Members = put.Members
+	c.IsMember = put.IsMember
 }

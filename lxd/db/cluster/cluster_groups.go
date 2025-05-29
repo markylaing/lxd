@@ -40,6 +40,7 @@ type ClusterGroup struct {
 	Name        string
 	Description string   `db:"coalesce=''"`
 	Nodes       []string `db:"ignore"`
+	IsMember    string
 }
 
 // ClusterGroupFilter specifies potential query parameter fields.
@@ -59,6 +60,7 @@ func (c *ClusterGroup) ToAPI(ctx context.Context, tx *sql.Tx) (*api.ClusterGroup
 		Name:        c.Name,
 		Description: c.Description,
 		Members:     c.Nodes,
+		IsMember:    c.IsMember,
 		UsedBy:      usedBy,
 	}
 

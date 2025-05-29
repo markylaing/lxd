@@ -114,6 +114,16 @@ var updates = map[int]schema.Update{
 	71: updateFromV70,
 	72: updateFromV71,
 	73: updateFromV72,
+	74: updateFromV73,
+}
+
+func updateFromV73(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `ALTER TABLE cluster_groups ADD COLUMN is_member TEXT NOT NULL DEFAULT '';`)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func updateFromV72(ctx context.Context, tx *sql.Tx) error {

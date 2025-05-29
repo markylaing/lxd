@@ -19,13 +19,13 @@ import (
 var _ = api.ServerEnvironment{}
 
 var clusterGroupObjects = RegisterStmt(`
-SELECT cluster_groups.id, cluster_groups.name, coalesce(cluster_groups.description, '')
+SELECT cluster_groups.id, cluster_groups.name, coalesce(cluster_groups.description, ''), cluster_groups.is_member
   FROM cluster_groups
   ORDER BY cluster_groups.name
 `)
 
 var clusterGroupObjectsByName = RegisterStmt(`
-SELECT cluster_groups.id, cluster_groups.name, coalesce(cluster_groups.description, '')
+SELECT cluster_groups.id, cluster_groups.name, coalesce(cluster_groups.description, ''), cluster_groups.is_member
   FROM cluster_groups
   WHERE ( cluster_groups.name = ? )
   ORDER BY cluster_groups.name
@@ -37,8 +37,8 @@ SELECT cluster_groups.id FROM cluster_groups
 `)
 
 var clusterGroupCreate = RegisterStmt(`
-INSERT INTO cluster_groups (name, description)
-  VALUES (?, ?)
+INSERT INTO cluster_groups (name, description, is_member)
+  VALUES (?, ?, ?)
 `)
 
 var clusterGroupRename = RegisterStmt(`
@@ -51,14 +51,14 @@ DELETE FROM cluster_groups WHERE name = ?
 
 var clusterGroupUpdate = RegisterStmt(`
 UPDATE cluster_groups
-  SET name = ?, description = ?
+  SET name = ?, description = ?, is_member = ?
  WHERE id = ?
 `)
 
 // clusterGroupColumns returns a string of column names to be used with a SELECT statement for the entity.
 // Use this function when building statements to retrieve database entries matching the ClusterGroup entity.
 func clusterGroupColumns() string {
-	return "clusters_groups.id, clusters_groups.name, coalesce(clusters_groups.description, '')"
+	return "clusters_groups.id, clusters_groups.name, coalesce(clusters_groups.description, ''), clusters_groups.is_member"
 }
 
 // getClusterGroups can be used to run handwritten sql.Stmts to return a slice of objects.
@@ -67,7 +67,7 @@ func getClusterGroups(ctx context.Context, stmt *sql.Stmt, args ...any) ([]Clust
 
 	dest := func(scan func(dest ...any) error) error {
 		c := ClusterGroup{}
-		err := scan(&c.ID, &c.Name, &c.Description)
+		err := scan(&c.ID, &c.Name, &c.Description, &c.IsMember)
 		if err != nil {
 			return err
 		}
@@ -91,7 +91,7 @@ func getClusterGroupsRaw(ctx context.Context, tx *sql.Tx, sql string, args ...an
 
 	dest := func(scan func(dest ...any) error) error {
 		c := ClusterGroup{}
-		err := scan(&c.ID, &c.Name, &c.Description)
+		err := scan(&c.ID, &c.Name, &c.Description, &c.IsMember)
 		if err != nil {
 			return err
 		}
@@ -272,11 +272,12 @@ func CreateClusterGroup(ctx context.Context, tx *sql.Tx, object ClusterGroup) (i
 		return -1, api.StatusErrorf(http.StatusConflict, "This \"clusters_groups\" entry already exists")
 	}
 
-	args := make([]any, 2)
+	args := make([]any, 3)
 
 	// Populate the statement arguments.
 	args[0] = object.Name
 	args[1] = object.Description
+	args[2] = object.IsMember
 
 	// Prepared statement to use.
 	stmt, err := Stmt(tx, clusterGroupCreate)
@@ -311,7 +312,7 @@ func UpdateClusterGroup(ctx context.Context, tx *sql.Tx, name string, object Clu
 		return fmt.Errorf("Failed to get \"clusterGroupUpdate\" prepared statement: %w", err)
 	}
 
-	result, err := stmt.Exec(object.Name, object.Description, id)
+	result, err := stmt.Exec(object.Name, object.Description, object.IsMember, id)
 	if err != nil {
 		return fmt.Errorf("Update \"clusters_groups\" entry failed: %w", err)
 	}

@@ -1,7 +1,10 @@
 package scriptlet
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"github.com/canonical/starform/starform"
 	"reflect"
 	"sort"
 	"strings"
@@ -202,4 +205,28 @@ func starlarkMarshal(input any, parent *starlark.Dict) (starlark.Value, error) {
 	}
 
 	return sv, nil
+}
+
+type starformLogger struct{}
+
+func (starformLogger) Log(_ context.Context, _ starform.LogEntry) {}
+
+type bufferedScriptSource struct {
+	name string
+	buf  *bytes.Buffer
+}
+
+func newScriptSource(name string, script string) starform.ScriptSource {
+	return &bufferedScriptSource{
+		name: name,
+		buf:  bytes.NewBufferString(script),
+	}
+}
+
+func (s bufferedScriptSource) Path() string {
+	return s.name
+}
+
+func (s bufferedScriptSource) Content(_ context.Context) ([]byte, error) {
+	return s.buf.Bytes(), nil
 }

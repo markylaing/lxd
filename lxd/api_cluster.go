@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/canonical/lxd/lxd/resources"
 	"net/http"
 	"net/url"
 	"os"
@@ -3682,6 +3683,79 @@ func restoreClusterMember(d *Daemon, r *http.Request, mode string) response.Resp
 	return operations.OperationResponse(op)
 }
 
+func getScriptletMembers(ctx context.Context, s *state.State) ([]scriptlet.ClusterMember, error) {
+	var thisNode db.NodeInfo
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
+		var err error
+		thisNode, err = tx.GetNodeByAddress(ctx, s.LocalConfig.ClusterAddress())
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	thisMembersResources, err := resources.GetResources()
+	if err != nil {
+		return nil, err
+	}
+
+	thisMember, err := nodeResourcesToScriptletMember(thisNode, *thisMembersResources)
+
+	notifier, err := cluster.NewNotifier(s, s.Endpoints.NetworkCert(), s.ServerCert(), cluster.NotifyAll)
+	if err != nil {
+		return nil, err
+	}
+
+	members := []scriptlet.ClusterMember{*thisMember}
+	err = notifier(func(info db.NodeInfo, server lxd.InstanceServer) error {
+		resources, err := server.GetServerResources()
+		if err != nil {
+			return err
+		}
+
+		member, err := nodeResourcesToScriptletMember(info, *resources)
+		if err != nil {
+			return err
+		}
+
+		members = append(members, *member)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return members, nil
+}
+
+func nodeResourcesToScriptletMember(nodeInfo db.NodeInfo, resources api.Resources) (*scriptlet.ClusterMember, error) {
+	roles := make([]string, len(nodeInfo.Roles))
+	for _, role := range nodeInfo.Roles {
+		roles = append(roles, string(role))
+	}
+
+	arch, err := osarch.ArchitectureName(nodeInfo.Architecture)
+	if err != nil {
+		return nil, err
+	}
+
+	return &scriptlet.ClusterMember{
+		Name:         nodeInfo.Name,
+		Address:      nodeInfo.Address,
+		Description:  nodeInfo.Description,
+		Roles:        roles,
+		Architecture: arch,
+		// TODO: state
+		Config:    nodeInfo.Config,
+		Groups:    nodeInfo.Groups,
+		Resources: resources,
+	}, nil
+}
+
 // swagger:operation POST /1.0/cluster/groups cluster cluster_groups_post
 //
 //	Create a cluster group.
@@ -3730,11 +3804,35 @@ func clusterGroupsPost(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(err)
 	}
 
+	if req.IsMember != "" && len(req.Members) > 0 {
+		return response.BadRequest(errors.New("Cluster member list and 'is member' scriptlet are mutually exclusive"))
+	}
+
+	if req.IsMember != "" {
+		tester, err := scriptlet.NewClusterGroupMembershipTester(r.Context(), req.Name, req.IsMember)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		members, err := getScriptletMembers(r.Context(), s)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		memberNames, err := tester.FilterMembers(r.Context(), members)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		req.Members = memberNames
+	}
+
 	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		obj := dbCluster.ClusterGroup{
 			Name:        req.Name,
 			Description: req.Description,
 			Nodes:       req.Members,
+			IsMember:    req.IsMember,
 		}
 
 		_, err := dbCluster.CreateClusterGroup(ctx, tx.Tx(), obj)
