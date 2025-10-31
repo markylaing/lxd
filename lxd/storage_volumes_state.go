@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -113,10 +114,17 @@ func storagePoolVolumeTypeStateGet(d *Daemon, r *http.Request) response.Response
 
 	// Get the storage project name.
 	requestProjectName := request.ProjectParam(r)
-	projectName, err := project.StorageVolumeProject(s.DB.Cluster, requestProjectName, volumeType)
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.StorageVolumeProjectFromRecord(requestProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 
 	// Load the storage pool.
 	pool, err := storagePools.LoadByName(s, poolName)

@@ -8,9 +8,29 @@ import (
 	"github.com/canonical/lxd/shared/entity"
 )
 
+// Entity represents a general LXD entity.
+type Entity interface {
+	DatabaseID() int
+	EntityType() entity.Type
+	Parent() Entity
+	URL() *api.URL
+}
+
+func GetParentEntityOfType(e Entity, p entity.Type) Entity {
+	if e == nil {
+		return nil
+	}
+
+	if e.EntityType() == p {
+		return e
+	}
+
+	return GetParentEntityOfType(e.Parent(), p)
+}
+
 // PermissionChecker is a type alias for a function that returns whether a user has required permissions on an object.
 // It is returned by Authorizer.GetPermissionChecker.
-type PermissionChecker func(entityURL *api.URL) bool
+type PermissionChecker func(entityID int) bool
 
 // EntitlementReporter is an interface for adding entitlements to an entity.
 type EntitlementReporter interface {
@@ -28,7 +48,7 @@ type Authorizer interface {
 	//
 	// Note: When a project does not have a feature enabled, the given URL should contain the request project, and the
 	// effective project for the entity should be set on the request.Info in the given context.
-	CheckPermission(ctx context.Context, entityURL *api.URL, entitlement Entitlement) error
+	CheckPermission(ctx context.Context, entitlement Entitlement, entityType entity.Type, entityID int) error
 
 	// GetPermissionChecker returns a PermissionChecker for a particular entity.Type.
 	//
@@ -36,18 +56,6 @@ type Authorizer interface {
 	// the entity. The effective project for the entity must be set on the request.Info in the given context before
 	// calling the PermissionChecker.
 	GetPermissionChecker(ctx context.Context, entitlement Entitlement, entityType entity.Type) (PermissionChecker, error)
-
-	// CheckPermissionWithoutEffectiveProject checks a permission, but does not replace the project in the entity URL
-	// with the effective project stored in the context.
-	//
-	// Warn: You almost never need this function. You should use CheckPermission instead.
-	CheckPermissionWithoutEffectiveProject(ctx context.Context, entityURL *api.URL, entitlement Entitlement) error
-
-	// GetPermissionCheckerWithoutEffectiveProject returns a PermissionChecker does not replace the project in the entity URL
-	// with the effective project stored in the context.
-	//
-	// Warn: You almost never need this function. You should use GetPermissionChecker instead.
-	GetPermissionCheckerWithoutEffectiveProject(ctx context.Context, entitlement Entitlement, entityType entity.Type) (PermissionChecker, error)
 
 	// GetViewableProjects accepts a list of permissions and returns a list of projects that a member of a group with these permissions is able to view.
 	GetViewableProjects(ctx context.Context, permissions []api.Permission) ([]string, error)

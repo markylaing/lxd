@@ -49,6 +49,11 @@ type Requestor struct {
 	clientType                      ClientType
 	identity                        *identity.CacheEntry
 	identityType                    identity.Type
+	identityID                      int
+}
+
+func (r *Requestor) IdentityID() int {
+	return r.identityID
 }
 
 // IsClusterNotification returns true if this an API request coming from a

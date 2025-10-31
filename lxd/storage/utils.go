@@ -1050,7 +1050,7 @@ func VolumeUsedByProfileDevices(s *state.State, poolName string, projectName str
 	// Iterate all profiles, consider only those which belong to a project that has the same effective
 	// storage project as volume.
 	for i, profile := range profiles {
-		profileStorageProject := project.StorageVolumeProjectFromRecord(profileProjects[i], volumeType)
+		profileStorageProject := project.StorageVolumeProjectFromRecord(*profileProjects[i], volumeType)
 
 		// Check profile's storage project is the same as the volume's project.
 		// If not then the volume names mentioned in the profile's config cannot be referring to volumes
@@ -1105,7 +1105,7 @@ func VolumeUsedByInstanceDevices(s *state.State, poolName string, projectName st
 				return nil
 			}
 
-			instStorageProject := project.StorageVolumeProjectFromRecord(&p, volumeType)
+			instStorageProject := project.StorageVolumeProjectFromRecord(p, volumeType)
 
 			// Check instance's storage project is the same as the volume's project.
 			// If not then the volume names mentioned in the instance's config cannot be referring to volumes

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	dqlite "github.com/canonical/go-dqlite/v3/client"
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -76,7 +77,7 @@ var clusterCmd = APIEndpoint{
 	MetricsType: entity.TypeClusterMember,
 
 	Get: APIEndpointAction{Handler: clusterGet, AccessHandler: allowAuthenticated},
-	Put: APIEndpointAction{Handler: clusterPut, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Put: APIEndpointAction{Handler: clusterPut, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterNodesCmd = APIEndpoint{
@@ -84,18 +85,18 @@ var clusterNodesCmd = APIEndpoint{
 	MetricsType: entity.TypeClusterMember,
 
 	Get:  APIEndpointAction{Handler: clusterNodesGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: clusterNodesPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: clusterNodesPost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterNodeCmd = APIEndpoint{
 	Path:        "cluster/members/{name}",
 	MetricsType: entity.TypeClusterMember,
 
-	Delete: APIEndpointAction{Handler: clusterNodeDelete, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: clusterNodeDelete, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 	Get:    APIEndpointAction{Handler: clusterNodeGet, AccessHandler: allowAuthenticated},
-	Patch:  APIEndpointAction{Handler: clusterNodePatch, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: clusterNodePut, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Post:   APIEndpointAction{Handler: clusterNodePost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: clusterNodePatch, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: clusterNodePut, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: clusterNodePost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterNodeStateCmd = APIEndpoint{
@@ -103,14 +104,14 @@ var clusterNodeStateCmd = APIEndpoint{
 	MetricsType: entity.TypeClusterMember,
 
 	Get:  APIEndpointAction{Handler: clusterNodeStateGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: clusterNodeStatePost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: clusterNodeStatePost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterCertificateCmd = APIEndpoint{
 	Path:        "cluster/certificate",
 	MetricsType: entity.TypeClusterMember,
 
-	Put: APIEndpointAction{Handler: clusterCertificatePut, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Put: APIEndpointAction{Handler: clusterCertificatePut, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterGroupsCmd = APIEndpoint{
@@ -118,7 +119,7 @@ var clusterGroupsCmd = APIEndpoint{
 	MetricsType: entity.TypeClusterMember,
 
 	Get:  APIEndpointAction{Handler: clusterGroupsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: clusterGroupsPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: clusterGroupsPost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var clusterGroupCmd = APIEndpoint{
@@ -126,45 +127,45 @@ var clusterGroupCmd = APIEndpoint{
 	MetricsType: entity.TypeClusterMember,
 
 	Get:    APIEndpointAction{Handler: clusterGroupGet, AccessHandler: allowAuthenticated},
-	Post:   APIEndpointAction{Handler: clusterGroupPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: clusterGroupPut, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Patch:  APIEndpointAction{Handler: clusterGroupPatch, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Delete: APIEndpointAction{Handler: clusterGroupDelete, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post:   APIEndpointAction{Handler: clusterGroupPost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: clusterGroupPut, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Patch:  APIEndpointAction{Handler: clusterGroupPatch, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: clusterGroupDelete, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterAcceptCmd = APIEndpoint{
 	Path:        "cluster/accept",
 	MetricsType: entity.TypeClusterMember,
 
-	Post: APIEndpointAction{Handler: internalClusterPostAccept, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalClusterPostAccept, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterRebalanceCmd = APIEndpoint{
 	Path:        "cluster/rebalance",
 	MetricsType: entity.TypeClusterMember,
 
-	Post: APIEndpointAction{Handler: internalClusterPostRebalance, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalClusterPostRebalance, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterAssignCmd = APIEndpoint{
 	Path:        "cluster/assign",
 	MetricsType: entity.TypeClusterMember,
 
-	Post: APIEndpointAction{Handler: internalClusterPostAssign, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalClusterPostAssign, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterHandoverCmd = APIEndpoint{
 	Path:        "cluster/handover",
 	MetricsType: entity.TypeClusterMember,
 
-	Post: APIEndpointAction{Handler: internalClusterPostHandover, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalClusterPostHandover, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterRaftNodeCmd = APIEndpoint{
 	Path:        "cluster/raft-node/{address}",
 	MetricsType: entity.TypeClusterMember,
 
-	Delete: APIEndpointAction{Handler: internalClusterRaftNodeDelete, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: internalClusterRaftNodeDelete, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 // swagger:operation GET /1.0/cluster cluster cluster_get
@@ -3777,9 +3778,15 @@ func clusterGroupsGet(d *Daemon, r *http.Request) response.Response {
 
 	recursion := util.IsRecursionRequest(r)
 
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	var clusterGroupURIs []string
 	var apiClusterGroups []*api.ClusterGroup
-	err := s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+	var usedBy map[string][]auth.Entity
+	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		if recursion {
@@ -3788,6 +3795,7 @@ func clusterGroupsGet(d *Daemon, r *http.Request) response.Response {
 				return err
 			}
 
+			usedBy = make(map[string][]auth.Entity, len(clusterGroups))
 			apiClusterGroups = make([]*api.ClusterGroup, 0, len(clusterGroups))
 			for _, clusterGroup := range clusterGroups {
 				nodeClusterGroups, err := dbCluster.GetNodeClusterGroups(ctx, tx.Tx(), dbCluster.NodeClusterGroupFilter{GroupID: &clusterGroup.ID})
@@ -3805,12 +3813,22 @@ func clusterGroupsGet(d *Daemon, r *http.Request) response.Response {
 					return err
 				}
 
-				usedBy, err := clusterGroupUsedBy(ctx, s, tx, clusterGroup.Name, false)
+				instances, err := model.GetInstancesFullAllProjects(ctx)
 				if err != nil {
 					return err
 				}
 
-				apiClusterGroup.UsedBy = usedBy
+				projects, err := model.GetProjectsFull(ctx)
+				if err != nil {
+					return err
+				}
+
+				groupUsedBy := clusterGroupUsedBy(clusterGroup.Name, true, instances, projects)
+				if len(usedBy) > 0 {
+					return api.StatusErrorf(http.StatusBadRequest, "Cluster group is currently in use")
+				}
+
+				usedBy[apiClusterGroup.Name] = groupUsedBy
 				apiClusterGroups = append(apiClusterGroups, apiClusterGroup)
 			}
 		} else {
@@ -3828,7 +3846,7 @@ func clusterGroupsGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	for _, clusterGroup := range apiClusterGroups {
-		clusterGroup.UsedBy = project.FilterUsedBy(r.Context(), s.Authorizer, clusterGroup.UsedBy)
+		clusterGroup.UsedBy = project.FilterUsedBy(r.Context(), s.Authorizer, usedBy[clusterGroup.Name])
 	}
 
 	return response.SyncResponse(true, apiClusterGroups)
@@ -3880,8 +3898,14 @@ func clusterGroupGet(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(errors.New("This server is not clustered"))
 	}
 
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	var group *dbCluster.ClusterGroup
 	var apiGroup *api.ClusterGroup
+	var usedBy []auth.Entity
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the cluster group.
 		group, err = dbCluster.GetClusterGroup(ctx, tx.Tx(), name)
@@ -3904,19 +3928,28 @@ func clusterGroupGet(d *Daemon, r *http.Request) response.Response {
 			return err
 		}
 
-		usedBy, err := clusterGroupUsedBy(ctx, s, tx, name, false)
+		instances, err := model.GetInstancesFullAllProjects(ctx)
 		if err != nil {
 			return err
 		}
 
-		apiGroup.UsedBy = usedBy
+		projects, err := model.GetProjectsFull(ctx)
+		if err != nil {
+			return err
+		}
+
+		usedBy := clusterGroupUsedBy(name, true, instances, projects)
+		if len(usedBy) > 0 {
+			return api.StatusErrorf(http.StatusBadRequest, "Cluster group is currently in use")
+		}
+
 		return nil
 	})
 	if err != nil {
 		return response.SmartError(err)
 	}
 
-	apiGroup.UsedBy = project.FilterUsedBy(r.Context(), s.Authorizer, apiGroup.UsedBy)
+	apiGroup.UsedBy = project.FilterUsedBy(r.Context(), s.Authorizer, usedBy)
 
 	return response.SyncResponseETag(true, apiGroup, apiGroup.Writable())
 }
@@ -3976,6 +4009,11 @@ func clusterGroupPost(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(err)
 	}
 
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		// Check that the name isn't already in use.
 		_, err = dbCluster.GetClusterGroup(ctx, tx.Tx(), req.Name)
@@ -3983,11 +4021,17 @@ func clusterGroupPost(d *Daemon, r *http.Request) response.Response {
 			return fmt.Errorf("Name %q already in use", req.Name)
 		}
 
-		usedBy, err := clusterGroupUsedBy(r.Context(), s, tx, name, true)
+		instances, err := model.GetInstancesFullAllProjects(ctx)
 		if err != nil {
 			return err
 		}
 
+		projects, err := model.GetProjectsFull(ctx)
+		if err != nil {
+			return err
+		}
+
+		usedBy := clusterGroupUsedBy(name, true, instances, projects)
 		if len(usedBy) > 0 {
 			return api.StatusErrorf(http.StatusBadRequest, "Cluster group is currently in use")
 		}
@@ -4342,6 +4386,11 @@ func clusterGroupDelete(d *Daemon, r *http.Request) response.Response {
 		return response.Forbidden(errors.New("The 'default' cluster group cannot be deleted"))
 	}
 
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetClusterGroupNodes(ctx, name)
 		if err != nil {
@@ -4352,11 +4401,17 @@ func clusterGroupDelete(d *Daemon, r *http.Request) response.Response {
 			return api.StatusErrorf(http.StatusBadRequest, "Only empty cluster groups can be removed")
 		}
 
-		usedBy, err := clusterGroupUsedBy(r.Context(), s, tx, name, true)
+		instances, err := model.GetInstancesFullAllProjects(ctx)
 		if err != nil {
 			return err
 		}
 
+		projects, err := model.GetProjectsFull(ctx)
+		if err != nil {
+			return err
+		}
+
+		usedBy := clusterGroupUsedBy(name, true, instances, projects)
 		if len(usedBy) > 0 {
 			return api.StatusErrorf(http.StatusBadRequest, "Cluster group is currently in use")
 		}
@@ -4621,43 +4676,30 @@ func healClusterMember(s *state.State, gateway *cluster.Gateway, op *operations.
 // clusterGroupUsedBy returns the list of resource URLs that reference the cluster group.
 // The returned slice contains project URLs (for projects whose "restricted.cluster.groups" configuration includes the group) and instance URLs (for instances whose config contains the group in the "volatile.cluster.group" key).
 // If firstOnly is true then search stops at first result.
-func clusterGroupUsedBy(ctx context.Context, s *state.State, tx *db.ClusterTx, name string, firstOnly bool) ([]string, error) {
-	var usedBy []string
-	var err error
-
-	usedBy, err = dbCluster.GetProjectsUsingRestrictedClusterGroups(ctx, tx.Tx(), name)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(usedBy) > 0 && firstOnly {
-		return usedBy[:1], nil
-	}
-
-	err = tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
-		// Check if instance references cluster group in "volatile.cluster.group" config key.
-		if inst.Config["volatile.cluster.group"] == name {
-			u := entity.InstanceURL(inst.Project, inst.Name)
-
-			// Omit the project query parameter if it is the default project.
-			if u.Query().Get("project") == api.ProjectDefaultName {
-				q := u.Query()
-				q.Del("project")
-				u.RawQuery = q.Encode()
-			}
-
-			usedBy = append(usedBy, u.String())
-
-			if firstOnly {
-				return db.ErrListStop
-			}
+func clusterGroupUsedBy(clusterGroupName string, firstOnly bool, instances []broker.InstanceFull, projects []broker.ProjectFull) []auth.Entity {
+	usedBy := make([]auth.Entity, 0, len(instances)+len(projects))
+	for _, p := range projects {
+		restrictedGroups, ok := p.Config["restricted.cluster.groups"]
+		if !ok {
+			continue
 		}
 
-		return nil
-	})
-	if err != nil && err != db.ErrListStop {
-		return nil, fmt.Errorf("Failed getting instances: %w", err)
+		if slices.Contains(shared.SplitNTrimSpace(restrictedGroups, ",", -1, false), clusterGroupName) {
+			usedBy = append(usedBy, p)
+			if firstOnly {
+				return usedBy
+			}
+		}
 	}
 
-	return usedBy, nil
+	for _, inst := range instances {
+		if inst.Config["volatile.cluster.group"] == clusterGroupName {
+			usedBy = append(usedBy, inst)
+			if firstOnly {
+				return usedBy
+			}
+		}
+	}
+
+	return usedBy
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/canonical/lxd/lxd/identity"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
-	"github.com/canonical/lxd/shared/entity"
 )
 
 // Code generation directives.
@@ -349,7 +348,7 @@ func (i *Identity) ToAPI(ctx context.Context, tx *sql.Tx, canViewGroup auth.Perm
 
 	groupNames := make([]string, 0, len(groups))
 	for _, group := range groups {
-		if canViewGroup(entity.AuthGroupURL(group.Name)) {
+		if canViewGroup(group.ID) {
 			groupNames = append(groupNames, group.Name)
 		}
 	}

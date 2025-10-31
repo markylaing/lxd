@@ -73,102 +73,102 @@ var apiInternal = []APIEndpoint{
 var internalShutdownCmd = APIEndpoint{
 	Path: "shutdown",
 
-	Put: APIEndpointAction{Handler: internalShutdown, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Put: APIEndpointAction{Handler: internalShutdown, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalReadyCmd = APIEndpoint{
 	Path: "ready",
 
-	Get: APIEndpointAction{Handler: internalWaitReady, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalWaitReady, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalContainerOnStartCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstart",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStart, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStart, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalContainerOnStartHostCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstarthost",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStartHost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStartHost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalContainerOnStopNSCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstopns",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStopNS, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStopNS, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalContainerOnStopCmd = APIEndpoint{
 	Path: "containers/{instanceRef}/onstop",
 
-	Get: APIEndpointAction{Handler: internalContainerOnStop, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalContainerOnStop, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalSQLCmd = APIEndpoint{
 	Path: "sql",
 
-	Get:  APIEndpointAction{Handler: internalSQLGet, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Post: APIEndpointAction{Handler: internalSQLPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get:  APIEndpointAction{Handler: internalSQLGet, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalSQLPost, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalGarbageCollectorCmd = APIEndpoint{
 	Path: "gc",
 
-	Get: APIEndpointAction{Handler: internalGC, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalGC, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalRAFTSnapshotCmd = APIEndpoint{
 	Path: "raft-snapshot",
 
-	Get: APIEndpointAction{Handler: internalRAFTSnapshot, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalRAFTSnapshot, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalImageRefreshCmd = APIEndpoint{
 	Path: "testing/image-refresh",
 
-	Get: APIEndpointAction{Handler: internalRefreshImage, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalRefreshImage, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalClusterHealCmd = APIEndpoint{
 	Path: "testing/cluster/heal",
 
-	Post: APIEndpointAction{Handler: internalHealCluster, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalHealCluster, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalImageOptimizeCmd = APIEndpoint{
 	Path: "image-optimize",
 
-	Post: APIEndpointAction{Handler: internalOptimizeImage, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalOptimizeImage, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalWarningCreateCmd = APIEndpoint{
 	Path: "testing/warnings",
 
-	Post: APIEndpointAction{Handler: internalCreateWarning, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalCreateWarning, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalBGPStateCmd = APIEndpoint{
 	Path: "testing/bgp",
 
-	Get: APIEndpointAction{Handler: internalBGPState, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get: APIEndpointAction{Handler: internalBGPState, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalPruneTokenCmd = APIEndpoint{
 	Path: "testing/prune-tokens",
-	Post: APIEndpointAction{Handler: removeTokenHandler, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: removeTokenHandler, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalOperationWaitCmd = APIEndpoint{
 	Path: "testing/operation-wait",
-	Post: APIEndpointAction{Handler: operationWaitHandler, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: operationWaitHandler, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalIdentityCacheRefreshCmd = APIEndpoint{
 	Path: "identity-cache-refresh",
 
-	Post: APIEndpointAction{Handler: internalIdentityCacheRefresh, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalIdentityCacheRefresh, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 type internalImageOptimizePost struct {

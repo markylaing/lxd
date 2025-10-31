@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/canonical/lxd/lxd/db"
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/canonical/lxd/lxd/state"
 	"github.com/canonical/lxd/shared/api"
 )
@@ -36,6 +37,43 @@ func LoadByType(driverType string) (Type, error) {
 
 	n := driverFunc()
 	n.init(nil, -1, "", &api.Network{Type: driverType}, nil)
+
+	return n, nil
+}
+
+func LoadFromRecord(s *state.State, full broker.NetworkFull, nodeIDToName map[int]string) (Network, error) {
+	driverFunc, ok := drivers[string(full.Type)]
+	if !ok {
+		return nil, ErrUnknownDriver
+	}
+
+	n := driverFunc()
+
+	nodes := make(map[int64]db.NetworkNode, len(full.Nodes))
+	for _, node := range full.Nodes {
+		code, err := node.State.Code()
+		if err != nil {
+			return nil, err
+		}
+
+		nodeName, ok := nodeIDToName[node.NodeID]
+		if !ok {
+			return nil, fmt.Errorf("Missing node ID to Name map")
+		}
+
+		nodes[int64(node.NodeID)] = db.NetworkNode{
+			ID:    int64(node.NodeID),
+			Name:  nodeName,
+			State: db.NetworkState(code),
+		}
+	}
+
+	apiNet, err := full.ToAPI(nodeIDToName)
+	if err != nil {
+		return nil, err
+	}
+
+	n.init(s, int64(full.ID), full.ProjectName, apiNet, nodes)
 
 	return n, nil
 }

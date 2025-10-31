@@ -179,7 +179,7 @@ func instanceBackupsGet(d *Daemon, r *http.Request) response.Response {
 			return response.InternalError(errors.New("Instance backup has invalid name"))
 		}
 
-		if !canView(entity.InstanceBackupURL(projectName, c.Name(), backupName)) {
+		if !canView(backup.ID()) {
 			continue
 		}
 

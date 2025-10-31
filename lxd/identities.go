@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/query"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
@@ -100,7 +101,7 @@ var bearerIdentitiesCmd = APIEndpoint{
 	},
 	Post: APIEndpointAction{
 		Handler:       identitiesBearerPost,
-		AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanCreateIdentities),
+		AccessHandler: serverAccessHandler(auth.EntitlementCanCreateIdentities),
 	},
 }
 
@@ -247,12 +248,12 @@ func identityAccessHandler(authenticationMethod string, entitlement auth.Entitle
 		}
 
 		if identityType.IsFineGrained() {
-			err = s.Authorizer.CheckPermission(r.Context(), entity.IdentityURL(authenticationMethod, id.Identifier), entitlement)
+			err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.IdentityURL(authenticationMethod, id.Identifier), 0)
 			if err != nil {
 				return response.SmartError(err)
 			}
 		} else {
-			err = s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(id.Identifier), entitlement)
+			err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.CertificateURL(id.Identifier), 0)
 			if err != nil {
 				return response.SmartError(err)
 			}
@@ -626,7 +627,7 @@ func createIdentityTLSUntrusted(ctx context.Context, s *state.State, peerCertifi
 // createIdentityTLSTrusted handles requests to create an identity when the caller is trusted.
 func createIdentityTLSTrusted(ctx context.Context, s *state.State, networkCert *shared.CertInfo, req api.IdentitiesTLSPost, notify identityNotificationFunc) response.Response {
 	// Check if the caller has permission to create identities.
-	err := s.Authorizer.CheckPermission(ctx, entity.ServerURL(), auth.EntitlementCanCreateIdentities)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanCreateIdentities, entity.TypeServer, 0)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1572,7 +1573,7 @@ func identityPut(authenticationMethod string) func(d *Daemon, r *http.Request) r
 			return response.BadRequest(fmt.Errorf("Cannot update certificate for identities of type %q", id.Type))
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.IdentityURL(authenticationMethod, id.Identifier), auth.EntitlementCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.IdentityURL(authenticationMethod, id.Identifier), 0)
 		if err == nil {
 			return updateIdentityPrivileged(s, r, *id, identityPut)
 		} else if !auth.IsDeniedError(err) {
@@ -1810,7 +1811,7 @@ func identityPatch(authenticationMethod string) func(d *Daemon, r *http.Request)
 			return response.EmptySyncResponse
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.IdentityURL(authenticationMethod, id.Identifier), auth.EntitlementCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.IdentityURL(authenticationMethod, id.Identifier), 0)
 		if err == nil {
 			return patchIdentityPrivileged(s, r, *id, identityPut)
 		} else if !auth.IsDeniedError(err) {
@@ -2106,7 +2107,7 @@ func updateIdentityCache(d *Daemon) {
 	var identities []dbCluster.Identity
 	projects := make(map[int][]string)
 	groups := make(map[int][]string)
-	idpGroupMapping := make(map[string][]string)
+	idpGroupMapping := make(map[string][]int)
 	bearerIdentitySecrets := make(map[int]dbCluster.AuthSecretValue)
 	var err error
 	err = s.DB.Cluster.Transaction(d.shutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
@@ -2135,19 +2136,19 @@ func updateIdentityCache(d *Daemon) {
 			}
 		}
 
-		idpGroups, err := dbCluster.GetIdentityProviderGroups(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		for _, idpGroup := range idpGroups {
-			// Internal method does not need a permission checker.
-			apiIDPGroup, err := idpGroup.ToAPI(ctx, tx.Tx(), func(_ *api.URL) bool { return true })
+		err = query.Scan(ctx, tx.Tx(), `SELECT identity_provider_groups.name, auth_groups_identity_provider_groups.auth_group_id FROM identity_provider_groups JOIN auth_groups_identity_provider_groups ON identity_provider_groups.id = auth_groups_identity_provider_groups.identity_provider_group_id`, func(scan func(dest ...any) error) error {
+			var idpGroupName string
+			var groupID int
+			err := scan(&idpGroupName, &groupID)
 			if err != nil {
 				return err
 			}
 
-			idpGroupMapping[apiIDPGroup.Name] = apiIDPGroup.Groups
+			idpGroupMapping[idpGroupName] = append(idpGroupMapping[idpGroupName], groupID)
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 
 		bearerIdentitySecrets, err = dbCluster.GetAllBearerIdentitySigningKeys(ctx, tx.Tx())

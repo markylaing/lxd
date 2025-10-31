@@ -287,7 +287,7 @@ func (s *tlsSuite) TestTLSAuthorizer() {
 
 		for _, entitlement := range tt.entitlements {
 			ctx := s.setupCtx(tt.id)
-			err := s.authorizer.CheckPermission(ctx, tt.entityURL, entitlement)
+			err := s.authorizer.CheckPermission(ctx, entitlement, tt.entityURL, 0)
 			if tt.expectErr {
 				s.T().Logf("%q does not have %q on %q", tt.id.Name, entitlement, tt.entityURL)
 				s.Error(err)

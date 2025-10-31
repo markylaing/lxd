@@ -33,7 +33,7 @@ var identityProviderGroupsCmd = APIEndpoint{
 	},
 	Post: APIEndpointAction{
 		Handler:       createIdentityProviderGroup,
-		AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanCreateIdentityProviderGroups),
+		AccessHandler: serverAccessHandler(auth.EntitlementCanCreateIdentityProviderGroups),
 	},
 }
 

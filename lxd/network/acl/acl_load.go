@@ -246,7 +246,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 			// Find instances using the ACLs. Most expensive to do.
 			err = tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 				// Get the instance's effective network project name.
-				instNetworkProject := project.NetworkProjectFromRecord(&p)
+				instNetworkProject := project.NetworkProjectFromRecord(p)
 
 				// Skip instances who's effective network project doesn't match this Network ACL's project.
 				if instNetworkProject != aclProjectName {

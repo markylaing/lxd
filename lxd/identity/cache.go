@@ -17,7 +17,7 @@ type Cache struct {
 	entries map[string]map[string]*CacheEntry
 
 	// identityProviderGroups is a map of identity provider group name to slice of LXD group names.
-	identityProviderGroups map[string]*[]string
+	identityProviderGroups map[string]*[]int
 	mu                     sync.RWMutex
 }
 
@@ -117,7 +117,7 @@ func (c *Cache) GetByAuthenticationMethod(authenticationMethod string) map[strin
 }
 
 // ReplaceAll deletes all entries and identity provider groups from the cache and replaces them with the given values.
-func (c *Cache) ReplaceAll(entries []CacheEntry, idpGroups map[string][]string) error {
+func (c *Cache) ReplaceAll(entries []CacheEntry, idpGroups map[string][]int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -147,9 +147,9 @@ func (c *Cache) ReplaceAll(entries []CacheEntry, idpGroups map[string][]string) 
 		c.entries[entry.AuthenticationMethod][entry.Identifier] = &e
 	}
 
-	c.identityProviderGroups = make(map[string]*[]string, len(idpGroups))
+	c.identityProviderGroups = make(map[string]*[]int, len(idpGroups))
 	for idpGroupName, authGroupNames := range idpGroups {
-		authGroupNamesCopy := make([]string, 0, len(authGroupNames))
+		authGroupNamesCopy := make([]int, 0, len(authGroupNames))
 		authGroupNamesCopy = append(authGroupNamesCopy, authGroupNames...)
 		c.identityProviderGroups[idpGroupName] = &authGroupNamesCopy
 	}
@@ -184,7 +184,7 @@ func (c *Cache) X509Certificates(identityTypes ...string) map[string]x509.Certif
 
 // GetIdentityProviderGroupMapping returns the auth groups that the given identity provider group maps to or an
 // api.StatusError with http.StatusNotFound.
-func (c *Cache) GetIdentityProviderGroupMapping(idpGroup string) ([]string, error) {
+func (c *Cache) GetIdentityProviderGroupMapping(idpGroup string) ([]int, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

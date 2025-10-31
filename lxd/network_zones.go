@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -29,7 +30,7 @@ var networkZonesCmd = APIEndpoint{
 	MetricsType: entity.TypeNetwork,
 
 	Get:  APIEndpointAction{Handler: networkZonesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateNetworkZones)},
+	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateNetworkZones, projectFromQueryParam)},
 }
 
 var networkZoneCmd = APIEndpoint{
@@ -61,15 +62,23 @@ func addNetworkZoneDetailsToRequestContext(s *state.State, r *http.Request) erro
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	effectiveProjectName, requestProject, err := project.NetworkZoneProject(s.DB.Cluster, requestProjectName)
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
-		return fmt.Errorf("Failed to check project %q network feature: %w", requestProjectName, err)
+		return err
 	}
+
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return err
+	}
+
+	requestProject := requestProjectFull.ToAPI()
+	effectiveProjectName := project.NetworkZoneProjectFromRecord(requestProject)
 
 	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 	request.SetContextValue(r, ctxNetworkZoneDetails, networkZoneDetails{
 		zoneName:       zoneName,
-		requestProject: *requestProject,
+		requestProject: requestProject,
 	})
 
 	return nil
@@ -90,7 +99,7 @@ func networkZoneAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *h
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.NetworkZoneURL(details.requestProject.Name, details.zoneName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.NetworkZoneURL(details.requestProject.Name, details.zoneName), 0)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -214,10 +223,18 @@ func networkZonesGet(d *Daemon, r *http.Request) response.Response {
 	var effectiveProjectName string
 	if !allProjects {
 		// Project specific requests require an effective project, when "features.networks.zones" is enabled this is the requested project, otherwise it is the default project.
-		effectiveProjectName, _, err = project.NetworkZoneProject(s.DB.Cluster, requestProjectName)
+		model, err := broker.GetModelFromContext(r.Context())
 		if err != nil {
 			return response.SmartError(err)
 		}
+
+		requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		requestProject := requestProjectFull.ToAPI()
+		effectiveProjectName = project.NetworkZoneProjectFromRecord(requestProject)
 
 		// If the request is project specific, then set effective project name in the request context so that the authorizer can generate the correct URL.
 		request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
@@ -340,10 +357,19 @@ func networkZonesGet(d *Daemon, r *http.Request) response.Response {
 func networkZonesPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, _, err := project.NetworkZoneProject(s.DB.Cluster, request.ProjectParam(r))
+	requestProjectName := request.ProjectParam(r)
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	requestProject := requestProjectFull.ToAPI()
+	projectName := project.NetworkZoneProjectFromRecord(requestProject)
 
 	req := api.NetworkZonesPost{}
 

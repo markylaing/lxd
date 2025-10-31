@@ -728,7 +728,7 @@ func allowDevLXDPermission(entityType entity.Type, entitlement auth.Entitlement,
 		}
 
 		// Validate whether the user has the needed permission.
-		err = s.Authorizer.CheckPermission(r.Context(), entityURL, entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), entitlement, entityURL, 0)
 		if err != nil {
 			return response.DevLXDErrorResponse(err)
 		}

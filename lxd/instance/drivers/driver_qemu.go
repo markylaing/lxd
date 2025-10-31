@@ -5580,7 +5580,7 @@ func allowRemoveSecurityProtectionStart(state *state.State, poolName string, vol
 	}
 
 	volumeType := dbCluster.StoragePoolVolumeTypeVM
-	volumeProject := project.StorageVolumeProjectFromRecord(proj, volumeType)
+	volumeProject := project.StorageVolumeProjectFromRecord(*proj, volumeType)
 
 	var dbVolume *db.StorageVolume
 	err = state.DB.Cluster.Transaction(state.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {

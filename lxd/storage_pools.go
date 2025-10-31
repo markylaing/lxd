@@ -41,7 +41,7 @@ var storagePoolsCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: storagePoolsPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanCreateStoragePools)},
+	Post: APIEndpointAction{Handler: storagePoolsPost, AccessHandler: serverAccessHandler(auth.EntitlementCanCreateStoragePools)},
 }
 
 var storagePoolCmd = APIEndpoint{
@@ -682,7 +682,7 @@ func storagePoolGet(d *Daemon, r *http.Request) response.Response {
 	poolAPI := pool.ToAPI()
 	poolAPI.UsedBy = project.FilterUsedBy(r.Context(), s.Authorizer, poolUsedBy)
 
-	err = s.Authorizer.CheckPermission(r.Context(), entity.StoragePoolURL(poolName), auth.EntitlementCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.StoragePoolURL(poolName), 0)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err != nil {

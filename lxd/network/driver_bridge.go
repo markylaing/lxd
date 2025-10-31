@@ -3044,7 +3044,7 @@ func (n *bridge) bridgedNICExternalRoutes(bridgeProjectNetworks map[string][]*ap
 	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			// Get the instance's effective network project name.
-			instNetworkProject := project.NetworkProjectFromRecord(&p)
+			instNetworkProject := project.NetworkProjectFromRecord(p)
 
 			if instNetworkProject != api.ProjectDefaultName {
 				return nil // Managed bridge networks can only exist in default project.
@@ -3343,7 +3343,7 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 				err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 					return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 						// Get the instance's effective network project name.
-						instNetworkProject := project.NetworkProjectFromRecord(&p)
+						instNetworkProject := project.NetworkProjectFromRecord(p)
 
 						if instNetworkProject != api.ProjectDefaultName {
 							return nil // Managed bridge networks can only exist in default project.

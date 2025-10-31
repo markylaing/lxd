@@ -20,6 +20,10 @@ type CommonBackup struct {
 	compressionAlgorithm string
 }
 
+func (b *CommonBackup) ID() int {
+	return b.id
+}
+
 // Name returns the name of the backup.
 func (b *CommonBackup) Name() string {
 	return b.name

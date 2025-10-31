@@ -299,7 +299,7 @@ func instancesGet(d *Daemon, r *http.Request) response.Response {
 		var filteredInstances []db.Instance
 
 		for _, inst := range instances {
-			if !userHasPermission(entity.InstanceURL(inst.Project, inst.Name)) {
+			if !userHasPermission(int(inst.ID)) {
 				continue
 			}
 
@@ -512,10 +512,9 @@ func instancesGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	if len(withEntitlements) > 0 {
-		urlToInstance := make(map[*api.URL]auth.EntitlementReporter, len(resultFullList))
+		urlToInstance := make(map[int]auth.EntitlementReporter, len(resultFullList))
 		for _, res := range resultFullList {
-			u := entity.InstanceURL(res.Project, res.Name)
-			urlToInstance[u] = res
+			urlToInstance[0] = res
 		}
 
 		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeInstance, withEntitlements, urlToInstance)

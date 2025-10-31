@@ -759,6 +759,102 @@ func RemoveElementsFromSlice[T comparable](list []T, elements ...T) []T {
 	return list
 }
 
+// FilterSliceFunc returns a slice whose elements match the given condition func.
+func FilterSliceFunc[S ~[]E, E any](s S, f func(E) bool) []E {
+	s2 := make([]E, 0, len(s))
+	for _, e := range s {
+		if f(e) {
+			s2 = append(s2, e)
+		}
+	}
+
+	return s2
+}
+
+// FilterSliceFunc returns a slice whose elements match the given condition func.
+func FilterSliceOnceFunc[S ~[]E, E any](s S, f func(E) bool) (E, error) {
+	var elem, unsetElem E
+	var found bool
+	for _, e := range s {
+		if f(e) {
+			if found {
+				return unsetElem, errors.New("Multiple elements met the condition")
+			}
+
+			elem = e
+		}
+	}
+
+	return elem, nil
+}
+
+// FilterMapFunc returns a map whose key/value pairs match the given condition func.
+func FilterMapFunc[M ~map[K]V, K comparable, V any](m M, f func(K, V) bool) M {
+	m2 := make(M, len(m))
+	for k, v := range m {
+		if f(k, v) {
+			m2[k] = v
+		}
+	}
+
+	return m2
+}
+
+// FilterMapOnceFunc returns a map whose key/value pairs match the given condition func.
+func FilterMapOnceFunc[M ~map[K]V, K comparable, V any](m M, f func(K, V) bool) (K, V, error) {
+	var key, unsetKey K
+	var value, unsetValue V
+	var found bool
+
+	for k, v := range m {
+		if f(k, v) {
+			if found {
+				return unsetKey, unsetValue, errors.New("Multiple items met the condition")
+			}
+
+			key = k
+			value = v
+			found = true
+		}
+	}
+
+	if !found {
+		return unsetKey, unsetValue, api.NewStatusError(http.StatusNotFound, "No items met the condition")
+	}
+
+	return key, value, nil
+}
+
+// FilterSliceErrFunc returns a slice of elements for which f(e) == nil. It returns early if an error is encountered.
+func FilterSliceErrFunc[S ~[]E, E any](s S, f func(E) error) ([]E, error) {
+	s2 := make([]E, 0, len(s))
+	for _, e := range s {
+		err := f(e)
+		if err != nil {
+			return nil, err
+		}
+
+		s2 = append(s2, e)
+	}
+
+	return s2, nil
+}
+
+// FilterMapErrFunc returns a map of key value pairs for which f(k,v) == nil. It returns early if an error is encountered.
+func FilterMapErrFunc[M ~map[K]V, K comparable, V any](m M, f func(K, V) error) (M, error) {
+	m2 := make(M, len(m))
+	for k, v := range m {
+		err := f(k, v)
+		if err != nil {
+			return nil, err
+		}
+
+		m2[k] = v
+	}
+
+	return m2, nil
+}
+
 // StringHasPrefix returns true if value has one of the supplied prefixes.
 func StringHasPrefix(value string, prefixes ...string) bool {
 	for _, prefix := range prefixes {

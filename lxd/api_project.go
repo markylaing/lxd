@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -46,25 +47,64 @@ var projectsCmd = APIEndpoint{
 	MetricsType: entity.TypeProject,
 
 	Get:  APIEndpointAction{Handler: projectsGet, AccessHandler: allowAuthenticated},
-	Post: APIEndpointAction{Handler: projectsPost, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanCreateProjects)},
+	Post: APIEndpointAction{Handler: projectsPost, AccessHandler: serverAccessHandler(auth.EntitlementCanCreateProjects)},
 }
 
 var projectCmd = APIEndpoint{
 	Path:        "projects/{name}",
 	MetricsType: entity.TypeProject,
 
-	Delete: APIEndpointAction{Handler: projectDelete, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanDelete, "name")},
-	Get:    APIEndpointAction{Handler: projectGet, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanView, "name")},
-	Patch:  APIEndpointAction{Handler: projectPatch, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanEdit, "name")},
-	Post:   APIEndpointAction{Handler: projectPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanEdit, "name")},
-	Put:    APIEndpointAction{Handler: projectPut, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanEdit, "name")},
+	Delete: APIEndpointAction{Handler: projectDelete, AccessHandler: projectAccessHandler(auth.EntitlementCanDelete, projectFromMuxVar)},
+	Get:    APIEndpointAction{Handler: projectGet, AccessHandler: projectAccessHandler(auth.EntitlementCanView, projectFromMuxVar)},
+	Patch:  APIEndpointAction{Handler: projectPatch, AccessHandler: projectAccessHandler(auth.EntitlementCanEdit, projectFromMuxVar)},
+	Post:   APIEndpointAction{Handler: projectPost, AccessHandler: projectAccessHandler(auth.EntitlementCanEdit, projectFromMuxVar)},
+	Put:    APIEndpointAction{Handler: projectPut, AccessHandler: projectAccessHandler(auth.EntitlementCanEdit, projectFromMuxVar)},
 }
 
 var projectStateCmd = APIEndpoint{
 	Path:        "projects/{name}/state",
 	MetricsType: entity.TypeProject,
 
-	Get: APIEndpointAction{Handler: projectStateGet, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanView, "name")},
+	Get: APIEndpointAction{Handler: projectStateGet, AccessHandler: projectAccessHandler(auth.EntitlementCanView, projectFromMuxVar)},
+}
+
+func projectFromMuxVar(r *http.Request) (string, error) {
+	name, err := url.PathUnescape(mux.Vars(r)["name"])
+	if err != nil {
+		return "", api.StatusErrorf(http.StatusBadRequest, "Malformed URL: %w", err)
+	}
+
+	return name, nil
+}
+
+func projectFromQueryParam(r *http.Request) (string, error) {
+	return request.ProjectParam(r), nil
+}
+
+func projectAccessHandler(entitlement auth.Entitlement, getProjectName func(r *http.Request) (string, error)) func(d *Daemon, r *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		projectName, err := getProjectName(r)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		project, err := model.GetProjectByName(r.Context(), projectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		err = d.State().Authorizer.CheckPermission(r.Context(), entitlement, entity.TypeProject, project.ID)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
 }
 
 // swagger:operation GET /1.0/projects projects projects_get
@@ -1138,7 +1178,7 @@ func doProjectForceDelete(ctx context.Context, s *state.State, projectName strin
 		}
 
 		// Early permission check. (entityDeleter).Delete() implementations still perform their own checks, but we should fail fast here to prevent partial deletions.
-		err = s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+		err = s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 		if err != nil {
 			return err
 		}

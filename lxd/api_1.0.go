@@ -46,8 +46,8 @@ var api10Cmd = APIEndpoint{
 	MetricsType: entity.TypeServer,
 
 	Get:   APIEndpointAction{Handler: api10Get, AllowUntrusted: true},
-	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Patch: APIEndpointAction{Handler: api10Patch, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Put:   APIEndpointAction{Handler: api10Put, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var api10 = []APIEndpoint{
@@ -440,7 +440,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	fullSrv.AuthUserMethod = requestor.CallerProtocol()
 
 	// Only allow identities that can edit configuration to view it as sensitive information may be stored there.
-	err = s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.TypeServer, 0)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err == nil {
@@ -457,7 +457,7 @@ func api10Get(d *Daemon, r *http.Request) response.Response {
 	}
 
 	if len(withEntitlements) > 0 {
-		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeServer, withEntitlements, map[*api.URL]auth.EntitlementReporter{entity.ServerURL(): fullSrv})
+		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeServer, withEntitlements, map[int]auth.EntitlementReporter{0: fullSrv})
 		if err != nil {
 			return response.SmartError(err)
 		}

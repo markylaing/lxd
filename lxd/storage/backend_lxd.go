@@ -8709,7 +8709,7 @@ func (b *lxdBackend) GenerateInstanceCustomVolumeBackupConfig(inst instance.Inst
 
 	// Get the right project name for the disk device.
 	instanceProject := inst.Project()
-	projectName := project.StorageVolumeProjectFromRecord(&instanceProject, cluster.StoragePoolVolumeTypeCustom)
+	projectName := project.StorageVolumeProjectFromRecord(instanceProject, cluster.StoragePoolVolumeTypeCustom)
 
 	var instanceBackupConf = &backupConfig.Config{}
 

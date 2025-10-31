@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -32,7 +33,7 @@ var networkACLsCmd = APIEndpoint{
 	MetricsType: entity.TypeNetwork,
 
 	Get:  APIEndpointAction{Handler: networkACLsGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: networkACLsPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateNetworkACLs)},
+	Post: APIEndpointAction{Handler: networkACLsPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateNetworkACLs, projectFromQueryParam)},
 }
 
 var networkACLCmd = APIEndpoint{
@@ -167,11 +168,17 @@ func networkACLsGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
-		// Project specific requests require an effective project, when "features.networks" is enabled this is the requested project, otherwise it is the default project.
-		effectiveProjectName, _, err = project.NetworkProject(s.DB.Cluster, requestProjectName)
+		model, err := broker.GetModelFromContext(r.Context())
 		if err != nil {
 			return response.SmartError(err)
 		}
+
+		projectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		effectiveProjectName = project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 		// If the request is project specific, then set effective project name in the request context so that the authorizer can generate the correct URL.
 		request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
@@ -299,10 +306,17 @@ func networkACLsGet(d *Daemon, r *http.Request) response.Response {
 func networkACLsPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	req := api.NetworkACLsPost{}
 
@@ -360,10 +374,17 @@ func networkACLsPost(d *Daemon, r *http.Request) response.Response {
 func networkACLDelete(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	effectiveProjectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	effectiveProjectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	aclName, err := url.PathUnescape(mux.Vars(r)["name"])
 	if err != nil {
@@ -438,10 +459,17 @@ func doNetworkACLDelete(ctx context.Context, s *state.State, aclName string, pro
 func networkACLGet(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	aclName, err := url.PathUnescape(mux.Vars(r)["name"])
 	if err != nil {
@@ -547,10 +575,17 @@ func networkACLGet(d *Daemon, r *http.Request) response.Response {
 func networkACLPut(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	aclName, err := url.PathUnescape(mux.Vars(r)["name"])
 	if err != nil {
@@ -643,10 +678,17 @@ func networkACLPost(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	projectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	req := api.NetworkACLPost{}
 
@@ -703,10 +745,17 @@ func networkACLPost(d *Daemon, r *http.Request) response.Response {
 func networkACLLogGet(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, _, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
 		return response.SmartError(err)
 	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 
 	aclName, err := url.PathUnescape(mux.Vars(r)["name"])
 	if err != nil {

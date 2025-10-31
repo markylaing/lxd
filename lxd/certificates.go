@@ -150,59 +150,62 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	if recursion {
-		var certResponses []*api.Certificate
-		var baseCerts []dbCluster.Certificate
-		urlToCertificate := make(map[*api.URL]auth.EntitlementReporter)
-		var err error
-		err = d.State().DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-			baseCerts, err = dbCluster.GetCertificates(ctx, tx.Tx())
+	var certResponses []*api.Certificate
+	var baseCerts []dbCluster.Certificate
+	urlToCertificate := make(map[int]auth.EntitlementReporter)
+	err = d.State().DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+		baseCerts, err = dbCluster.GetCertificates(ctx, tx.Tx())
+		if err != nil {
+			return err
+		}
+
+		if !recursion {
+			return nil
+		}
+
+		certResponses = make([]*api.Certificate, 0, len(baseCerts))
+		for _, baseCert := range baseCerts {
+			if !userHasPermission(baseCert.ID) {
+				continue
+			}
+
+			apiCert, err := baseCert.ToAPI(ctx, tx.Tx())
 			if err != nil {
 				return err
 			}
 
-			certResponses = make([]*api.Certificate, 0, len(baseCerts))
-			for _, baseCert := range baseCerts {
-				if !userHasPermission(entity.CertificateURL(baseCert.Fingerprint)) {
-					continue
-				}
+			certResponses = append(certResponses, apiCert)
+			urlToCertificate[baseCert.ID] = apiCert
+		}
 
-				apiCert, err := baseCert.ToAPI(ctx, tx.Tx())
-				if err != nil {
-					return err
-				}
+		return nil
+	})
+	if err != nil {
+		return response.SmartError(err)
+	}
 
-				certResponses = append(certResponses, apiCert)
-				urlToCertificate[entity.CertificateURL(apiCert.Fingerprint)] = apiCert
+	if !recursion {
+		body := []string{}
+		for _, cert := range baseCerts {
+			if !userHasPermission(cert.ID) {
+				continue
 			}
 
-			return nil
-		})
+			certificateURL := "/" + version.APIVersion + "/certificates/" + cert.Fingerprint
+			body = append(body, certificateURL)
+		}
+
+		return response.SyncResponse(true, body)
+	}
+
+	if len(withEntitlements) > 0 {
+		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeCertificate, withEntitlements, urlToCertificate)
 		if err != nil {
 			return response.SmartError(err)
 		}
-
-		if len(withEntitlements) > 0 {
-			err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeCertificate, withEntitlements, urlToCertificate)
-			if err != nil {
-				return response.SmartError(err)
-			}
-		}
-
-		return response.SyncResponse(true, certResponses)
 	}
 
-	body := []string{}
-	for _, identity := range d.identityCache.GetByAuthenticationMethod(api.AuthenticationMethodTLS) {
-		if !userHasPermission(entity.CertificateURL(identity.Identifier)) {
-			continue
-		}
-
-		certificateURL := "/" + version.APIVersion + "/certificates/" + identity.Identifier
-		body = append(body, certificateURL)
-	}
-
-	return response.SyncResponse(true, body)
+	return response.SyncResponse(true, certResponses)
 }
 
 // clusterMemberJoinTokenValid searches for cluster join token that matches the join token provided.
@@ -511,7 +514,7 @@ func certificatesPost(d *Daemon, r *http.Request) response.Response {
 
 	// Check if the caller has permission to create certificates.
 	var userCanCreateCertificates bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanCreateIdentities)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanCreateIdentities, entity.TypeServer, 0)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err == nil {
@@ -792,8 +795,9 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	var cert *api.Certificate
+	var dbCertInfo *dbCluster.Certificate
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		dbCertInfo, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
+		dbCertInfo, err = dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
 			return err
 		}
@@ -805,13 +809,13 @@ func certificateGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	err = s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(cert.Fingerprint), auth.EntitlementCanView)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanView, entity.TypeCertificate, dbCertInfo.ID)
 	if err != nil {
 		return response.SmartError(err)
 	}
 
 	if len(withEntitlements) > 0 {
-		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeCertificate, withEntitlements, map[*api.URL]auth.EntitlementReporter{entity.CertificateURL(cert.Fingerprint): cert})
+		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeCertificate, withEntitlements, map[int]auth.EntitlementReporter{dbCertInfo.ID: cert})
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -857,8 +861,9 @@ func certificatePut(d *Daemon, r *http.Request) response.Response {
 
 	// Get current database record.
 	var apiEntry *api.Certificate
+	var oldEntry *dbCluster.Certificate
 	err = d.State().DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		oldEntry, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
+		oldEntry, err = dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
 			return err
 		}
@@ -884,7 +889,7 @@ func certificatePut(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Apply the update.
-	return doCertificateUpdate(r.Context(), d, *apiEntry, req, r)
+	return doCertificateUpdate(r.Context(), d, oldEntry.ID, *apiEntry, req, r)
 }
 
 // swagger:operation PATCH /1.0/certificates/{fingerprint} certificates certificate_patch
@@ -924,8 +929,9 @@ func certificatePatch(d *Daemon, r *http.Request) response.Response {
 
 	// Get current database record.
 	var apiEntry *api.Certificate
+	var oldEntry *dbCluster.Certificate
 	err = d.State().DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		oldEntry, err := dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
+		oldEntry, err = dbCluster.GetCertificateByFingerprintPrefix(ctx, tx.Tx(), fingerprint)
 		if err != nil {
 			return err
 		}
@@ -950,10 +956,10 @@ func certificatePatch(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(err)
 	}
 
-	return doCertificateUpdate(r.Context(), d, *apiEntry, req.Writable(), r)
+	return doCertificateUpdate(r.Context(), d, oldEntry.ID, *apiEntry, req.Writable(), r)
 }
 
-func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate, req api.CertificatePut, r *http.Request) response.Response {
+func doCertificateUpdate(ctx context.Context, d *Daemon, certID int, dbInfo api.Certificate, req api.CertificatePut, r *http.Request) response.Response {
 	s := d.State()
 
 	reqDBType, err := certificate.FromAPIType(req.Type)
@@ -971,7 +977,7 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, dbInfo api.Certificate,
 	}
 
 	var userCanEditCertificate bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(dbInfo.Fingerprint), auth.EntitlementCanEdit)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.TypeCertificate, certID)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err == nil {
@@ -1144,7 +1150,7 @@ func certificateDelete(d *Daemon, r *http.Request) response.Response {
 	}
 
 	var userCanEditCertificate bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.CertificateURL(certInfo.Fingerprint), auth.EntitlementCanDelete)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanDelete, entity.TypeCertificate, certInfo.ID)
 	if err != nil && !auth.IsDeniedError(err) {
 		return response.SmartError(err)
 	} else if err == nil {

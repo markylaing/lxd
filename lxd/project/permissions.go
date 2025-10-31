@@ -2,13 +2,11 @@ package project
 
 import (
 	"context"
-	"net/url"
 	"path/filepath"
 	"strings"
 
 	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/shared"
-	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/entity"
 	"github.com/canonical/lxd/shared/logger"
 )
@@ -37,52 +35,41 @@ func CheckRestrictedDevicesDiskPaths(projectConfig map[string]string, sourcePath
 }
 
 // FilterUsedBy filters a UsedBy list based on the entities that the requestor is able to view.
-func FilterUsedBy(ctx context.Context, authorizer auth.Authorizer, entries []string) []string {
+func FilterUsedBy(ctx context.Context, authorizer auth.Authorizer, entries []auth.Entity) []string {
 	// Get a map of URLs by entity type. If there are multiple entries of a particular entity type we can reduce the
 	// number of calls to the authorizer.
-	urlsByEntityType := make(map[entity.Type][]*api.URL)
+	entitiesByType := make(map[entity.Type][]auth.Entity)
 	for _, entry := range entries {
-		u, err := url.Parse(entry)
-		if err != nil {
-			logger.Warn("Failed to parse project used-by entity URL", logger.Ctx{"url": entry, "err": err})
-			continue
-		}
-
-		entityType, _, _, _, err := entity.ParseURL(*u)
-		if err != nil {
-			logger.Warn("Failed to parse project used-by entity URL", logger.Ctx{"url": entry, "err": err})
-			continue
-		}
-
-		urlsByEntityType[entityType] = append(urlsByEntityType[entityType], &api.URL{URL: *u})
+		entityType := entry.EntityType()
+		entitiesByType[entityType] = append(entitiesByType[entityType], entry)
 	}
 
 	// Filter the entries.
 	usedBy := make([]string, 0, len(entries))
 
-	for entityType, urls := range urlsByEntityType {
+	for entityType, entriesOfType := range entitiesByType {
 		// If only one entry of this type, check directly.
-		if len(urls) == 1 {
-			err := authorizer.CheckPermissionWithoutEffectiveProject(ctx, urls[0], auth.EntitlementCanView)
+		if len(entriesOfType) == 1 {
+			err := authorizer.CheckPermission(ctx, auth.EntitlementCanView, entriesOfType[0].EntityType(), entriesOfType[0].DatabaseID())
 			if err != nil {
 				continue
 			}
 
-			usedBy = append(usedBy, urls[0].String())
+			usedBy = append(usedBy, entriesOfType[0].URL().String())
 			continue
 		}
 
 		// Otherwise get a permission checker for the entity type.
-		canViewEntity, err := authorizer.GetPermissionCheckerWithoutEffectiveProject(ctx, auth.EntitlementCanView, entityType)
+		canViewEntity, err := authorizer.GetPermissionChecker(ctx, auth.EntitlementCanView, entityType)
 		if err != nil {
 			logger.Error("Failed to get permission checker for project used-by filtering", logger.Ctx{"entity_type": entityType, "err": err})
 			continue
 		}
 
 		// Check each url and append.
-		for _, u := range urls {
-			if canViewEntity(u) {
-				usedBy = append(usedBy, u.String())
+		for _, u := range entriesOfType {
+			if canViewEntity(u.DatabaseID()) {
+				usedBy = append(usedBy, u.URL().String())
 			}
 		}
 	}

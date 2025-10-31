@@ -11,7 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
+	deviceConfig "github.com/canonical/lxd/lxd/device/config"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -186,7 +189,17 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		}
 	}
 
-	inst, err := instance.LoadByProjectAndName(s, projectName, name)
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	project, err := model.GetProjectFullByName(r.Context(), projectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	dbInst, err := model.GetInstanceFullByNameAndProjectID(r.Context(), name, project.ID)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -194,16 +207,6 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 	// Run the cluster placement after potentially forwarding the request to another member.
 	if target != "" && s.ServerClustered {
 		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-			p, err := dbCluster.GetProject(ctx, tx.Tx(), projectName)
-			if err != nil {
-				return err
-			}
-
-			targetProject, err = p.ToAPI(ctx, tx.Tx())
-			if err != nil {
-				return err
-			}
-
 			allMembers, err := tx.GetNodes(ctx)
 			if err != nil {
 				return fmt.Errorf("Failed getting cluster members: %w", err)
@@ -219,7 +222,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 			if targetMemberInfo == nil {
 				clusterGroupsAllowed := limits.GetRestrictedClusterGroups(targetProject)
 
-				candidateMembers, err = tx.GetCandidateMembers(ctx, allMembers, []int{inst.Architecture()}, targetGroupName, clusterGroupsAllowed, s.GlobalConfig.OfflineThreshold())
+				candidateMembers, err = tx.GetCandidateMembers(ctx, allMembers, []int{dbInst.Architecture}, targetGroupName, clusterGroupsAllowed, s.GlobalConfig.OfflineThreshold())
 				if err != nil {
 					return err
 				}
@@ -238,7 +241,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 			// The instance might already be placed on the node with least number of instances.
 			// Therefore remove it from the list of possible candidates if existent.
 			for _, candidateMember := range candidateMembers {
-				if candidateMember.Name != inst.Location() {
+				if candidateMember.Name != dbInst.NodeName {
 					filteredCandidateMembers = append(filteredCandidateMembers, candidateMember)
 				}
 			}
@@ -285,7 +288,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 
 	// If new instance name not supplied, assume it will be keeping its current name.
 	if req.Name == "" {
-		req.Name = inst.Name()
+		req.Name = dbInst.Name
 	}
 
 	// Check the new instance name is valid.
@@ -301,9 +304,9 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Unset "volatile.cluster.group" if the instance is manually moved to a cluster member.
-	if targetMemberInfo != nil && targetGroupName == "" && inst.LocalConfig()["volatile.cluster.group"] != "" {
+	if targetMemberInfo != nil && targetGroupName == "" && dbInst.Config["volatile.cluster.group"] != "" {
 		err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-			err = tx.DeleteInstanceConfigKey(ctx, int64(inst.ID()), "volatile.cluster.group")
+			err = tx.DeleteInstanceConfigKey(ctx, int64(dbInst.ID), "volatile.cluster.group")
 			if err != nil {
 				return fmt.Errorf(`Failed removing "volatile.cluster.group" config key: %w`, err)
 			}
@@ -315,12 +318,50 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		}
 	}
 
+	profileIDs := make([]int, 0, len(dbInst.Profiles))
+	for _, ip := range dbInst.Profiles {
+		profileIDs = append(profileIDs, ip.ProfileID)
+	}
+
+	dbProfiles, err := model.GetProfilesFullByProfileID(r.Context(), profileIDs...)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	apiProfiles := make([]api.Profile, len(dbProfiles))
+	for i, ip := range dbInst.Profiles {
+		apiProfiles[i] = dbProfiles[ip.ProfileID].ToAPI()
+	}
+
+	inst, err := instance.Load(s, db.InstanceArgs{
+		ID:           dbInst.ID,
+		Node:         dbInst.NodeName,
+		Type:         dbInst.Type,
+		Snapshot:     false,
+		Project:      dbInst.ProjectName,
+		BaseImage:    dbInst.Config["volatile.base_image"],
+		CreationDate: dbInst.CreationDate,
+		Architecture: dbInst.Architecture,
+		Config:       dbInst.Config,
+		Description:  dbInst.Description,
+		Devices:      deviceConfig.NewDevices(dbInst.Devices),
+		Ephemeral:    dbInst.Ephemeral,
+		LastUsedDate: dbInst.LastUseDate.Time,
+		Name:         dbInst.Name,
+		Profiles:     apiProfiles,
+		Stateful:     dbInst.Stateful,
+		ExpiryDate:   time.Time{},
+	}, project.ToAPI())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	if req.Migration {
 		// Server-side instance migration.
 		if req.Pool != "" || req.Project != "" {
 			// Check if user has access to target project.
 			if req.Project != "" {
-				err := s.Authorizer.CheckPermission(r.Context(), entity.ProjectURL(req.Project), auth.EntitlementCanCreateInstances)
+				err := s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanCreateInstances, entity.TypeProject, project.ID)
 				if err != nil {
 					return response.SmartError(err)
 				}
@@ -365,7 +406,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 			resources := map[string][]api.URL{}
 			resources["instances"] = []api.URL{*api.NewURL().Path(version.APIVersion, "instances", name)}
 
-			if inst.Type() == instancetype.Container {
+			if dbInst.Type == instancetype.Container {
 				resources["containers"] = resources["instances"]
 			}
 
@@ -387,7 +428,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		resources := map[string][]api.URL{}
 		resources["instances"] = []api.URL{*api.NewURL().Path(version.APIVersion, "instances", name)}
 
-		if inst.Type() == instancetype.Container {
+		if dbInst.Type == instancetype.Container {
 			resources["containers"] = resources["instances"]
 		}
 

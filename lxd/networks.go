@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -51,7 +52,7 @@ var networksCmd = APIEndpoint{
 	MetricsType: entity.TypeNetwork,
 
 	Get:  APIEndpointAction{Handler: networksGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: networksPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateNetworks)},
+	Post: APIEndpointAction{Handler: networksPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateNetworks, projectFromQueryParam)},
 }
 
 var networkCmd = APIEndpoint{
@@ -85,28 +86,45 @@ const ctxNetworkDetails request.CtxKey = "network-details"
 // networkDetails contains fields that are determined prior to the access check. This is set in the request context when
 // addNetworkDetailsToRequestContext is called.
 type networkDetails struct {
-	networkName    string
-	requestProject api.Project
+	networkName      string
+	requestProject   broker.ProjectFull
+	effectiveProject broker.ProjectFull
 }
 
 // addNetworkDetailsToRequestContext sets the effective project on the request.Info and sets ctxNetworkDetails (networkDetails)
 // in the request context.
-func addNetworkDetailsToRequestContext(s *state.State, r *http.Request) error {
+func addNetworkDetailsToRequestContext(r *http.Request) error {
 	networkName, err := url.PathUnescape(mux.Vars(r)["networkName"])
 	if err != nil {
 		return err
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	effectiveProjectName, requestProject, err := project.NetworkProject(s.DB.Cluster, requestProjectName)
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return err
+	}
+
+	projectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return err
+	}
+
+	effectiveProjectName := project.NetworkProjectFromRecord(projectFull.ToAPI())
 	if err != nil {
 		return fmt.Errorf("Failed to check project %q network feature: %w", requestProjectName, err)
 	}
 
+	effectiveProject, err := model.GetProjectFullByName(r.Context(), effectiveProjectName)
+	if err != nil {
+		return err
+	}
+
 	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 	request.SetContextValue(r, ctxNetworkDetails, networkDetails{
-		networkName:    networkName,
-		requestProject: *requestProject,
+		networkName:      networkName,
+		requestProject:   *projectFull,
+		effectiveProject: *effectiveProject,
 	})
 
 	return nil
@@ -117,7 +135,7 @@ func addNetworkDetailsToRequestContext(s *state.State, r *http.Request) error {
 func networkAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
 		s := d.State()
-		err := addNetworkDetailsToRequestContext(s, r)
+		err := addNetworkDetailsToRequestContext(r)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -127,7 +145,7 @@ func networkAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.NetworkURL(details.requestProject.Name, details.networkName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.NetworkURL(details.requestProject.Name, details.networkName), 0)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -260,11 +278,27 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	var effectiveProjectName string
-	var reqProject *api.Project
+	var requestedProject *broker.ProjectFull
+	var effectiveProject *broker.ProjectFull
 	if !allProjects {
+		requestedProject, err = model.GetProjectFullByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
 		// Project specific requests require an effective project, when "features.networks" is enabled this is the requested project, otherwise it is the default project.
-		effectiveProjectName, reqProject, err = project.NetworkProject(s.DB.Cluster, requestProjectName)
+		effectiveProjectName = project.NetworkProjectFromRecord(requestedProject.ToAPI())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		effectiveProject, err = model.GetProjectFullByName(r.Context(), effectiveProjectName)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -280,36 +314,36 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 
 	// networks holds the network names of the managed and unmanaged networks. They are in two different slices so that
 	// we can perform access control checks differently.
-	var networks [2]map[string][]string
+	var networks [2][]broker.NetworkFull
 	const (
 		managed = iota
 		unmanaged
 	)
 
-	projectConfigs := make(map[string]map[string]string)
+	var projects []broker.ProjectFull
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		networks[managed] = map[string][]string{}
-		networks[unmanaged] = map[string][]string{}
+		networks[managed] = []broker.NetworkFull{}
+		networks[unmanaged] = []broker.NetworkFull{}
 
 		if allProjects {
 			// Get list of managed networks from all projects.
-			networks[managed], err = tx.GetNetworksAllProjects(ctx)
+			networks[managed], err = model.GetNetworksFullAllProjects(ctx)
 			if err != nil {
 				return err
 			}
 
-			projectConfigs, err = dbCluster.GetAllProjectsConfig(ctx, tx.Tx())
+			projects, err = model.GetProjectsFull(ctx)
 			if err != nil {
 				return err
 			}
 		} else {
 			// Get list of managed networks (that may or may not have network interfaces on the host).
-			networkNames, err := tx.GetNetworks(ctx, effectiveProjectName)
+			networksFull, err := model.GetNetworksFullByProjectID(ctx, effectiveProject.ID)
 			if err != nil {
 				return err
 			}
 
-			networks[managed][requestProjectName] = networkNames
+			networks[managed] = networksFull
 		}
 
 		return err
@@ -321,7 +355,7 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 	// Get list of actual network interfaces on the host if the effective project is default and the caller has permission.
 	var getUnmanagedNetworks bool
 	if effectiveProjectName == api.ProjectDefaultName || allProjects {
-		err := s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanViewUnmanagedNetworks)
+		err := s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanViewUnmanagedNetworks, entity.TypeServer, 0)
 		if err == nil {
 			getUnmanagedNetworks = true
 		} else if !auth.IsDeniedError(err) {
@@ -335,20 +369,41 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 			return response.InternalError(err)
 		}
 
+		// This is loaded from cache if already queried as effective project.
+		defaultProject, err := model.GetProjectFullByName(r.Context(), api.ProjectDefaultName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
 		for _, iface := range ifaces {
 			// Ignore veth pairs (for performance reasons).
 			if strings.HasPrefix(iface.Name, "veth") {
 				continue
 			}
 
-			unmanagedNetworkProject := requestProjectName
-			if allProjects {
-				unmanagedNetworkProject = api.ProjectDefaultName
+			unmanagedNetworkProject := defaultProject
+			if requestedProject != nil {
+				unmanagedNetworkProject = requestedProject
 			}
 
 			// Append to the list of networks if a managed network of same name doesn't exist.
-			if !slices.Contains(networks[managed][unmanagedNetworkProject], iface.Name) {
-				networks[unmanaged][unmanagedNetworkProject] = append(networks[unmanaged][unmanagedNetworkProject], iface.Name)
+			if !slices.ContainsFunc(networks[managed], func(full broker.NetworkFull) bool {
+				return iface.Name == full.Name
+			}) {
+				networks[unmanaged] = append(networks[unmanaged], broker.NetworkFull{
+					Network: broker.Network{
+						ProjectID:   unmanagedNetworkProject.ID,
+						ProjectName: unmanagedNetworkProject.Name,
+						Name:        iface.Name,
+					},
+					Nodes: []broker.NetworkNode{
+						{
+							ID:    int(d.db.Cluster.GetNodeID()),
+							Name:  d.serverName,
+							State: "??",
+						},
+					},
+				})
 			}
 		}
 	}
@@ -362,32 +417,27 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 	resultString := []string{}
 	resultMap := []*api.Network{}
 	urlToNetwork := make(map[*api.URL]auth.EntitlementReporter)
-	for kind, projectNetworks := range networks {
-		for projectName, networkNames := range projectNetworks {
-			for _, networkName := range networkNames {
-				// Filter out managed networks that the caller doesn't have permission to view.
-				if kind == managed && !userHasPermission(entity.NetworkURL(projectName, networkName)) {
+	for kind, networkList := range networks {
+		for _, n := range networkList {
+			// Filter out managed networks that the caller doesn't have permission to view.
+			if kind == managed && !userHasPermission(entity.NetworkURL(n.ProjectName, n.Name)) {
+				continue
+			}
+
+			if !recursion {
+				resultString = append(resultString, api.NewURL().Path(version.APIVersion, "networks", n.Name).String())
+			} else {
+				networkProject, err := shared.FilterSliceOnceFunc(projects, func(full broker.ProjectFull) bool {
+					return full.ID == n.ProjectID
+				})
+
+				net, err := doNetworkGet(s, r, s.ServerClustered, networkProject, n)
+				if err != nil {
 					continue
 				}
 
-				if !recursion {
-					resultString = append(resultString, api.NewURL().Path(version.APIVersion, "networks", networkName).String())
-				} else {
-					var projectConfig map[string]string
-					if allProjects {
-						projectConfig = projectConfigs[projectName]
-					} else {
-						projectConfig = reqProject.Config
-					}
-
-					net, err := doNetworkGet(s, r, s.ServerClustered, projectName, projectConfig, networkName)
-					if err != nil {
-						continue
-					}
-
-					resultMap = append(resultMap, &net)
-					urlToNetwork[entity.NetworkURL(projectName, networkName)] = &net
-				}
+				resultMap = append(resultMap, &net)
+				urlToNetwork[entity.NetworkURL(n.ProjectName, n.Name)] = &net
 			}
 		}
 	}
@@ -447,7 +497,18 @@ func networksGet(d *Daemon, r *http.Request) response.Response {
 func networksPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, reqProject, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	requestedProject, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	reqProject := requestedProject.ToAPI()
+	projectName := project.NetworkProjectFromRecord(reqProject)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -981,7 +1042,17 @@ func networkGet(d *Daemon, r *http.Request) response.Response {
 
 	allNodes := s.ServerClustered && request.QueryParam(r, "target") == ""
 
-	n, err := doNetworkGet(s, r, allNodes, details.requestProject.Name, details.requestProject.Config, details.networkName)
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	netw, err := model.GetNetworkFullByNameAndProjectID(r.Context(), details.networkName, details.effectiveProject.ID)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	n, err := doNetworkGet(s, r, allNodes, details.effectiveProject, *netw)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1001,20 +1072,20 @@ func networkGet(d *Daemon, r *http.Request) response.Response {
 // doNetworkGet returns information about the specified network.
 // If the network being requested is a managed network and allNodes is true then node specific config is removed.
 // Otherwise if allNodes is false then the network's local status is returned.
-func doNetworkGet(s *state.State, r *http.Request, allNodes bool, requestProjectName string, reqProjectConfig map[string]string, networkName string) (api.Network, error) {
+func doNetworkGet(s *state.State, r *http.Request, allNodes bool, reqProject broker.ProjectFull, netw broker.NetworkFull) (api.Network, error) {
 	effectiveProjectName, err := request.GetContextValue[string](r.Context(), request.CtxEffectiveProjectName)
 	if err != nil {
 		// Effective project may not be set if getting networks for all projects.
-		effectiveProjectName = requestProjectName
+		effectiveProjectName = reqProject.Name
 	}
 
 	// Ignore veth pairs (for performance reasons).
-	if strings.HasPrefix(networkName, "veth") {
+	if strings.HasPrefix(netw.Name, "veth") {
 		return api.Network{}, api.StatusErrorf(http.StatusNotFound, "Network not found")
 	}
 
 	// Get some information.
-	n, err := network.LoadByName(s, effectiveProjectName, networkName)
+	n, err := network.LoadFromRecord(s, netw)
 	if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
 		return api.Network{}, fmt.Errorf("Failed loading network: %w", err)
 	}
@@ -1025,11 +1096,11 @@ func doNetworkGet(s *state.State, r *http.Request, allNodes bool, requestProject
 	}
 
 	// Check if project allows access to network.
-	if !project.NetworkAllowed(reqProjectConfig, networkName, n != nil && n.IsManaged()) {
+	if !project.NetworkAllowed(reqProject.Config, netw.Name, n != nil && n.IsManaged()) {
 		return api.Network{}, api.StatusErrorf(http.StatusNotFound, "Network not found")
 	}
 
-	osInfo, _ := net.InterfaceByName(networkName)
+	osInfo, _ := net.InterfaceByName(netw.Name)
 
 	// Quick check.
 	if osInfo == nil && n == nil {
@@ -1038,10 +1109,10 @@ func doNetworkGet(s *state.State, r *http.Request, allNodes bool, requestProject
 
 	// Prepare the response.
 	apiNet := api.Network{}
-	apiNet.Name = networkName
+	apiNet.Name = netw.Name
 	apiNet.UsedBy = []string{}
 	apiNet.Config = map[string]string{}
-	apiNet.Project = requestProjectName
+	apiNet.Project = reqProject.Name
 
 	// Set the device type as needed.
 	if n != nil {
@@ -1049,7 +1120,7 @@ func doNetworkGet(s *state.State, r *http.Request, allNodes bool, requestProject
 		apiNet.Description = n.Description()
 		apiNet.Type = n.Type()
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.NetworkURL(requestProjectName, networkName), auth.EntitlementCanEdit)
+		err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanEdit, entity.NetworkURL(reqProject.Name, netw.Name), 0)
 		if err != nil && !auth.IsDeniedError(err) {
 			return api.Network{}, err
 		} else if err == nil {
@@ -1631,7 +1702,19 @@ func doNetworkUpdate(n network.Network, req api.NetworkPut, targetNode string, c
 func networkLeasesGet(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	projectName, reqProject, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	requestedProject, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	// Project specific requests require an effective project, when "features.networks" is enabled this is the requested project, otherwise it is the default project.
+	reqProject := requestedProject.ToAPI()
+	projectName := project.NetworkProjectFromRecord(reqProject)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -2082,23 +2165,23 @@ func networkStateGet(d *Daemon, r *http.Request) response.Response {
 		return resp
 	}
 
-	projectName, reqProject, err := project.NetworkProject(s.DB.Cluster, request.ProjectParam(r))
+	details, err := request.GetContextValue[networkDetails](r.Context(), ctxNetworkDetails)
 	if err != nil {
 		return response.SmartError(err)
 	}
 
-	networkName, err := url.PathUnescape(mux.Vars(r)["networkName"])
+	effectiveProjectName, err := request.GetContextValue[string](r.Context(), request.CtxEffectiveProjectName)
 	if err != nil {
 		return response.SmartError(err)
 	}
 
-	n, err := network.LoadByName(s, projectName, networkName)
+	n, err := network.LoadByName(s, effectiveProjectName, details.networkName)
 	if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
 		return response.SmartError(fmt.Errorf("Failed loading network: %w", err))
 	}
 
 	// Check if project allows access to network.
-	if !project.NetworkAllowed(reqProject.Config, networkName, n != nil && n.IsManaged()) {
+	if !project.NetworkAllowed(details.requestProject.Config, details.networkName, n != nil && n.IsManaged()) {
 		return response.SmartError(api.StatusErrorf(http.StatusNotFound, "Network not found"))
 	}
 
@@ -2109,7 +2192,7 @@ func networkStateGet(d *Daemon, r *http.Request) response.Response {
 			return response.SmartError(err)
 		}
 	} else {
-		state, err = resources.GetNetworkState(networkName)
+		state, err = resources.GetNetworkState(details.networkName)
 		if err != nil {
 			return response.SmartError(err)
 		}

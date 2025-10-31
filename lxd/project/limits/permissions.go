@@ -1541,7 +1541,7 @@ func projectHasRestriction(project *api.Project, restrictionKey string, blockVal
 func CheckClusterTargetRestriction(ctx context.Context, authorizer auth.Authorizer, project *api.Project, targetFlag string) error {
 	if projectHasRestriction(project, "restricted.cluster.target", "block") && targetFlag != "" {
 		// Allow server administrators to move instances around even when restricted (node evacuation, ...)
-		err := authorizer.CheckPermission(ctx, entity.ServerURL(), auth.EntitlementCanOverrideClusterTargetRestriction)
+		err := authorizer.CheckPermission(ctx, auth.EntitlementCanOverrideClusterTargetRestriction, entity.TypeServer, 0)
 		if err != nil && auth.IsDeniedError(err) {
 			return api.StatusErrorf(http.StatusForbidden, "This project doesn't allow cluster member targeting")
 		} else if err != nil {

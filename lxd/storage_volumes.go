@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
@@ -67,7 +68,7 @@ var storagePoolVolumesCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateStorageVolumes, projectFromQueryParam)},
 }
 
 var storagePoolVolumesTypeCmd = APIEndpoint{
@@ -75,7 +76,7 @@ var storagePoolVolumesTypeCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateStorageVolumes), ContentTypes: []string{"application/json", "application/octet-stream"}},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateStorageVolumes, projectFromQueryParam), ContentTypes: []string{"application/json", "application/octet-stream"}},
 }
 
 var storagePoolVolumeTypeCmd = APIEndpoint{
@@ -138,7 +139,7 @@ func checkStoragePoolVolumeTypeAccess(s *state.State, r *http.Request, entityTyp
 		return fmt.Errorf("Cannot use storage volume access handler with entities of type %q", entityType)
 	}
 
-	err = s.Authorizer.CheckPermission(r.Context(), u, entitlement)
+	err = s.Authorizer.CheckPermission(r.Context(), entitlement, u, 0)
 	if err != nil {
 		return err
 	}
@@ -705,7 +706,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 
 			// The project name used for custom volumes varies based on whether the
 			// project has the featues.storage.volumes feature enabled.
-			customVolProjectName = project.StorageVolumeProjectFromRecord(p, cluster.StoragePoolVolumeTypeCustom)
+			customVolProjectName = project.StorageVolumeProjectFromRecord(*p, cluster.StoragePoolVolumeTypeCustom)
 
 			projectImages, err = tx.GetImagesFingerprints(ctx, requestProjectName, false)
 			if err != nil {
@@ -1005,7 +1006,17 @@ func storagePoolVolumesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	projectName, err := project.StorageVolumeProject(s.DB.Cluster, requestProjectName, cluster.StoragePoolVolumeTypeCustom)
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	projectName := project.StorageVolumeProjectFromRecord(requestProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -1198,7 +1209,17 @@ func doCustomVolumeRefresh(s *state.State, r *http.Request, requestProjectName s
 
 	var srcProjectName string
 	if req.Source.Project != "" {
-		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, cluster.StoragePoolVolumeTypeCustom)
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		sourceProjectFull, err := model.GetProjectFullByName(r.Context(), req.Source.Project)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		srcProjectName = project.StorageVolumeProjectFromRecord(sourceProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1237,7 +1258,17 @@ func doVolumeCreateOrCopy(s *state.State, r *http.Request, requestProjectName st
 
 	var srcProjectName string
 	if req.Source.Project != "" {
-		srcProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Source.Project, cluster.StoragePoolVolumeTypeCustom)
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		sourceProjectFull, err := model.GetProjectFullByName(r.Context(), req.Source.Project)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		srcProjectName = project.StorageVolumeProjectFromRecord(sourceProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1440,7 +1471,17 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 
 	targetProjectName := effectiveProjectName
 	if req.Project != "" {
-		targetProjectName, err = project.StorageVolumeProject(s.DB.Cluster, req.Project, cluster.StoragePoolVolumeTypeCustom)
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		requestedTargetProjectFull, err := model.GetProjectFullByName(r.Context(), req.Project)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		targetProjectName = project.StorageVolumeProjectFromRecord(requestedTargetProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -1458,7 +1499,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Check if user has permission to copy/move the volume into the effective project corresponding to the target.
-		err := s.Authorizer.CheckPermission(r.Context(), entity.ProjectURL(targetProjectName), auth.EntitlementCanCreateStorageVolumes)
+		err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanCreateStorageVolumes, entity.ProjectURL(targetProjectName), 0)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -2862,12 +2903,17 @@ func addStoragePoolVolumeDetailsToRequestContext(s *state.State, r *http.Request
 
 	details.pool = storagePool
 
-	// Get the effective project.
-	effectiveProject, err := project.StorageVolumeProject(s.DB.Cluster, request.ProjectParam(r), volumeType)
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
-		return fmt.Errorf("Failed to get effective project name: %w", err)
+		return err
 	}
 
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return err
+	}
+
+	effectiveProject := project.StorageVolumeProjectFromRecord(requestProjectFull.ToAPI(), cluster.StoragePoolVolumeTypeCustom)
 	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProject)
 
 	// If the target is set, the location of the volume is user specified, so we don't need to perform further logic.

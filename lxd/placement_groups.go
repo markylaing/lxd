@@ -30,7 +30,7 @@ var placementGroupsCmd = APIEndpoint{
 	MetricsType: entity.TypePlacementGroup,
 
 	Get:  APIEndpointAction{Handler: placementGroupsGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: placementGroupsPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreatePlacementGroups)},
+	Post: APIEndpointAction{Handler: placementGroupsPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreatePlacementGroups, projectFromQueryParam)},
 }
 
 var placementGroupCmd = APIEndpoint{

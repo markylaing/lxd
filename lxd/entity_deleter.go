@@ -23,7 +23,7 @@ type instanceDeleter struct{}
 func (d instanceDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ type imageDeleter struct{}
 func (d imageDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	fingerprint := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ type networkDeleter struct{}
 func (d networkDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ type networkACLDeleter struct{}
 func (d networkACLDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ type networkZoneDeleter struct{}
 func (d networkZoneDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (d storageVolumeDeleter) Delete(ctx context.Context, s *state.State, ref en
 		return nil
 	}
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (d storageBucketDeleter) Delete(ctx context.Context, s *state.State, ref en
 	parts := ref.GetPathArgs(2)
 	poolName, bucketName := parts[0], parts[1]
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ type profileDeleter struct{}
 func (d profileDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ type placementGroupDeleter struct{}
 func (d placementGroupDeleter) Delete(ctx context.Context, s *state.State, ref entity.Reference) error {
 	name := ref.Name()
 
-	err := s.Authorizer.CheckPermission(ctx, ref.URL(), auth.EntitlementCanDelete)
+	err := s.Authorizer.CheckPermission(ctx, auth.EntitlementCanDelete, ref.URL(), 0)
 	if err != nil {
 		return err
 	}

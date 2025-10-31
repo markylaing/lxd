@@ -510,7 +510,7 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 
 	// Not all operations have a project. Operations that don't have a project should be considered "server level".
 	var canViewServerOperations bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanViewOperations)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanViewOperations, entity.TypeServer, 0)
 	if err == nil {
 		canViewServerOperations = true
 	} else if !auth.IsDeniedError(err) {
@@ -1080,7 +1080,7 @@ func checkOperationViewAccess(ctx context.Context, op *operations.Operation, aut
 		entityURL = entity.ProjectURL(operationProject)
 	}
 
-	return authorizer.CheckPermission(ctx, entityURL, auth.EntitlementCanViewOperations)
+	return authorizer.CheckPermission(ctx, auth.EntitlementCanViewOperations, entityURL, 0)
 }
 
 // swagger:operation GET /1.0/operations/{id}/websocket?public operations operation_websocket_get_untrusted

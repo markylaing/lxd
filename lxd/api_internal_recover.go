@@ -33,13 +33,13 @@ import (
 var internalRecoverValidateCmd = APIEndpoint{
 	Path: "recover/validate",
 
-	Post: APIEndpointAction{Handler: internalRecoverValidate, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalRecoverValidate, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 var internalRecoverImportCmd = APIEndpoint{
 	Path: "recover/import",
 
-	Post: APIEndpointAction{Handler: internalRecoverImport, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Post: APIEndpointAction{Handler: internalRecoverImport, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 // init recover adds API endpoints to handler slice.
@@ -358,8 +358,8 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				continue // Skip further validation if project is missing.
 			}
 
-			profileProjectname = project.ProfileProjectFromRecord(projectInfo)
-			networkProjectName = project.NetworkProjectFromRecord(projectInfo)
+			profileProjectname = project.ProfileProjectFromRecord(*projectInfo)
+			networkProjectName = project.NetworkProjectFromRecord(*projectInfo)
 
 			for _, poolVol := range poolVols {
 				if poolVol.Instance == nil {
@@ -542,7 +542,7 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				return response.SmartError(fmt.Errorf("Project %q not found", projectName))
 			}
 
-			customStorageProjectName := project.StorageVolumeProjectFromRecord(projectInfo, dbCluster.StoragePoolVolumeTypeCustom)
+			customStorageProjectName := project.StorageVolumeProjectFromRecord(*projectInfo, dbCluster.StoragePoolVolumeTypeCustom)
 
 			// Recover unknown custom volumes (do this first before recovering instances so that any
 			// instances that reference unknown custom volume disk devices can be created).
@@ -595,7 +595,7 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				return response.SmartError(fmt.Errorf("Project %q not found", projectName))
 			}
 
-			profileProjectName := project.ProfileProjectFromRecord(projectInfo)
+			profileProjectName := project.ProfileProjectFromRecord(*projectInfo)
 
 			// Recover unknown instance volumes.
 			for _, poolVol := range poolVols {

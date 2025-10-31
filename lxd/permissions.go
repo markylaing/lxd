@@ -21,7 +21,7 @@ var permissionsCmd = APIEndpoint{
 	MetricsType: entity.TypeIdentity,
 	Get: APIEndpointAction{
 		Handler:       getPermissions,
-		AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanViewPermissions),
+		AccessHandler: serverAccessHandler(auth.EntitlementCanViewPermissions),
 	},
 }
 

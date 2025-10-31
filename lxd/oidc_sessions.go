@@ -83,7 +83,7 @@ func oidcSessionAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *h
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.IdentityURL(api.AuthenticationMethodOIDC, session.Email), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.IdentityURL(api.AuthenticationMethodOIDC, session.Email), 0)
 		if err != nil {
 			return response.SmartError(err)
 		}

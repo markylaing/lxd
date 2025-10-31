@@ -1121,7 +1121,7 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 			}
 		}
 
-		profileProject := project.ProfileProjectFromRecord(targetProject)
+		profileProject := project.ProfileProjectFromRecord(*targetProject)
 
 		switch req.Source.Type {
 		case api.SourceTypeCopy:

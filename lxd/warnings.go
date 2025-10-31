@@ -35,17 +35,17 @@ var warningsCmd = APIEndpoint{
 	Path:        "warnings",
 	MetricsType: entity.TypeWarning,
 
-	Get: APIEndpointAction{Handler: warningsGet, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanViewWarnings)},
+	Get: APIEndpointAction{Handler: warningsGet, AccessHandler: serverAccessHandler(auth.EntitlementCanViewWarnings)},
 }
 
 var warningCmd = APIEndpoint{
 	Path:        "warnings/{id}",
 	MetricsType: entity.TypeWarning,
 
-	Get:    APIEndpointAction{Handler: warningGet, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanViewWarnings)},
-	Patch:  APIEndpointAction{Handler: warningPatch, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Put:    APIEndpointAction{Handler: warningPut, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
-	Delete: APIEndpointAction{Handler: warningDelete, AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanEdit)},
+	Get:    APIEndpointAction{Handler: warningGet, AccessHandler: serverAccessHandler(auth.EntitlementCanViewWarnings)},
+	Patch:  APIEndpointAction{Handler: warningPatch, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Put:    APIEndpointAction{Handler: warningPut, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
+	Delete: APIEndpointAction{Handler: warningDelete, AccessHandler: serverAccessHandler(auth.EntitlementCanEdit)},
 }
 
 func filterWarnings(warnings []api.Warning, clauses *filter.ClauseSet) ([]api.Warning, error) {

@@ -35,7 +35,7 @@ var authGroupsCmd = APIEndpoint{
 	},
 	Post: APIEndpointAction{
 		Handler:       createAuthGroup,
-		AccessHandler: allowPermission(entity.TypeServer, auth.EntitlementCanCreateGroups),
+		AccessHandler: serverAccessHandler(auth.EntitlementCanCreateGroups),
 	},
 }
 

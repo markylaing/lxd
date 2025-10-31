@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -40,7 +41,7 @@ var profilesCmd = APIEndpoint{
 	MetricsType: entity.TypeProfile,
 
 	Get:  APIEndpointAction{Handler: profilesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateProfiles)},
+	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: projectAccessHandler(auth.EntitlementCanCreateProfiles, projectFromQueryParam)},
 }
 
 var profileCmd = APIEndpoint{
@@ -73,15 +74,26 @@ func addProfileDetailsToRequestContext(s *state.State, r *http.Request) error {
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	effectiveProject, err := project.ProfileProject(s.DB.Cluster, requestProjectName)
+	model, err := broker.GetModelFromContext(r.Context())
 	if err != nil {
-		return fmt.Errorf("Failed to check project %q profile feature: %w", requestProjectName, err)
+		return err
 	}
 
-	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProject.Name)
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return err
+	}
+
+	effectiveProjectName := project.ProfileProjectFromRecord(requestProjectFull.ToAPI())
+	effectiveProjectFull, err := model.GetProjectFullByName(r.Context(), effectiveProjectName)
+	if err != nil {
+		return err
+	}
+
+	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 	request.SetContextValue(r, ctxProfileDetails, profileDetails{
 		profileName:      profileName,
-		effectiveProject: *effectiveProject,
+		effectiveProject: effectiveProjectFull.ToAPI(),
 	})
 
 	return nil
@@ -102,7 +114,7 @@ func profileAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.
 			return response.SmartError(err)
 		}
 
-		err = s.Authorizer.CheckPermission(r.Context(), entity.ProfileURL(request.ProjectParam(r), details.profileName), entitlement)
+		err = s.Authorizer.CheckPermission(r.Context(), entitlement, entity.ProfileURL(request.ProjectParam(r), details.profileName), 0)
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -223,12 +235,17 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
-		p, err := project.ProfileProject(s.DB.Cluster, requestProjectName)
+		model, err := broker.GetModelFromContext(r.Context())
 		if err != nil {
 			return response.SmartError(err)
 		}
 
-		effectiveProjectName = p.Name
+		requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		effectiveProjectName = project.ProfileProjectFromRecord(requestProjectFull.ToAPI())
 		request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 	}
 
@@ -379,7 +396,19 @@ func profileUsedBy(ctx context.Context, tx *db.ClusterTx, profile dbCluster.Prof
 func profilesPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	p, err := project.ProfileProject(s.DB.Cluster, request.ProjectParam(r))
+	requestProjectName := request.ProjectParam(r)
+	model, err := broker.GetModelFromContext(r.Context())
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	requestProjectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	effectiveProjectName := project.ProfileProjectFromRecord(requestProjectFull.ToAPI())
+	effectiveProjectFull, err := model.GetProjectFullByName(r.Context(), effectiveProjectName)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -409,7 +438,7 @@ func profilesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// At this point we don't know the instance type, so just use instancetype.Any type for validation.
-	err = instance.ValidDevices(s, *p, instancetype.Any, deviceConfig.NewDevices(req.Devices), nil)
+	err = instance.ValidDevices(s, effectiveProjectFull.ToAPI(), instancetype.Any, deviceConfig.NewDevices(req.Devices), nil)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -421,13 +450,13 @@ func profilesPost(d *Daemon, r *http.Request) response.Response {
 			return err
 		}
 
-		current, _ := dbCluster.GetProfile(ctx, tx.Tx(), p.Name, req.Name)
+		current, _ := dbCluster.GetProfile(ctx, tx.Tx(), effectiveProjectName, req.Name)
 		if current != nil {
 			return errors.New("The profile already exists")
 		}
 
 		profile := dbCluster.Profile{
-			Project:     p.Name,
+			Project:     effectiveProjectName,
 			Name:        req.Name,
 			Description: req.Description,
 		}
@@ -454,8 +483,8 @@ func profilesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	requestor := request.CreateRequestor(r.Context())
-	lc := lifecycle.ProfileCreated.Event(req.Name, p.Name, requestor, nil)
-	s.Events.SendLifecycle(p.Name, lc)
+	lc := lifecycle.ProfileCreated.Event(req.Name, effectiveProjectName, requestor, nil)
+	s.Events.SendLifecycle(effectiveProjectName, lc)
 
 	return response.SyncResponseLocation(true, nil, lc.Source)
 }

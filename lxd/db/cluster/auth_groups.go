@@ -95,7 +95,7 @@ func (g *AuthGroup) ToAPI(ctx context.Context, tx *sql.Tx, canViewIdentity auth.
 	group.Identities = make(map[string][]string)
 	for _, identity := range identities {
 		authenticationMethod := string(identity.AuthMethod)
-		if canViewIdentity(entity.IdentityURL(authenticationMethod, identity.Identifier)) {
+		if canViewIdentity(identity.ID) {
 			group.Identities[authenticationMethod] = append(group.Identities[authenticationMethod], identity.Identifier)
 		}
 	}
@@ -106,7 +106,7 @@ func (g *AuthGroup) ToAPI(ctx context.Context, tx *sql.Tx, canViewIdentity auth.
 	}
 
 	for _, idpGroup := range identityProviderGroups {
-		if canViewIDPGroup(entity.IdentityProviderGroupURL(idpGroup.Name)) {
+		if canViewIDPGroup(idpGroup.ID) {
 			group.IdentityProviderGroups = append(group.IdentityProviderGroups, idpGroup.Name)
 		}
 	}

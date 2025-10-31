@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
+
 	dqliteClient "github.com/canonical/go-dqlite/v3/client"
 	"github.com/canonical/go-dqlite/v3/driver"
 	"github.com/gorilla/mux"
@@ -267,49 +269,20 @@ func allowAuthenticated(_ *Daemon, r *http.Request) response.Response {
 	return response.Forbidden(nil)
 }
 
-// allowPermission is a wrapper to check access against a given object, an object being an image, instance, network, etc.
-// Mux vars should be passed in so that the object we are checking can be created. For example, a certificate object requires
-// a fingerprint, the mux var for certificate fingerprints is "fingerprint", so that string should be passed in.
-// Mux vars should always be passed in with the same order they appear in the API route.
-func allowPermission(entityType entity.Type, entitlement auth.Entitlement, muxVars ...string) func(d *Daemon, r *http.Request) response.Response {
+func serverAccessHandler(entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
 	return func(d *Daemon, r *http.Request) response.Response {
-		s := d.State()
-		var err error
-		var entityURL *api.URL
-		if entityType == entity.TypeServer {
-			// For server permission checks, skip mux var logic.
-			entityURL = entity.ServerURL()
-		} else if entityType == entity.TypeProject && len(muxVars) == 0 {
-			// If we're checking project permissions on a non-project endpoint (e.g. `can_create_instances` on POST /1.0/instances)
-			// we get the project name from the query parameter.
-			// If we're checking project permissions on a project endpoint, we expect to get the project name from its path variable
-			// in the next else block.
-			entityURL = entity.ProjectURL(request.ProjectParam(r))
-		} else {
-			muxValues := make([]string, 0, len(muxVars))
-			vars := mux.Vars(r)
-			for _, muxVar := range muxVars {
-				muxValue := vars[muxVar]
-				if muxValue == "" {
-					return response.InternalError(fmt.Errorf("Failed to perform permission check: Path argument label %q not found in request URL %q", muxVar, r.URL))
-				}
-
-				muxValues = append(muxValues, muxValue)
-			}
-
-			entityURL, err = entityType.URL(request.QueryParam(r, "project"), request.QueryParam(r, "target"), muxValues...)
-			if err != nil {
-				return response.InternalError(fmt.Errorf("Failed to perform permission check: %w", err))
-			}
-		}
-
-		// Validate whether the user has the needed permission
-		err = s.Authorizer.CheckPermission(r.Context(), entityURL, entitlement)
+		err := d.State().Authorizer.CheckPermission(r.Context(), entitlement, entity.TypeServer, 0)
 		if err != nil {
 			return response.SmartError(err)
 		}
 
 		return response.EmptySyncResponse
+	}
+}
+
+func allowPermission(entityType entity.Type, entitlement auth.Entitlement, muxVars ...string) func(*Daemon, *http.Request) response.Response {
+	return func(d *Daemon, h *http.Request) response.Response {
+		return response.NotImplemented(nil)
 	}
 }
 
@@ -348,15 +321,25 @@ func allowProjectResourceList(allowAllProjects bool) func(d *Daemon, r *http.Req
 			return response.SmartError(err)
 		}
 
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
 		if idType.IsFineGrained() {
 			if allProjects {
 				return response.EmptySyncResponse
 			}
 
+			project, err := model.GetProjectByName(r.Context(), requestProjectName)
+			if err != nil {
+				return response.SmartError(err)
+			}
+
 			s := d.State()
 
 			// Fine-grained clients must be able to view the containing project.
-			err = s.Authorizer.CheckPermission(r.Context(), entity.ProjectURL(requestProjectName), auth.EntitlementCanView)
+			err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanView, entity.TypeProject, project.ID)
 			if err != nil {
 				return response.SmartError(err)
 			}
@@ -379,8 +362,18 @@ func allowProjectResourceList(allowAllProjects bool) func(d *Daemon, r *http.Req
 			return response.Forbidden(errors.New("Certificate is restricted"))
 		}
 
+		identityFull, err := model.GetIdentityFullByAuthenticationMethodAndIdentifier(r.Context(), requestor.CallerProtocol(), requestor.CallerUsername())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		project, err := model.GetProjectByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
 		// Disallow listing resources in projects the caller does not have access to.
-		if !slices.Contains(id.Projects, requestProjectName) {
+		if !slices.Contains(identityFull.Projects, project.ID) {
 			return response.Forbidden(errors.New("Certificate is restricted"))
 		}
 
@@ -390,7 +383,7 @@ func allowProjectResourceList(allowAllProjects bool) func(d *Daemon, r *http.Req
 
 // reportEntitlements takes a map of entity URLs to EntitlementReporters (in practice, API types that implement the ReportEntitlements method), and
 // reports the entitlements that the caller has on each entity URL to the corresponding EntitlementReporter.
-func reportEntitlements(ctx context.Context, authorizer auth.Authorizer, entityType entity.Type, requestedEntitlements []auth.Entitlement, entityURLToEntitlementReporter map[*api.URL]auth.EntitlementReporter) error {
+func reportEntitlements(ctx context.Context, authorizer auth.Authorizer, entityType entity.Type, requestedEntitlements []auth.Entitlement, entityURLToEntitlementReporter map[int]auth.EntitlementReporter) error {
 	// Nothing to do
 	if len(entityURLToEntitlementReporter) == 0 {
 		return nil
@@ -424,7 +417,7 @@ func reportEntitlements(ctx context.Context, authorizer auth.Authorizer, entityT
 		for u, r := range entityURLToEntitlementReporter {
 			entitlements := make([]string, 0, len(requestedEntitlements))
 			for _, entitlement := range requestedEntitlements {
-				err = authorizer.CheckPermission(ctx, u, entitlement)
+				err = authorizer.CheckPermission(ctx, entitlement, entityType, u)
 				if err != nil {
 					if auth.IsDeniedError(err) {
 						continue
@@ -860,6 +853,38 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			return
 		}
 
+		model := broker.InitialiseModel(r, d.db.Cluster)
+		projectName, allProjects, err := request.ProjectParams(r)
+		if !requestor.Trusted {
+			if allProjects {
+				_ = response.Forbidden(nil).Render(w, r)
+				return
+			}
+
+			if projectName != api.ProjectDefaultName {
+				_ = response.NotFound(nil).Render(w, r)
+				return
+			}
+		} else if !allProjects && projectName != api.ProjectDefaultName {
+			project, err := model.GetProjectFullByName(r.Context(), projectName)
+			if err != nil {
+				if api.StatusErrorCheck(err, http.StatusNotFound) {
+					_ = response.NotFound(nil).Render(w, r)
+					return
+				}
+
+				_ = response.SmartError(err).Render(w, r)
+				return
+			}
+
+			// This would use project.ID
+			err = d.authorizer.CheckPermission(r.Context(), auth.EntitlementCanView, entity.TypeProject, project.ID)
+			if err != nil {
+				_ = response.SmartError(err).Render(w, r)
+				return
+			}
+		}
+
 		// Reject internal queries to remote, non-cluster, clients
 		if version == "internal" && !slices.Contains([]string{request.ProtocolUnix, request.ProtocolCluster}, requestor.Protocol) {
 			// Except for the initial cluster accept request (done over trusted TLS)
@@ -891,9 +916,6 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			_ = response.Forbidden(nil).Render(w, r)
 			return
 		}
-
-		// Set OpenFGA cache in request context.
-		request.SetContextValue(r, request.CtxOpenFGARequestCache, &openfga.RequestCache{})
 
 		// Dump full request JSON when in debug mode
 		if daemon.Debug && r.Method != "GET" && util.IsJSONRequest(r) {

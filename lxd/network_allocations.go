@@ -12,6 +12,7 @@ import (
 	"github.com/canonical/lxd/lxd/auth"
 	"github.com/canonical/lxd/lxd/db"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/canonical/lxd/lxd/network"
 	"github.com/canonical/lxd/lxd/project"
 	"github.com/canonical/lxd/lxd/request"
@@ -85,7 +86,17 @@ func networkAllocationsGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
-		effectiveProjectName, _, err = project.NetworkProject(s.DB.Cluster, requestProjectName)
+		model, err := broker.GetModelFromContext(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		projectFull, err := model.GetProjectFullByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		effectiveProjectName = project.NetworkProjectFromRecord(projectFull.ToAPI())
 		if err != nil {
 			return response.SmartError(err)
 		}

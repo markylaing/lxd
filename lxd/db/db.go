@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/canonical/go-dqlite/v3/driver"
+	"github.com/canonical/lxd/lxd/request"
 
 	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/node"
@@ -385,6 +386,7 @@ func (c *Cluster) transaction(ctx context.Context, f func(context.Context, *Clus
 	return query.Retry(ctx, func(ctx context.Context) error {
 		txFunc := func(ctx context.Context, tx *sql.Tx) error {
 			clusterTx.tx = tx
+			ctx = context.WithValue(ctx, request.CtxClusterTx, clusterTx)
 			return f(ctx, clusterTx)
 		}
 

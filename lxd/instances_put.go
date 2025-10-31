@@ -109,7 +109,7 @@ func instancesPut(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Check permission for all instances so that we apply the state change to all or none.
-		if !userHasPermission(entity.InstanceURL(inst.Project().Name, inst.Name())) {
+		if !userHasPermission(inst.ID()) {
 			return response.Forbidden(nil)
 		}
 	}

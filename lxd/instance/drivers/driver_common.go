@@ -842,7 +842,7 @@ func (d *common) getAttachedVolumeSnapshots(inst instance.Instance, attachedVolu
 
 	customType := dbCluster.StoragePoolVolumeTypeCustom
 	instanceProject := inst.Project()
-	effectiveProject := project.StorageVolumeProjectFromRecord(&instanceProject, dbCluster.StoragePoolVolumeTypeCustom)
+	effectiveProject := project.StorageVolumeProjectFromRecord(instanceProject, dbCluster.StoragePoolVolumeTypeCustom)
 
 	filter := db.StorageVolumeFilter{
 		Type:    &customType,

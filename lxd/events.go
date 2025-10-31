@@ -90,7 +90,7 @@ func eventsSocket(s *state.State, r *http.Request, w http.ResponseWriter) error 
 
 	// `can_view_operations` on `server` is required to view any operation event that is not project specific.
 	var canViewServerOperations bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanViewOperations)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanViewOperations, entity.TypeServer, 0)
 	if err == nil {
 		canViewServerOperations = true
 	} else if !auth.IsDeniedError(err) {
@@ -99,7 +99,7 @@ func eventsSocket(s *state.State, r *http.Request, w http.ResponseWriter) error 
 
 	// `can_view_events` on `server` is required to view any of the privileged event types, or any lifecycle event that is not project specific.
 	var canViewServerEvents bool
-	err = s.Authorizer.CheckPermission(r.Context(), entity.ServerURL(), auth.EntitlementCanViewEvents)
+	err = s.Authorizer.CheckPermission(r.Context(), auth.EntitlementCanViewEvents, entity.TypeServer, 0)
 	if err == nil {
 		canViewServerEvents = true
 	} else if !auth.IsDeniedError(err) {
