@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 //
 // The <filename> contains a "flattened" render of all given updates and
 // can be used to initialize brand new databases using Schema.Fresh().
-func DotGo(updates map[int]Update, pkg string, filename string) error {
+func DotGo(ctx context.Context, updates map[int]Update, pkg string, filename string) error {
 	// Apply all the updates that we have on a pristine database and dump
 	// the resulting schema.
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -22,12 +23,12 @@ func DotGo(updates map[int]Update, pkg string, filename string) error {
 
 	schema := NewFromMap(updates)
 
-	_, err = schema.Ensure(db)
+	_, err = schema.Ensure(ctx, db)
 	if err != nil {
 		return err
 	}
 
-	dump, err := schema.Dump(db)
+	dump, err := schema.Dump(ctx, db)
 	if err != nil {
 		return err
 	}

@@ -285,7 +285,7 @@ func (d *common) validateRule(direction ruleDirection, rule api.NetworkACLRule) 
 
 	var acls map[string]int64
 
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get map of ACL names to DB IDs (used for generating OVN port group names).
@@ -570,7 +570,7 @@ func (d *common) Update(config *api.NetworkACLPut, clientType request.ClientType
 	if clientType == request.ClientTypeNormal {
 		oldConfig := d.info.Writable()
 
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Update database. Its important this occurs before we attempt to apply to networks using the ACL
 			// as usage functions will inspect the database.
 			return tx.UpdateNetworkACL(ctx, d.id, *config)
@@ -584,7 +584,7 @@ func (d *common) Update(config *api.NetworkACLPut, clientType request.ClientType
 		d.init(d.state, d.id, d.projectName, d.info)
 
 		revert.Add(func() {
-			_ = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateNetworkACL(ctx, d.id, oldConfig)
 			})
 
@@ -630,7 +630,7 @@ func (d *common) Update(config *api.NetworkACLPut, clientType request.ClientType
 
 		var aclNameIDs map[string]int64
 
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get map of ACL names to DB IDs (used for generating OVN port group names).
 			aclNameIDs, err = tx.GetNetworkACLIDsByNames(ctx, d.Project())
 
@@ -702,7 +702,7 @@ func (d *common) Rename(newName string) error {
 		return err
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RenameNetworkACL(ctx, d.id, newName)
 	})
 	if err != nil {
@@ -726,7 +726,7 @@ func (d *common) Delete() error {
 		return errors.New("Cannot delete an ACL that is in use")
 	}
 
-	return d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.DeleteNetworkACL(ctx, d.id)
 	})
 }

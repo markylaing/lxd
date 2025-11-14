@@ -263,7 +263,7 @@ func (d *proxy) validateEnvironment() error {
 // overlap on existing network forward (both entities can't have the same listening address with
 // the same port number).
 func (d *proxy) validateListenAddressConflicts(proxyListenAddr net.IP) error {
-	return d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworksForwardsOnUplink, err := tx.GetProjectNetworkForwardListenAddressesOnMember(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed loading network forward listen addresses: %w", err)
@@ -528,7 +528,7 @@ func (d *proxy) setupNAT() error {
 	if err != nil {
 		msg := fmt.Sprintf("IPv%d bridge netfilter not enabled. Instances using the bridge will not be able to connect to the proxy listen IP", ipVersion)
 		d.logger.Warn(msg, logger.Ctx{"err": err})
-		err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpsertWarningLocalNode(ctx, d.inst.Project().Name, entity.TypeInstance, d.inst.ID(), warningtype.ProxyBridgeNetfilterNotEnabled, fmt.Sprintf("%s: %v", msg, err))
 		})
 		if err != nil {

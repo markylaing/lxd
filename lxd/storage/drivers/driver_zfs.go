@@ -436,13 +436,13 @@ func (d *zfs) Delete(op *operations.Operation) error {
 
 	if strings.Contains(d.config["zfs.pool_name"], "/") {
 		// Delete the dataset.
-		_, err := shared.RunCommandContext(context.TODO(), "zfs", "destroy", "-r", d.config["zfs.pool_name"])
+		_, err := shared.RunCommandContext(ctx, "zfs", "destroy", "-r", d.config["zfs.pool_name"])
 		if err != nil {
 			return err
 		}
 	} else {
 		// Delete the pool.
-		_, err := shared.RunCommandContext(context.TODO(), "zpool", "destroy", d.config["zfs.pool_name"])
+		_, err := shared.RunCommandContext(ctx, "zpool", "destroy", d.config["zfs.pool_name"])
 		if err != nil {
 			return err
 		}
@@ -640,7 +640,7 @@ func (d *zfs) Unmount() (bool, error) {
 
 	// Export the pool.
 	poolName := strings.Split(d.config["zfs.pool_name"], "/")[0]
-	_, err = shared.RunCommandContext(context.TODO(), "zpool", "export", poolName)
+	_, err = shared.RunCommandContext(ctx, "zpool", "export", poolName)
 	if err != nil {
 		return false, err
 	}
@@ -762,7 +762,7 @@ func (d *zfs) patchDropBlockVolumeFilesystemExtension() error {
 		// Rename zfs dataset. Snapshots will automatically be renamed.
 		newName := poolName + "/images/" + strings.Split(fields[1], "_")[0] + ".block"
 
-		_, err = shared.RunCommandContext(context.TODO(), "zfs", "rename", volume, newName)
+		_, err = shared.RunCommandContext(ctx, "zfs", "rename", volume, newName)
 		if err != nil {
 			return fmt.Errorf("Failed renaming zfs dataset: %w", err)
 		}

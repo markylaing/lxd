@@ -633,7 +633,7 @@ func (d *nicBridged) Start() (*deviceConfig.RunConfig, error) {
 		if brNetfilterEnabled {
 			var listenAddresses map[int64]string
 
-			err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				listenAddresses, err = tx.GetNetworkForwardListenAddresses(ctx, d.network.ID(), true)
 
 				return err

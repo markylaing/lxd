@@ -92,6 +92,8 @@ func OperationGetInternal(id string) (*Operation, error) {
 
 // Operation represents an operation.
 type Operation struct {
+	ctx         context.Context
+	cancel      func()
 	projectName string
 	id          string
 	class       OperationClass
@@ -112,13 +114,10 @@ type Operation struct {
 	logger      logger.Logger
 
 	// Those functions are called at various points in the Operation lifecycle
-	onRun     func(*Operation) error
-	onCancel  func(*Operation) error
-	onConnect func(*Operation, *http.Request, http.ResponseWriter) error
-	onDone    func(*Operation)
-
-	// Indicates if operation has finished.
-	finished cancel.Canceller
+	onRun     func(context.Context, *Operation) error
+	onCancel  func(context.Context, *Operation) error
+	onConnect func(context.Context, *Operation, *http.Request, http.ResponseWriter) error
+	onDone    func(context.Context, *Operation)
 
 	// Locking for concurent access to the Operation
 	lock sync.Mutex
@@ -129,7 +128,7 @@ type Operation struct {
 
 // OperationCreate creates a new operation and returns it. If it cannot be
 // created, it returns an error.
-func OperationCreate(ctx context.Context, s *state.State, projectName string, opClass OperationClass, opType operationtype.Type, opResources map[string][]api.URL, opMetadata any, onRun func(*Operation) error, onCancel func(*Operation) error, onConnect func(*Operation, *http.Request, http.ResponseWriter) error) (*Operation, error) {
+func OperationCreate(ctx context.Context, s *state.State, projectName string, opClass OperationClass, opType operationtype.Type, opResources map[string][]api.URL, opMetadata any, onRun func(context.Context, *Operation) error, onCancel func(context.Context, *Operation) error, onConnect func(context.Context, *Operation, *http.Request, http.ResponseWriter) error) (*Operation, error) {
 	// Don't allow new operations when LXD is shutting down.
 	if s != nil && s.ShutdownCtx.Err() == context.Canceled {
 		return nil, errors.New("LXD is shutting down")
@@ -137,6 +136,7 @@ func OperationCreate(ctx context.Context, s *state.State, projectName string, op
 
 	// Main attributes
 	op := Operation{}
+	op.ctx, op.cancel = context.WithCancel(context.WithoutCancel(ctx))
 	op.projectName = projectName
 	op.id = uuid.New().String()
 	op.description = opType.Description()
@@ -148,7 +148,6 @@ func OperationCreate(ctx context.Context, s *state.State, projectName string, op
 	op.status = api.Pending
 	op.url = api.NewURL().Path(version.APIVersion, "operations", op.id).String()
 	op.resources = opResources
-	op.finished = cancel.New()
 	op.state = s
 	op.logger = logger.AddContext(logger.Ctx{"operation": op.id, "project": op.projectName, "class": op.class.String(), "description": op.description})
 
@@ -240,7 +239,7 @@ func (op *Operation) CheckRequestor(r *http.Request) error {
 }
 
 // SetOnDone sets the operation onDone function that is called after the operation completes.
-func (op *Operation) SetOnDone(f func(*Operation)) {
+func (op *Operation) SetOnDone(f func(context.Context, *Operation)) {
 	op.onDone = f
 }
 
@@ -261,7 +260,7 @@ func (op *Operation) EventLifecycleRequestor() *api.EventLifecycleRequestor {
 func (op *Operation) done() {
 	if op.onDone != nil {
 		// This can mark the request that spawned this operation as completed for the API metrics.
-		op.onDone(op)
+		op.onDone(op.ctx, op)
 	}
 
 	if op.readonly {
@@ -273,7 +272,7 @@ func (op *Operation) done() {
 	op.onRun = nil
 	op.onCancel = nil
 	op.onConnect = nil
-	op.finished.Cancel()
+	op.cancel()
 	op.lock.Unlock()
 
 	go func() {
@@ -324,7 +323,7 @@ func (op *Operation) Start() error {
 
 	if op.onRun != nil {
 		go func(op *Operation) {
-			err := op.onRun(op)
+			err := op.onRun(op.ctx, op)
 			if err != nil {
 				op.lock.Lock()
 				op.status = api.Failure
@@ -392,7 +391,7 @@ func (op *Operation) Cancel() (chan error, error) {
 
 	if hasOnCancel {
 		go func(op *Operation, oldStatus api.StatusCode, chanCancel chan error) {
-			err := op.onCancel(op)
+			err := op.onCancel(op.ctx, op)
 			if err != nil {
 				op.lock.Lock()
 				op.status = oldStatus
@@ -470,7 +469,7 @@ func (op *Operation) Connect(r *http.Request, w http.ResponseWriter) (chan error
 	chanConnect := make(chan error, 1)
 
 	go func(op *Operation, chanConnect chan error) {
-		err := op.onConnect(op, r, w)
+		err := op.onConnect(op.ctx, op, r, w)
 		if err != nil {
 			chanConnect <- err
 
@@ -563,7 +562,7 @@ func (op *Operation) Render() (string, *api.Operation, error) {
 // Returns non-nil error if operation failed or context was cancelled.
 func (op *Operation) Wait(ctx context.Context) error {
 	select {
-	case <-op.finished.Done():
+	case <-op.ctx.Done():
 		return op.err
 	case <-ctx.Done():
 		return ctx.Err()

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	petname "github.com/dustinkirkland/golang-petname"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -91,7 +92,7 @@ func createFromImage(ctx context.Context, s *state.State, p api.Project, profile
 		return response.BadRequest(err)
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		devices := deviceConfig.NewDevices(req.Devices)
 
 		args := db.InstanceArgs{
@@ -180,7 +181,7 @@ func createFromNone(ctx context.Context, s *state.State, projectName string, pro
 		args.Architecture = architecture
 	}
 
-	run := func(_ *operations.Operation) error {
+	run := func(_ context.Context, _ *operations.Operation) error {
 		// Actually create the instance.
 		_, err := instanceCreateAsEmpty(s, args)
 		if err != nil {
@@ -328,7 +329,7 @@ func createFromMigration(ctx context.Context, s *state.State, projectName string
 	// Copy reverter so far so we can use it inside run after this function has finished.
 	runRevert := revert.Clone()
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		defer runRevert.Fail()
 
 		sink.instance.SetOperation(op)
@@ -442,7 +443,7 @@ func createFromConversion(ctx context.Context, s *state.State, projectName strin
 	// Copy reverter so far so we can use it inside run after this function has finished.
 	runRevert := revert.Clone()
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		defer runRevert.Fail()
 
 		sink.instance.SetOperation(op)
@@ -607,7 +608,7 @@ func createFromCopy(ctx context.Context, s *state.State, projectName string, pro
 		Stateful:     req.Stateful,
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		// Actually create the instance.
 		_, err := instanceCreateAsCopy(s, instanceCreateAsCopyOpts{
 			sourceInstance: source,
@@ -781,7 +782,7 @@ func createFromBackup(s *state.State, r *http.Request, projectName string, data 
 		"snapshots": bInfo.Snapshots,
 	})
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Check storage pool exists.
 		_, _, _, err = tx.GetStoragePoolInAnyState(ctx, bInfo.Pool)
 
@@ -797,7 +798,7 @@ func createFromBackup(s *state.State, r *http.Request, projectName string, data 
 
 		var profile *api.Profile
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Otherwise try and restore to the project's default profile pool.
 			_, profile, err = tx.GetProfile(ctx, bInfo.Project, "default")
 
@@ -821,7 +822,7 @@ func createFromBackup(s *state.State, r *http.Request, projectName string, data 
 	// Copy reverter so far so we can use it inside run after this function has finished.
 	runRevert := revert.Clone()
 
-	run := func(_ *operations.Operation) error {
+	run := func(_ context.Context, _ *operations.Operation) error {
 		defer func() { _ = backupFile.Close() }()
 		defer runRevert.Fail()
 
@@ -847,7 +848,7 @@ func createFromBackup(s *state.State, r *http.Request, projectName string, data 
 
 		runRevert.Add(revertHook)
 
-		err = internalImportFromBackup(context.TODO(), s, bInfo.Project, bInfo.Name, instanceName != "", devices)
+		err = internalImportFromBackup(ctx, s, bInfo.Project, bInfo.Name, instanceName != "", devices)
 		if err != nil {
 			return fmt.Errorf("Failed importing backup: %w", err)
 		}
@@ -1076,7 +1077,6 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 		}
 	}
 
-	var targetProject *api.Project
 	var profiles []api.Profile
 	var sourceInst *dbCluster.Instance
 	var sourceImage *api.Image
@@ -1086,20 +1086,17 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 	var targetGroupName string
 	var placementGroupName string
 
+	dbProject, err := broker.GetProjectByName(r.Context(), targetProjectName)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	targetProject := dbProject.ToAPI()
+
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		target := request.QueryParam(r, "target")
 		if !s.ServerClustered && target != "" {
 			return api.StatusErrorf(http.StatusBadRequest, "Target only allowed when clustered")
-		}
-
-		dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), targetProjectName)
-		if err != nil {
-			return fmt.Errorf("Failed loading project %q: %w", targetProjectName, err)
-		}
-
-		targetProject, err = dbProject.ToAPI(ctx, tx.Tx())
-		if err != nil {
-			return err
 		}
 
 		var allMembers []db.NodeInfo
@@ -1111,7 +1108,7 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 			}
 
 			// Check if the given target is allowed and try to resolve the right member or group
-			targetMemberInfo, targetGroupName, err = limits.CheckTarget(ctx, s.Authorizer, tx, targetProject, target, allMembers)
+			targetMemberInfo, targetGroupName, err = limits.CheckTarget(ctx, s.Authorizer, tx, &targetProject, target, allMembers)
 			if err != nil {
 				return err
 			}
@@ -1284,7 +1281,7 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 				}
 			}
 
-			clusterGroupsAllowed := limits.GetRestrictedClusterGroups(targetProject)
+			clusterGroupsAllowed := limits.GetRestrictedClusterGroups(&targetProject)
 
 			candidateMembers, err = tx.GetCandidateMembers(ctx, allMembers, architectures, targetGroupName, clusterGroupsAllowed, s.GlobalConfig.OfflineThreshold())
 			if err != nil {
@@ -1348,7 +1345,7 @@ func instancesPost(d *Daemon, r *http.Request) response.Response {
 
 	switch req.Source.Type {
 	case api.SourceTypeImage:
-		return createFromImage(r.Context(), s, *targetProject, profiles, sourceImage, sourceImageRef, &req)
+		return createFromImage(r.Context(), s, targetProject, profiles, sourceImage, sourceImageRef, &req)
 	case api.SourceTypeNone:
 		return createFromNone(r.Context(), s, targetProjectName, profiles, &req)
 	case api.SourceTypeMigration:
@@ -1406,7 +1403,7 @@ func instanceFindStoragePool(s *state.State, projectName string, req *api.Instan
 
 	// Handle copying/moving between two storage-api LXD instances.
 	if storagePool != "" {
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			_, err := tx.GetStoragePoolID(ctx, storagePool)
 
 			return err
@@ -1421,7 +1418,7 @@ func instanceFindStoragePool(s *state.State, projectName string, req *api.Instan
 
 	// If we don't have a valid pool yet, look through profiles
 	if storagePool == "" {
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			for _, pName := range req.Profiles {
 				_, p, err := tx.GetProfile(ctx, projectName, pName)
 				if err != nil {
@@ -1449,7 +1446,7 @@ func instanceFindStoragePool(s *state.State, projectName string, req *api.Instan
 
 		var pools []string
 
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			pools, err = tx.GetStoragePoolNames(ctx)

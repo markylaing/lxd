@@ -263,7 +263,7 @@ func networkzoneConfigAdd(tx *sql.Tx, id int64, config map[string]string) error 
 
 // UpdateNetworkZone updates the Network zone with the given ID.
 func (c *Cluster) UpdateNetworkZone(id int64, config *api.NetworkZonePut) error {
-	return c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	return c.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		_, err := tx.tx.Exec(`
 			UPDATE networks_zones
 			SET description=?

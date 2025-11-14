@@ -29,7 +29,7 @@ func NICType(s *state.State, deviceProjectName string, d deviceConfig.Device) (s
 
 			var netInfo *api.Network
 
-			err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				_, netInfo, _, err = tx.GetNetworkInAnyState(ctx, networkProjectName, d["network"])
 
 				return err

@@ -889,7 +889,7 @@ func internalImportFromBackup(ctx context.Context, s *state.State, projectName s
 			return fmt.Errorf(`The storage volume type %q does not match the instance's type %q`, dbVolume.Type, rootVol.Type)
 		}
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Remove the storage volume db entry for the instance since force was specified.
 			return tx.RemoveStoragePoolVolume(ctx, projectName, backupConf.Instance.Name, instanceDBVolType, pool.ID())
 		})

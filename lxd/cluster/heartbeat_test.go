@@ -39,7 +39,7 @@ func TestHeartbeat(t *testing.T) {
 	leaderState := f.State(leader)
 
 	// Artificially mark all nodes as down
-	err := leaderState.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := leaderState.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(t, err)
 		for _, member := range members {
@@ -58,7 +58,7 @@ func TestHeartbeat(t *testing.T) {
 	heartbeat(ctx)
 
 	// The heartbeat timestamps of all nodes got updated
-	err = leaderState.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = leaderState.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(t, err)
 
@@ -232,7 +232,7 @@ func (f *heartbeatFixture) node() (*state.State, *cluster.Gateway, string) {
 	state.DB.Cluster, err = db.OpenCluster(context.Background(), "db.bin", store, address, "/unused/db/dir", 5*time.Second, nil, serverUUID.String(), driver.WithDialFunc(dial))
 	require.NoError(f.t, err)
 
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		state.GlobalConfig, err = clusterConfig.Load(ctx, tx)
 		if err != nil {
 			return err
@@ -248,7 +248,7 @@ func (f *heartbeatFixture) node() (*state.State, *cluster.Gateway, string) {
 	})
 	require.NoError(f.t, err)
 
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		state.LocalConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})

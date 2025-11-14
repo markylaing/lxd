@@ -386,7 +386,7 @@ func (c *ClusterTx) UpdateNetworkPeer(ctx context.Context, networkID int64, peer
 
 // DeleteNetworkPeer deletes an existing Network Peer.
 func (c *Cluster) DeleteNetworkPeer(networkID int64, peerID int64) error {
-	return c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	return c.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		// Delete existing Network peer record.
 		res, err := tx.tx.Exec(`
 			DELETE FROM networks_peers
@@ -431,7 +431,7 @@ func (c *Cluster) GetNetworkPeersTargetNetworkIDs(projectName string, networkTyp
 		AND p.target_network_id > 0
 	`
 
-	err = c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err = c.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		return query.Scan(ctx, tx.Tx(), q, func(scan func(dest ...any) error) error {
 			var peerName string
 			var networkName string

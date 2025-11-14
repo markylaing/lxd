@@ -413,7 +413,7 @@ func storagePoolVolumeTypeCustomBackupsPost(d *Daemon, r *http.Request) response
 	fullName := details.volumeName + shared.SnapshotDelimiter + backupName
 	volumeOnly := req.VolumeOnly
 
-	backup := func(op *operations.Operation) error {
+	backup := func(_ context.Context, op *operations.Operation) error {
 		args := db.StoragePoolVolumeBackup{
 			Name:                 fullName,
 			VolumeID:             dbVolume.ID,
@@ -630,7 +630,7 @@ func storagePoolVolumeTypeCustomBackupPost(d *Daemon, r *http.Request) response.
 
 	newName := details.volumeName + shared.SnapshotDelimiter + newBackupName
 
-	rename := func(op *operations.Operation) error {
+	rename := func(_ context.Context, op *operations.Operation) error {
 		err := backup.Rename(newName)
 		if err != nil {
 			return err
@@ -727,7 +727,7 @@ func storagePoolVolumeTypeCustomBackupDelete(d *Daemon, r *http.Request) respons
 		return response.SmartError(err)
 	}
 
-	remove := func(op *operations.Operation) error {
+	remove := func(_ context.Context, op *operations.Operation) error {
 		err := backup.Delete()
 		if err != nil {
 			return err

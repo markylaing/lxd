@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -197,7 +198,7 @@ func instanceStatePut(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(err)
 	}
 
-	do := func(op *operations.Operation) error {
+	do := func(_ context.Context, op *operations.Operation) error {
 		inst.SetOperation(op)
 
 		return doInstanceStatePut(inst, req)

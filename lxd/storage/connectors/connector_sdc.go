@@ -42,7 +42,7 @@ func (c *connectorSDC) drvCfgIsSDCInstalled() bool {
 
 // LoadModules checks if the respective SDC kernel module got already loaded outside of LXD.
 // It doesn't try to load the module as LXD doesn't have any control over it.
-func (c *connectorSDC) LoadModules() error {
+func (c *connectorSDC) LoadModules(_ context.Context) error {
 	ok := c.drvCfgIsSDCInstalled()
 	if !ok {
 		return errors.New("SDC kernel module is not loaded")

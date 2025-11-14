@@ -38,7 +38,7 @@ func TestNewNotifier(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -91,7 +91,7 @@ func TestNewNotify_NotifyAllError(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -122,7 +122,7 @@ func TestNewNotify_NotifyAlive(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -160,7 +160,7 @@ func TestNewNotify_NotifyAliveShuttingDown(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = testState.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = testState.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -207,7 +207,7 @@ func (h *notifyFixtures) Nodes(cert *shared.CertInfo, n int) func() {
 	}
 
 	// Insert new entries in the nodes table of the cluster database.
-	err := h.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := h.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		for i := range n {
 			name := strconv.Itoa(i)
 			address := servers[i].Listener.Addr().String()
@@ -251,7 +251,7 @@ func (h *notifyFixtures) Nodes(cert *shared.CertInfo, n int) func() {
 // Return the network address of the i-th node.
 func (h *notifyFixtures) Address(i int) string {
 	var address string
-	err := h.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := h.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(h.t, err)
 		address = members[i].Address
@@ -263,7 +263,7 @@ func (h *notifyFixtures) Address(i int) string {
 
 // Mark the i'th node as down.
 func (h *notifyFixtures) Down(i int) {
-	err := h.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := h.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(h.t, err)
 		err = tx.SetNodeHeartbeat(members[i].Address, time.Now().Add(-time.Minute))

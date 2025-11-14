@@ -760,6 +760,146 @@ func RemoveElementsFromSlice[T comparable](list []T, elements ...T) []T {
 	return list
 }
 
+// MapFilterTransformSlice filters and transforms the map into a slice.
+func MapFilterTransformSlice[M map[K]V, K comparable, V any, E any](m M, f func(K, V) (bool, error), t func(K, V) (E, error)) ([]E, error) {
+	s := make([]E, 0, len(m))
+	for k, v := range m {
+		keep, err := f(k, v)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to filter map entry: %w", err)
+		}
+
+		if !keep {
+			continue
+		}
+
+		e, err := t(k, v)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to transform map entry: %w", err)
+		}
+
+		s = append(s, e)
+	}
+
+	return s, nil
+}
+
+// MapFilterTransform filters and transforms the map.
+func MapFilterTransform[M map[K]V, K comparable, V any, K2 comparable, V2 any](m M, f func(K, V) (bool, error), t func(K, V) (K2, V2, error)) (map[K2]V2, error) {
+	m2 := make(map[K2]V2, len(m))
+	if f == nil {
+		f = func(k K, v V) (bool, error) {
+			return true, nil
+		}
+	}
+
+	for k, v := range m {
+		keep, err := f(k, v)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to filter map entry: %w", err)
+		}
+
+		if !keep {
+			continue
+		}
+
+		k2, v2, err := t(k, v)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to transform map entry: %w", err)
+		}
+
+		m2[k2] = v2
+	}
+
+	return m2, nil
+}
+
+func MapFilter[M map[K]V, K comparable, V any](m M, f func(K, V) (bool, error)) (map[K]V, error) {
+	return MapFilterTransform(m, f, func(k K, v V) (K, V, error) {
+		return k, v, nil
+	})
+}
+
+func SliceFilterTransform[S []E, E any, E2 any](s S, f func(i int, e E) (bool, error), t func(i int, e E) (E2, error)) ([]E2, error) {
+	s2 := make([]E2, 0, len(s))
+	if f == nil {
+		f = func(i int, e E) (bool, error) {
+			return true, nil
+		}
+	}
+
+	if t == nil {
+		return nil, fmt.Errorf("A transform function must be provided")
+	}
+
+	for i, e := range s {
+		keep, err := f(i, e)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to filter slice element: %w", err)
+		}
+
+		if !keep {
+			continue
+		}
+
+		e2, err := t(i, e)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to transform slice element: %w", err)
+		}
+
+		s2 = append(s2, e2)
+	}
+
+	return s2, nil
+}
+
+func SliceFilterTransformMap[S []E, E any, K comparable, V any](s S, f func(i int, e E) (bool, error), t func(i int, e E) (K, V, error)) (map[K]V, error) {
+	m := make(map[K]V, len(s))
+	if f == nil {
+		f = func(i int, e E) (bool, error) {
+			return true, nil
+		}
+	}
+
+	if t == nil {
+		return nil, fmt.Errorf("A transform function must be provided")
+	}
+
+	for i, e := range s {
+		keep, err := f(i, e)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to filter slice element: %w", err)
+		}
+
+		if !keep {
+			continue
+		}
+
+		k, v, err := t(i, e)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to transform slice element: %w", err)
+		}
+
+		m[k] = v
+	}
+
+	return m, nil
+}
+
+func SliceFilter[S []E, E any](s S, f func(i int, e E) (bool, error)) ([]E, error) {
+	return SliceFilterTransform(s, f, func(i int, e E) (E, error) {
+		return e, nil
+	})
+}
+
+func SliceTransform[S []E, E any, E2 any](s S, t func(i int, e E) (E2, error)) ([]E2, error) {
+	return SliceFilterTransform(s, nil, t)
+}
+
+func SliceTransformMap[S []E, E any, K comparable, V any](s S, t func(i int, e E) (K, V, error)) (map[K]V, error) {
+	return SliceFilterTransformMap(s, nil, t)
+}
+
 // StringHasPrefix returns true if value has one of the supplied prefixes.
 func StringHasPrefix(value string, prefixes ...string) bool {
 	for _, prefix := range prefixes {

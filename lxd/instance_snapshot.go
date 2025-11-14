@@ -345,7 +345,7 @@ func instanceSnapshotsPost(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(fmt.Errorf("Invalid snapshot name: %w", err))
 	}
 
-	snapshot := func(op *operations.Operation) error {
+	snapshot := func(ctx context.Context, op *operations.Operation) error {
 		inst.SetOperation(op)
 		return inst.Snapshot(req.Name, req.ExpiresAt, req.Stateful, req.DiskVolumesMode)
 	}
@@ -499,12 +499,12 @@ func snapshotPut(s *state.State, r *http.Request, snapInst instance.Instance) re
 		return response.InternalError(err)
 	}
 
-	var do func(op *operations.Operation) error
+	var do func(ctx context.Context, op *operations.Operation) error
 
 	_, err = rj.GetString("expires_at")
 	if err != nil {
 		// Skip updating the snapshot since the requested key wasn't provided
-		do = func(_ *operations.Operation) error {
+		do = func(_ context.Context, _ *operations.Operation) error {
 			return nil
 		}
 	} else {
@@ -521,7 +521,7 @@ func snapshotPut(s *state.State, r *http.Request, snapInst instance.Instance) re
 		}
 
 		// Update instance configuration
-		do = func(_ *operations.Operation) error {
+		do = func(_ context.Context, _ *operations.Operation) error {
 			args := db.InstanceArgs{
 				Architecture: snapInst.Architecture(),
 				Config:       snapInst.LocalConfig(),
@@ -712,7 +712,7 @@ func snapshotPost(s *state.State, r *http.Request, snapInst instance.Instance) r
 			resources["containers"] = resources["instances"]
 		}
 
-		run := func(op *operations.Operation) error {
+		run := func(ctx context.Context, op *operations.Operation) error {
 			return ws.Do(s, op)
 		}
 
@@ -761,7 +761,7 @@ func snapshotPost(s *state.State, r *http.Request, snapInst instance.Instance) r
 		return response.Conflict(err)
 	}
 
-	rename := func(_ *operations.Operation) error {
+	rename := func(ctx context.Context, _ *operations.Operation) error {
 		return snapInst.Rename(fullName, false)
 	}
 
@@ -818,7 +818,7 @@ func snapshotDelete(s *state.State, r *http.Request, snapInst instance.Instance)
 		diskVolumesMode = api.DiskVolumesModeRoot
 	}
 
-	remove := func(_ *operations.Operation) error {
+	remove := func(ctx context.Context, _ *operations.Operation) error {
 		return snapInst.Delete(false, diskVolumesMode)
 	}
 

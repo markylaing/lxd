@@ -1,5 +1,7 @@
 package ip
 
+import "context"
+
 // Vlan represents arguments for link of type vlan.
 type Vlan struct {
 	Link
@@ -18,6 +20,6 @@ func (vlan *Vlan) additionalArgs() []string {
 }
 
 // Add adds new virtual link.
-func (vlan *Vlan) Add() error {
-	return vlan.add("vlan", vlan.additionalArgs())
+func (vlan *Vlan) Add(ctx context.Context) error {
+	return vlan.add(ctx, "vlan", vlan.additionalArgs())
 }

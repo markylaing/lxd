@@ -178,7 +178,7 @@ func VolumeDBGet(pool Pool, projectName string, volumeName string, volumeType dr
 
 	// Get the storage volume.
 	var dbVolume *db.StorageVolume
-	err = p.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = p.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		dbVolume, err = tx.GetStoragePoolVolume(ctx, pool.ID(), projectName, volDBType, volumeName, true)
 		if err != nil {
 			if response.IsNotFoundError(err) {
@@ -256,7 +256,7 @@ func VolumeDBCreate(pool Pool, projectName string, volumeName string, volumeDesc
 		return err
 	}
 
-	err = p.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = p.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Create the database entry for the storage volume.
 		if snapshot {
 			_, err = tx.CreateStorageVolumeSnapshot(ctx, projectName, volumeName, volumeDescription, volDBType, pool.ID(), vol.Config(), creationDate, expiryDate)
@@ -286,7 +286,7 @@ func VolumeDBDelete(pool Pool, projectName string, volumeName string, volumeType
 		return err
 	}
 
-	err = p.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = p.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RemoveStoragePoolVolume(ctx, projectName, volumeName, volDBType, pool.ID())
 	})
 	if err != nil && !response.IsNotFoundError(err) {
@@ -310,7 +310,7 @@ func VolumeDBSnapshotsGet(pool Pool, projectName string, volume string, volumeTy
 
 	var snapshots []db.StorageVolumeArgs
 
-	err = p.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = p.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		snapshots, err = tx.GetLocalStoragePoolVolumeSnapshotsWithType(ctx, projectName, volume, volDBType, pool.ID())
 
 		return err
@@ -333,7 +333,7 @@ func BucketDBGet(pool Pool, projectName string, bucketName string, memberSpecifi
 	var bucket *db.StorageBucket
 
 	// Get the storage bucket.
-	err = p.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = p.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		bucket, err = tx.GetStoragePoolBucket(ctx, pool.ID(), projectName, memberSpecific, bucketName)
 		if err != nil {
 			if response.IsNotFoundError(err) {
@@ -994,7 +994,7 @@ func VolumeUsedByProfileDevices(s *state.State, poolName string, projectName str
 	var profileIDs []int64
 	var profileProjects []*api.Project
 	// Retrieve required info from the database in single transaction for performance.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projects, err := cluster.GetProjects(ctx, tx.Tx())
 		if err != nil {
 			return fmt.Errorf("Failed loading projects: %w", err)
@@ -1050,7 +1050,7 @@ func VolumeUsedByProfileDevices(s *state.State, poolName string, projectName str
 	// Iterate all profiles, consider only those which belong to a project that has the same effective
 	// storage project as volume.
 	for i, profile := range profiles {
-		profileStorageProject := project.StorageVolumeProjectFromRecord(profileProjects[i], volumeType)
+		profileStorageProject := project.StorageVolumeProjectFromRecord(*profileProjects[i], volumeType)
 
 		// Check profile's storage project is the same as the volume's project.
 		// If not then the volume names mentioned in the profile's config cannot be referring to volumes
@@ -1097,7 +1097,7 @@ func VolumeUsedByInstanceDevices(s *state.State, poolName string, projectName st
 		return err
 	}
 
-	return s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			// If the volume has a specific cluster member which is different than the instance then skip as
 			// instance cannot be using this volume.
@@ -1105,7 +1105,7 @@ func VolumeUsedByInstanceDevices(s *state.State, poolName string, projectName st
 				return nil
 			}
 
-			instStorageProject := project.StorageVolumeProjectFromRecord(&p, volumeType)
+			instStorageProject := project.StorageVolumeProjectFromRecord(p, volumeType)
 
 			// Check instance's storage project is the same as the volume's project.
 			// If not then the volume names mentioned in the instance's config cannot be referring to volumes
@@ -1185,7 +1185,7 @@ func VolumeUsedByExclusiveRemoteInstancesWithProfiles(s *state.State, poolName s
 func VolumeUsedByDaemon(s *state.State, poolName string, volumeName string) (bool, error) {
 	var nodeConfig *node.Config
 	var err error
-	err = s.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = s.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})

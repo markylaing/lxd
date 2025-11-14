@@ -348,7 +348,7 @@ func instanceBackupsPost(d *Daemon, r *http.Request) response.Response {
 	// We keep the req.ContainerOnly for backward compatibility.
 	instanceOnly := req.InstanceOnly || req.ContainerOnly //nolint:staticcheck,unused
 
-	backup := func(op *operations.Operation) error {
+	backup := func(ctx context.Context, op *operations.Operation) error {
 		args := db.InstanceBackup{
 			Name:                 fullName,
 			InstanceID:           inst.ID(),
@@ -555,7 +555,7 @@ func instanceBackupPost(d *Daemon, r *http.Request) response.Response {
 
 	newName := name + shared.SnapshotDelimiter + newBackupName
 
-	rename := func(op *operations.Operation) error {
+	rename := func(ctx context.Context, op *operations.Operation) error {
 		err := backup.Rename(newName)
 		if err != nil {
 			return err
@@ -644,7 +644,7 @@ func instanceBackupDelete(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	remove := func(op *operations.Operation) error {
+	remove := func(ctx context.Context, op *operations.Operation) error {
 		err := backup.Delete()
 		if err != nil {
 			return err

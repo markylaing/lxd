@@ -23,7 +23,7 @@ import (
 	clusterConfig "github.com/canonical/lxd/lxd/cluster/config"
 	"github.com/canonical/lxd/lxd/config"
 	"github.com/canonical/lxd/lxd/db"
-	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
+	"github.com/canonical/lxd/lxd/db/broker"
 	dbOIDC "github.com/canonical/lxd/lxd/db/oidc"
 	instanceDrivers "github.com/canonical/lxd/lxd/instance/drivers"
 	"github.com/canonical/lxd/lxd/instance/instancetype"
@@ -535,7 +535,7 @@ func api10Put(d *Daemon, r *http.Request) response.Response {
 
 		// Get the current (updated) config.
 		var config *clusterConfig.Config
-		err := s.DB.Cluster.Transaction(context.Background(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 			config, err = clusterConfig.Load(ctx, tx)
 			return err
@@ -670,19 +670,14 @@ func validateStorageVolumes(s *state.State, ctx context.Context, nodeValues map[
 			continue
 		}
 
-		var project *api.Project
+		dbProject, err := broker.GetProjectByName(ctx, projectName)
+		if err != nil {
+			return err
+		}
+
+		project := dbProject.ToAPI()
 		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
-			dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), projectName)
-			if err != nil {
-				return err
-			}
-
-			project, err = dbProject.ToAPI(ctx, tx.Tx())
-			if err != nil {
-				return err
-			}
-
-			project.UsedBy, err = projectUsedBy(ctx, tx, dbProject)
+			project.UsedBy, err = projectUsedBy(ctx, tx.Tx(), dbProject.Name)
 			return err
 		})
 		if err != nil {

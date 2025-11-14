@@ -327,7 +327,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 			}
 
 			// Setup the instance move operation.
-			run := func(op *operations.Operation) error {
+			run := func(ctx context.Context, op *operations.Operation) error {
 				return instancePostMigration(s, inst, req, op)
 			}
 
@@ -358,8 +358,8 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 				return response.BadRequest(errors.New("Instance has backups"))
 			}
 
-			run := func(op *operations.Operation) error {
-				return migrateInstance(r.Context(), s, inst, targetMemberInfo.Name, targetGroupName, req, op)
+			run := func(ctx context.Context, op *operations.Operation) error {
+				return migrateInstance(ctx, s, inst, targetMemberInfo.Name, targetGroupName, req, op)
 			}
 
 			resources := map[string][]api.URL{}
@@ -391,11 +391,11 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 			resources["containers"] = resources["instances"]
 		}
 
-		run := func(op *operations.Operation) error {
+		run := func(ctx context.Context, op *operations.Operation) error {
 			return ws.Do(s, op)
 		}
 
-		cancel := func(op *operations.Operation) error {
+		cancel := func(ctx context.Context, op *operations.Operation) error {
 			ws.disconnect()
 			return nil
 		}
@@ -431,7 +431,7 @@ func instancePost(d *Daemon, r *http.Request) response.Response {
 		return response.Conflict(fmt.Errorf("Name %q already in use", req.Name))
 	}
 
-	run := func(*operations.Operation) error {
+	run := func(ctx context.Context, op *operations.Operation) error {
 		return inst.Rename(req.Name, true)
 	}
 
@@ -496,7 +496,7 @@ func instancePostMigration(s *state.State, inst instance.Instance, req api.Insta
 
 	apiProfiles := []api.Profile{}
 	if len(req.Profiles) > 0 {
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			profiles, err := dbCluster.GetProfilesIfEnabled(ctx, tx.Tx(), req.Project, req.Profiles)
 			if err != nil {
 				return err
@@ -612,7 +612,7 @@ func instancePostMigration(s *state.State, inst instance.Instance, req api.Insta
 
 	// Update any permissions relating to the old instance to point to the new instance before it is deleted.
 	// Warnings relating to the old instance will be deleted.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		q := `UPDATE auth_groups_permissions SET entity_id = ? WHERE entity_type = ? AND entity_id = ?`
 		_, err = tx.Tx().ExecContext(ctx, q, targetInst.ID(), dbCluster.EntityType(entity.TypeInstance), inst.ID())
 		return err
@@ -647,7 +647,7 @@ func instancePostMigration(s *state.State, inst instance.Instance, req api.Insta
 
 // Migrate an instance to another cluster node (supports both local and remote storage).
 // Source and target members must be online.
-func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool storagePools.Pool, srcInst instance.Instance, newInstName string, srcMember db.NodeInfo, newMember db.NodeInfo, targetGroupName string, stateful bool, allowInconsistent bool) (func(op *operations.Operation) error, error) {
+func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool storagePools.Pool, srcInst instance.Instance, newInstName string, srcMember db.NodeInfo, newMember db.NodeInfo, targetGroupName string, stateful bool, allowInconsistent bool) (func(_ context.Context, op *operations.Operation) error, error) {
 	srcMemberOffline := srcMember.IsOffline(s.GlobalConfig.OfflineThreshold())
 
 	// Make sure that the source member is online if we end up being called from another member after a
@@ -672,7 +672,7 @@ func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool 
 		return nil, err
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(ctx context.Context, op *operations.Operation) error {
 		srcInstName := srcInst.Name()
 		projectName := srcInst.Project().Name
 
@@ -745,11 +745,11 @@ func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool 
 			return fmt.Errorf("Failed setting up instance migration on source: %w", err)
 		}
 
-		run := func(op *operations.Operation) error {
+		run := func(_ context.Context, op *operations.Operation) error {
 			return srcMigration.Do(s, op)
 		}
 
-		cancel := func(op *operations.Operation) error {
+		cancel := func(_ context.Context, op *operations.Operation) error {
 			srcMigration.disconnect()
 			return nil
 		}
@@ -797,7 +797,7 @@ func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool 
 			return err
 		}
 
-		err = srcOp.Wait(context.Background())
+		err = srcOp.Wait(ctx)
 		if err != nil {
 			return fmt.Errorf("Instance move to destination failed on source: %w", err)
 		}
@@ -807,7 +807,7 @@ func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool 
 			return fmt.Errorf("Instance move to destination failed: %w", err)
 		}
 
-		err = s.DB.Cluster.Transaction(context.Background(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Update instance DB record to indicate its location on the new cluster member.
 			err = tx.UpdateInstanceNode(ctx, projectName, srcInstName, newInstName, srcInst.ID(), newMember.Name, srcPool.ID(), volDBType)
 			if err != nil {
@@ -879,7 +879,7 @@ func instancePostClusteringMigrate(ctx context.Context, s *state.State, srcPool 
 
 // instancePostClusteringMigrateWithRemoteStorage handles moving a remote shared storage instance from a source member that is offline.
 // This function must be run on the target cluster member to move the instance to.
-func instancePostClusteringMigrateWithRemoteStorage(s *state.State, srcPool storagePools.Pool, srcInst instance.Instance, newInstName string, newMember db.NodeInfo, targetGroupName string) (func(op *operations.Operation) error, error) {
+func instancePostClusteringMigrateWithRemoteStorage(s *state.State, srcPool storagePools.Pool, srcInst instance.Instance, newInstName string, newMember db.NodeInfo, targetGroupName string) (func(context.Context, *operations.Operation) error, error) {
 	// Sense checks to avoid unexpected behaviour.
 	if !srcPool.Driver().Info().Remote {
 		return nil, errors.New("Source instance's storage pool is not remote shared storage")
@@ -901,12 +901,12 @@ func instancePostClusteringMigrateWithRemoteStorage(s *state.State, srcPool stor
 		return nil, err
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(ctx context.Context, op *operations.Operation) error {
 		projectName := srcInst.Project().Name
 		srcInstName := srcInst.Name()
 
 		// Re-link the database entries against the new member name.
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			err := tx.UpdateInstanceNode(ctx, projectName, srcInstName, srcInstName, srcInst.ID(), newMember.Name, srcPool.ID(), volDBType)
 			if err != nil {
 				return fmt.Errorf("Failed updating cluster member to %q for instance %q: %w", newMember.Name, srcInstName, err)
@@ -962,7 +962,7 @@ func migrateInstance(ctx context.Context, s *state.State, inst instance.Instance
 
 	// If the source member is online then get its address so we can connect to it and see if the
 	// instance is running later.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		srcMember, err = tx.GetNodeByName(ctx, inst.Location())
 		if err != nil {
 			return fmt.Errorf("Failed getting current cluster member of instance %q", inst.Name())
@@ -992,7 +992,7 @@ func migrateInstance(ctx context.Context, s *state.State, inst instance.Instance
 			return err
 		}
 
-		return f(op)
+		return f(ctx, op)
 	}
 
 	f, err := instancePostClusteringMigrate(ctx, s, srcPool, inst, req.Name, srcMember, newMember, targetGroupName, req.Live, req.AllowInconsistent)
@@ -1000,5 +1000,5 @@ func migrateInstance(ctx context.Context, s *state.State, inst instance.Instance
 		return err
 	}
 
-	return f(op)
+	return f(ctx, op)
 }

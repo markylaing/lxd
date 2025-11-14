@@ -12,6 +12,7 @@ import (
 	"github.com/canonical/lxd/lxd/backup"
 	backupConfig "github.com/canonical/lxd/lxd/backup/config"
 	"github.com/canonical/lxd/lxd/db"
+	"github.com/canonical/lxd/lxd/db/broker"
 	dbCluster "github.com/canonical/lxd/lxd/db/cluster"
 	deviceConfig "github.com/canonical/lxd/lxd/device/config"
 	"github.com/canonical/lxd/lxd/instance"
@@ -177,21 +178,15 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 	// imported instances and volumes, and avoid repeatedly querying the same information.
 	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Load list of projects for validation.
-		ps, err := dbCluster.GetProjects(ctx, tx.Tx())
+		projectList, err := broker.GetAllProjects(ctx)
 		if err != nil {
 			return err
 		}
 
-		// Convert to map for lookups by name later.
-		projects = make(map[string]*api.Project, len(ps))
-		for i := range ps {
-			project, err := ps[i].ToAPI(ctx, tx.Tx())
-			if err != nil {
-				return err
-			}
-
-			projects[ps[i].Name] = project
-		}
+		projects, _ = shared.SliceTransformMap(projectList, func(i int, e broker.Project) (string, *api.Project, error) {
+			p := e.ToAPI()
+			return e.Name, &p, nil
+		})
 
 		// Load list of project/profile names for validation.
 		profiles, err := dbCluster.GetProfiles(ctx, tx.Tx())
@@ -358,8 +353,8 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				continue // Skip further validation if project is missing.
 			}
 
-			profileProjectname = project.ProfileProjectFromRecord(projectInfo)
-			networkProjectName = project.NetworkProjectFromRecord(projectInfo)
+			profileProjectname = project.ProfileProjectFromRecord(*projectInfo)
+			networkProjectName = project.NetworkProjectFromRecord(*projectInfo)
 
 			for _, poolVol := range poolVols {
 				if poolVol.Instance == nil {
@@ -542,7 +537,7 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				return response.SmartError(fmt.Errorf("Project %q not found", projectName))
 			}
 
-			customStorageProjectName := project.StorageVolumeProjectFromRecord(projectInfo, dbCluster.StoragePoolVolumeTypeCustom)
+			customStorageProjectName := project.StorageVolumeProjectFromRecord(*projectInfo, dbCluster.StoragePoolVolumeTypeCustom)
 
 			// Recover unknown custom volumes (do this first before recovering instances so that any
 			// instances that reference unknown custom volume disk devices can be created).
@@ -595,7 +590,7 @@ func internalRecoverScan(ctx context.Context, s *state.State, userPools []api.St
 				return response.SmartError(fmt.Errorf("Project %q not found", projectName))
 			}
 
-			profileProjectName := project.ProfileProjectFromRecord(projectInfo)
+			profileProjectName := project.ProfileProjectFromRecord(*projectInfo)
 
 			// Recover unknown instance volumes.
 			for _, poolVol := range poolVols {

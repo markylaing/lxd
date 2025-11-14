@@ -183,14 +183,14 @@ func (d *cephobject) ValidateSource() error {
 // WARNING: The Create() function cannot rely on any of the struct attributes being set.
 func (d *cephobject) Create() error {
 	// Check if there is an existing cephobjectRadosgwAdminUser user.
-	adminUserInfo, _, err := d.radosgwadminGetUser(context.TODO(), cephobjectRadosgwAdminUser)
+	adminUserInfo, _, err := d.radosgwadminGetUser(ctx, cephobjectRadosgwAdminUser)
 	if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
 		return fmt.Errorf("Failed getting admin user %q: %w", cephobjectRadosgwAdminUser, err)
 	}
 
 	// Create missing cephobjectRadosgwAdminUser user.
 	if adminUserInfo == nil {
-		_, err = d.radosgwadminUserAdd(context.TODO(), cephobjectRadosgwAdminUser, 0)
+		_, err = d.radosgwadminUserAdd(ctx, cephobjectRadosgwAdminUser, 0)
 		if err != nil {
 			return fmt.Errorf("Failed added admin user %q: %w", cephobjectRadosgwAdminUser, err)
 		}
@@ -204,7 +204,7 @@ func (d *cephobject) Create() error {
 // Delete clears any local and remote data related to this driver instance.
 func (d *cephobject) Delete(op *operations.Operation) error {
 	if shared.IsTrue(d.config["volatile.pool.pristine"]) {
-		err := d.radosgwadminUserDelete(context.TODO(), cephobjectRadosgwAdminUser)
+		err := d.radosgwadminUserDelete(ctx, cephobjectRadosgwAdminUser)
 		if err != nil {
 			return fmt.Errorf("Failed deleting admin user %q: %w", cephobjectRadosgwAdminUser, err)
 		}
@@ -217,7 +217,7 @@ func (d *cephobject) Delete(op *operations.Operation) error {
 func (d *cephobject) Update(changedConfig map[string]string) error {
 	_, prefixChanged := changedConfig["cephobject.bucket.name_prefix"]
 	if prefixChanged {
-		buckets, err := d.radosgwadminBucketList(context.TODO())
+		buckets, err := d.radosgwadminBucketList(ctx)
 		if err != nil {
 			return err
 		}

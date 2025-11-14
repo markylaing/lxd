@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/canonical/go-dqlite/v3/driver"
+	"github.com/canonical/lxd/lxd/request"
 
 	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/node"
@@ -377,11 +378,19 @@ func (c *Cluster) RunExclusive(f func(t Transactor) error) error {
 	}
 }
 
+const ctxClusterTx request.CtxKey = "cluster_tx"
+
 func (c *Cluster) transaction(ctx context.Context, f func(context.Context, *ClusterTx) error) error {
-	clusterTx := &ClusterTx{
+	clusterTx, err := request.GetContextValue[*ClusterTx](ctx, ctxClusterTx)
+	if err == nil {
+		return f(ctx, clusterTx)
+	}
+
+	clusterTx = &ClusterTx{
 		nodeID: c.nodeID,
 	}
 
+	ctx = context.WithValue(ctx, ctxClusterTx, clusterTx)
 	return query.Retry(ctx, func(ctx context.Context) error {
 		txFunc := func(ctx context.Context, tx *sql.Tx) error {
 			clusterTx.tx = tx

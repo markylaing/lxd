@@ -14,13 +14,13 @@ type Tuntap struct {
 }
 
 // Add adds new tuntap interface.
-func (t *Tuntap) Add() error {
+func (t *Tuntap) Add(ctx context.Context) error {
 	cmd := []string{"tuntap", "add", "name", t.Name, "mode", t.Mode}
 	if t.MultiQueue {
 		cmd = append(cmd, "multi_queue")
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "ip", cmd...)
+	_, err := shared.RunCommandContext(ctx, "ip", cmd...)
 	if err != nil {
 		return err
 	}

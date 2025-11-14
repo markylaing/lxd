@@ -91,7 +91,7 @@ func autoRenewCertificate(ctx context.Context, d *Daemon, force bool) error {
 		return nil
 	}
 
-	opRun := func(op *operations.Operation) error {
+	opRun := func(ctx context.Context, op *operations.Operation) error {
 		newCert, err := acme.UpdateCertificate(s, d.http01Provider, s.ServerClustered, domain, email, caURL, force)
 		if err != nil {
 			return err
@@ -131,7 +131,7 @@ func autoRenewCertificate(ctx context.Context, d *Daemon, force bool) error {
 		return nil
 	}
 
-	op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.RenewServerCertificate, nil, nil, opRun, nil, nil)
+	op, err := operations.OperationCreate(ctx, s, "", operations.OperationClassTask, operationtype.RenewServerCertificate, nil, nil, opRun, nil, nil)
 	if err != nil {
 		logger.Error("Failed creating renew server certificate operation", logger.Ctx{"err": err})
 		return err

@@ -128,7 +128,7 @@ func instancePut(d *Daemon, r *http.Request) response.Response {
 		architecture = 0
 	}
 
-	var do func(*operations.Operation) error
+	var do func(ctx context.Context, op *operations.Operation) error
 	var opType operationtype.Type
 	if configRaw.Restore == "" {
 		// Check project limits.
@@ -165,7 +165,7 @@ func instancePut(d *Daemon, r *http.Request) response.Response {
 		}
 
 		// Update container configuration
-		do = func(_ *operations.Operation) error {
+		do = func(ctx context.Context, op *operations.Operation) error {
 			defer unlock()
 
 			args := db.InstanceArgs{
@@ -189,7 +189,7 @@ func instancePut(d *Daemon, r *http.Request) response.Response {
 		opType = operationtype.InstanceUpdate
 	} else {
 		// Snapshot Restore
-		do = func(_ *operations.Operation) error {
+		do = func(_ context.Context, _ *operations.Operation) error {
 			defer unlock()
 
 			return instanceSnapRestore(s, projectName, name, configRaw)

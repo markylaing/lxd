@@ -171,7 +171,7 @@ func (c *cmdClusterEdit) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	var nodes []db.RaftNode
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		config, err := node.ConfigLoad(ctx, tx)
 		if err != nil {
 			return err
@@ -352,7 +352,7 @@ func (c *cmdClusterShow) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	var nodes []db.RaftNode
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 		nodes, err = tx.GetRaftNodes(ctx)
 		return err

@@ -139,7 +139,7 @@ func ClusterState(s *state.State, networkCert *shared.CertInfo, members ...db.No
 	wg.Wait()
 
 	if includeLocalMember {
-		localState, err := MemberState(context.TODO(), s)
+		localState, err := MemberState(ctx, s)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to get local member state: %w", err)
 		}
@@ -167,7 +167,7 @@ func MemberState(ctx context.Context, s *state.State) (*api.ClusterMemberState, 
 	var pools map[int64]api.StoragePool
 	var poolMembers map[int64]map[int64]db.StoragePoolNode
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		pools, poolMembers, err = tx.GetStoragePools(ctx, &stateCreated)
 
 		return err

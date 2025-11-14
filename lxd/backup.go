@@ -56,7 +56,7 @@ func backupCreate(s *state.State, args db.InstanceBackup, sourceInst instance.In
 	}
 
 	// Create the database entry.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.CreateInstanceBackup(ctx, args)
 	})
 	if err != nil {
@@ -82,7 +82,7 @@ func backupCreate(s *state.State, args db.InstanceBackup, sourceInst instance.In
 		compress = b.CompressionAlgorithm()
 	} else {
 		var p *api.Project
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			project, err := dbCluster.GetProject(ctx, tx.Tx(), sourceInst.Project().Name)
 			if err != nil {
 				return err
@@ -305,7 +305,7 @@ func pruneExpiredBackupsTask(stateFunc func() *state.State) (task.Func, task.Sch
 	f := func(ctx context.Context) {
 		s := stateFunc()
 
-		opRun := func(op *operations.Operation) error {
+		opRun := func(_ context.Context, op *operations.Operation) error {
 			err := pruneExpiredInstanceBackups(ctx, s)
 			if err != nil {
 				return fmt.Errorf("Failed pruning expired instance backups: %w", err)
@@ -319,7 +319,7 @@ func pruneExpiredBackupsTask(stateFunc func() *state.State) (task.Func, task.Sch
 			return nil
 		}
 
-		op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.BackupsExpire, nil, nil, opRun, nil, nil)
+		op, err := operations.OperationCreate(ctx, s, "", operations.OperationClassTask, operationtype.BackupsExpire, nil, nil, opRun, nil, nil)
 		if err != nil {
 			logger.Error("Failed creating expired backups operation", logger.Ctx{"err": err})
 			return
@@ -407,7 +407,7 @@ func volumeBackupCreate(s *state.State, args db.StoragePoolVolumeBackup, project
 	}
 
 	// Create the database entry.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.CreateStoragePoolVolumeBackup(ctx, args)
 	})
 	if err != nil {
@@ -422,7 +422,7 @@ func volumeBackupCreate(s *state.State, args db.StoragePoolVolumeBackup, project
 
 	var backupRow db.StoragePoolVolumeBackup
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		backupRow, err = tx.GetStoragePoolVolumeBackup(ctx, projectName, poolName, args.Name)
 		return err
 	})

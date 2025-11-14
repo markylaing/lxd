@@ -77,7 +77,7 @@ func NetworkSetDevMAC(devName string, mac string) error {
 		}
 
 		link := &ip.Link{Name: devName}
-		err = link.SetAddress(hwaddr)
+		err = link.SetAddress(ctx, hwaddr)
 		if err != nil {
 			return err
 		}
@@ -372,7 +372,7 @@ func networkCreateTap(hostName string, m deviceConfig.Device) (uint32, error) {
 	}
 
 	if txqueuelen > 0 {
-		err = link.SetTXQueueLength(txqueuelen)
+		err = link.SetTXQueueLength(ctx, txqueuelen)
 		if err != nil {
 			return 0, fmt.Errorf("Failed to set the TX queue length %d: %w", txqueuelen, err)
 		}
@@ -983,7 +983,7 @@ func networkSRIOVSetupContainerVFNIC(hostName string, config map[string]string) 
 		}
 
 		link := &ip.Link{Name: hostName}
-		err = link.SetAddress(hwaddr)
+		err = link.SetAddress(ctx, hwaddr)
 		if err != nil {
 			return fmt.Errorf("Failed setting MAC address %q on %q: %w", config["hwaddr"], hostName, err)
 		}
@@ -1038,7 +1038,7 @@ func networkSRIOVSetupContainerVFNIC(hostName string, config map[string]string) 
 		}
 
 		link := &ip.Link{Name: hostName}
-		err = link.SetAddress(hwaddr)
+		err = link.SetAddress(ctx, hwaddr)
 		if err != nil {
 			return fmt.Errorf("Failed to set random MAC address %q on %q: %w", randMAC, hostName, err)
 		}

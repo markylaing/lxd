@@ -801,7 +801,7 @@ func (d *lvm) mountCommon(vol Volume, op *operations.Operation) error {
 		}
 
 		// Finally attempt to mount the volume that needs mounting.
-		err = TryMount(context.TODO(), volDevPath, mountPath, mountVol.ConfigBlockFilesystem(), mountFlags, mountOptions)
+		err = TryMount(ctx, volDevPath, mountPath, mountVol.ConfigBlockFilesystem(), mountFlags, mountOptions)
 		if err != nil {
 			return fmt.Errorf("Failed to mount LVM snapshot volume: %w", err)
 		}

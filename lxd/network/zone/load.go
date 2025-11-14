@@ -19,7 +19,7 @@ func LoadByName(s *state.State, name string) (NetworkZone, error) {
 	var projectName string
 	var zoneInfo *api.NetworkZone
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		id, projectName, zoneInfo, err = tx.GetNetworkZone(ctx, name)
@@ -41,7 +41,7 @@ func LoadByNameAndProject(s *state.State, projectName string, name string) (Netw
 	var id int64
 	var zoneInfo *api.NetworkZone
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		id, zoneInfo, err = tx.GetNetworkZoneByProject(ctx, projectName, name)
@@ -75,7 +75,7 @@ func Create(s *state.State, projectName string, zoneInfo *api.NetworkZonesPost) 
 
 	// Load the project.
 	var p *api.Project
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		project, err := cluster.GetProject(ctx, tx.Tx(), projectName)
 		if err != nil {
 			return err
@@ -106,7 +106,7 @@ func Create(s *state.State, projectName string, zoneInfo *api.NetworkZonesPost) 
 		}
 	}
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Insert DB record.
 		_, err = tx.CreateNetworkZone(ctx, projectName, zoneInfo)
 
@@ -130,7 +130,7 @@ func Create(s *state.State, projectName string, zoneInfo *api.NetworkZonesPost) 
 func Exists(s *state.State, name ...string) error {
 	checkedzoneNames := make(map[string]struct{}, len(name))
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		for _, zoneName := range name {
 			_, _, _, err := tx.GetNetworkZone(ctx, zoneName)
 			if err != nil {

@@ -45,7 +45,7 @@ func ConfigToInstanceDBArgs(state *state.State, c *config.Config, projectName st
 	}
 
 	if applyProfiles {
-		err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			inst.Profiles = make([]api.Profile, 0, len(c.Instance.Profiles))
 			profiles, err := cluster.GetProfilesIfEnabled(ctx, tx.Tx(), projectName, c.Instance.Profiles)
 			if err != nil {
@@ -240,7 +240,7 @@ func UpdateInstanceConfig(c *db.Cluster, b Info, mountPath string) error {
 
 	var pool *api.StoragePool
 
-	err = c.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = c.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Load the storage pool.
 		_, pool, _, err = tx.GetStoragePool(ctx, b.Pool)
 

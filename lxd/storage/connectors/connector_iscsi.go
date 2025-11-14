@@ -67,8 +67,8 @@ func (c *connectorISCSI) Version() (string, error) {
 
 // LoadModules loads the iSCSI kernel modules.
 // Returns true if the modules can be loaded.
-func (c *connectorISCSI) LoadModules() error {
-	return util.LoadModule("iscsi_tcp")
+func (c *connectorISCSI) LoadModules(ctx context.Context) error {
+	return util.LoadModule(ctx, "iscsi_tcp")
 }
 
 // QualifiedName returns the unique iSCSI Qualified Name (IQN) of the host.

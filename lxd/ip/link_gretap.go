@@ -1,5 +1,7 @@
 package ip
 
+import "context"
+
 // Gretap represents arguments for link of type gretap.
 type Gretap struct {
 	Link
@@ -13,6 +15,6 @@ func (g *Gretap) additionalArgs() []string {
 }
 
 // Add adds new virtual link.
-func (g *Gretap) Add() error {
-	return g.add("gretap", g.additionalArgs())
+func (g *Gretap) Add(ctx context.Context) error {
+	return g.add(ctx, "gretap", g.additionalArgs())
 }

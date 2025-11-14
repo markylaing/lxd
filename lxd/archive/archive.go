@@ -60,7 +60,7 @@ func ExtractWithFds(s *state.State, cmd string, args []string, allowedCmds []str
 	p := subprocess.NewProcessWithFds(cmd, args, stdin, output, &nullWriteCloser{&buffer})
 	p.SetApparmor(apparmor.ArchiveProfileName(outputPath))
 
-	err = p.Start(context.TODO())
+	err = p.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("Failed to start extract: Failed running: tar: %w", err)
 	}

@@ -352,7 +352,7 @@ func (b *lxdBackend) GetResources() (*api.ResourcesStoragePool, error) {
 
 // IsUsed returns whether the storage pool is used by any volumes or profiles (excluding image volumes).
 func (b *lxdBackend) IsUsed() (bool, error) {
-	usedBy, err := UsedBy(context.TODO(), b.state, b, true, true, cluster.StoragePoolVolumeTypeNameImage)
+	usedBy, err := UsedBy(ctx, b.state, b, true, true, cluster.StoragePoolVolumeTypeNameImage)
 	if err != nil {
 		return false, err
 	}
@@ -403,7 +403,7 @@ func (b *lxdBackend) Update(clientType request.ClientType, newDesc string, newCo
 
 	// Update the database if something changed and we're in ClientTypeNormal mode.
 	if clientType == request.ClientTypeNormal && (len(changedConfig) > 0 || newDesc != b.db.Description) {
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePool(ctx, b.name, newDesc, newConfig)
 		})
 		if err != nil {
@@ -416,7 +416,7 @@ func (b *lxdBackend) Update(clientType request.ClientType, newDesc string, newCo
 
 // warningsDelete deletes any persistent warnings for the pool.
 func (b *lxdBackend) warningsDelete() error {
-	err := b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return cluster.DeleteWarnings(ctx, tx.Tx(), cluster.EntityType(entity.TypeStoragePool), int(b.ID()))
 	})
 	if err != nil {
@@ -2474,7 +2474,7 @@ func (b *lxdBackend) CreateInstanceFromMigration(inst instance.Instance, conn io
 			imageExists := false
 
 			if fingerprint != "" {
-				err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					// Confirm that the image is present in the project.
 					_, _, err = tx.GetImage(ctx, fingerprint, cluster.ImageFilter{Project: &projectName})
 
@@ -2857,7 +2857,7 @@ func (b *lxdBackend) RenameInstance(inst instance.Instance, newName string, op *
 
 	var snapshots []string
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get any snapshots the instance has in the format <instance name>/<snapshot name>.
@@ -2881,7 +2881,7 @@ func (b *lxdBackend) RenameInstance(inst instance.Instance, newName string, op *
 		_, snapName, _ := api.GetParentAndSnapshotName(srcSnapshot)
 		newSnapVolName := drivers.GetSnapshotVolumeName(newName, snapName)
 
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, srcSnapshot, newSnapVolName, volDBType, b.ID())
 		})
 		if err != nil {
@@ -2889,13 +2889,13 @@ func (b *lxdBackend) RenameInstance(inst instance.Instance, newName string, op *
 		}
 
 		revert.Add(func() {
-			_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, newSnapVolName, srcSnapshot, volDBType, b.ID())
 			})
 		})
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Rename the parent volume DB record.
 		return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, inst.Name(), newName, volDBType, b.ID())
 	})
@@ -2904,7 +2904,7 @@ func (b *lxdBackend) RenameInstance(inst instance.Instance, newName string, op *
 	}
 
 	revert.Add(func() {
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, newName, inst.Name(), volDBType, b.ID())
 		})
 	})
@@ -3124,7 +3124,7 @@ func (b *lxdBackend) UpdateInstance(inst instance.Instance, newDesc string, newC
 
 	// Update the database if something changed.
 	if len(changedConfig) != 0 || newDesc != dbVol.Description {
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePoolVolume(ctx, inst.Project().Name, inst.Name(), volDBType, b.ID(), newDesc, newConfig)
 		})
 		if err != nil {
@@ -3757,7 +3757,7 @@ func (b *lxdBackend) CreateInstanceSnapshot(inst instance.Instance, src instance
 
 	// Lock this operation to ensure that the only one snapshot is made at the time.
 	// Other operations will wait for this one to finish.
-	unlock, err := locking.Lock(context.TODO(), drivers.OperationLockName("CreateInstanceSnapshot", b.name, vol.Type(), contentType, src.Name()))
+	unlock, err := locking.Lock(ctx, drivers.OperationLockName("CreateInstanceSnapshot", b.name, vol.Type(), contentType, src.Name()))
 	if err != nil {
 		return err
 	}
@@ -3860,7 +3860,7 @@ func (b *lxdBackend) RenameInstanceSnapshot(inst instance.Instance, newName stri
 		_ = b.driver.RenameVolumeSnapshot(newSnapVol, oldSnapshotName, op)
 	})
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Rename DB volume record.
 		return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, inst.Name(), newVolName, volDBType, b.ID())
 	})
@@ -3869,7 +3869,7 @@ func (b *lxdBackend) RenameInstanceSnapshot(inst instance.Instance, newName stri
 	}
 
 	revert.Add(func() {
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Rename DB volume record back.
 			return tx.RenameStoragePoolVolume(ctx, inst.Project().Name, newVolName, inst.Name(), volDBType, b.ID())
 		})
@@ -4039,7 +4039,7 @@ func (b *lxdBackend) RestoreInstanceSnapshot(inst instance.Instance, src instanc
 		// This is required because we have just copied the source volume's config.
 		srcDBVol.Config["volatile.uuid"] = volUUID
 
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePoolVolume(ctx, inst.Project().Name, inst.Name(), volDBType, b.ID(), srcDBVol.Description, srcDBVol.Config)
 		})
 		if err != nil {
@@ -4049,7 +4049,7 @@ func (b *lxdBackend) RestoreInstanceSnapshot(inst instance.Instance, src instanc
 		revert.Add(func() {
 			// Update the instance snapshot with its old config.
 			// This will also reset its UUID.
-			_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateStoragePoolVolume(ctx, inst.Project().Name, inst.Name(), volDBType, b.ID(), dbVol.Description, dbVol.Config)
 			})
 		})
@@ -4238,7 +4238,7 @@ func (b *lxdBackend) EnsureImage(fingerprint string, op *operations.Operation, p
 	// We need to lock this operation to ensure that the image is not being created multiple times.
 	// Uses a lock name of "EnsureImage_<fingerprint>" to avoid deadlocking with CreateVolume below that also
 	// establishes a lock on the volume type & name if it needs to mount the volume before filling.
-	unlock, err := locking.Lock(context.TODO(), drivers.OperationLockName("EnsureImage", b.name, drivers.VolumeTypeImage, "", fingerprint))
+	unlock, err := locking.Lock(ctx, drivers.OperationLockName("EnsureImage", b.name, drivers.VolumeTypeImage, "", fingerprint))
 	if err != nil {
 		return err
 	}
@@ -4247,7 +4247,7 @@ func (b *lxdBackend) EnsureImage(fingerprint string, op *operations.Operation, p
 
 	var image *api.Image
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Load image info from database.
 		_, image, err = tx.GetImageFromAnyProject(ctx, fingerprint)
 
@@ -4406,7 +4406,7 @@ func (b *lxdBackend) EnsureImage(fingerprint string, op *operations.Operation, p
 	if volFiller.Size != 0 {
 		imgVol.Config()["volatile.rootfs.size"] = strconv.FormatInt(volFiller.Size, 10)
 
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePoolVolume(ctx, api.ProjectDefaultName, image.Fingerprint, cluster.StoragePoolVolumeTypeImage, b.id, "", imgVol.Config())
 		})
 		if err != nil {
@@ -4491,7 +4491,7 @@ func (b *lxdBackend) DeleteImage(fingerprint string, op *operations.Operation) e
 	defer l.Debug("DeleteImage finished")
 
 	// We need to lock this operation to ensure that the image is not being deleted multiple times.
-	unlock, err := locking.Lock(context.TODO(), drivers.OperationLockName("DeleteImage", b.name, drivers.VolumeTypeImage, "", fingerprint))
+	unlock, err := locking.Lock(ctx, drivers.OperationLockName("DeleteImage", b.name, drivers.VolumeTypeImage, "", fingerprint))
 	if err != nil {
 		return err
 	}
@@ -4560,7 +4560,7 @@ func (b *lxdBackend) updateVolumeDescriptionOnly(projectName string, volName str
 
 	// Update the database if description changed. Use current config.
 	if newDesc != curVol.Description {
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePoolVolume(ctx, projectName, volName, volDBType, b.ID(), newDesc, curVol.Config)
 		})
 		if err != nil {
@@ -4613,7 +4613,7 @@ func (b *lxdBackend) CreateBucket(projectName string, bucket api.StorageBucketsP
 	}
 
 	// Must be defined before revert so that its not cancelled by time revert.Fail runs.
-	ctx, ctxCancel := context.WithTimeout(context.TODO(), time.Second*30)
+	ctx, ctxCancel := context.WithTimeout(ctx, time.Second*30)
 	defer ctxCancel()
 
 	// Validate config and create database entry for new storage bucket.
@@ -4628,12 +4628,12 @@ func (b *lxdBackend) CreateBucket(projectName string, bucket api.StorageBucketsP
 	// Set the new bucket volume's UUID.
 	bucket.Config["volatile.uuid"] = bucketVol.Config()["volatile.uuid"]
 
-	bucketID, err := BucketDBCreate(context.TODO(), b, projectName, memberSpecific, &bucket)
+	bucketID, err := BucketDBCreate(ctx, b, projectName, memberSpecific, &bucket)
 	if err != nil {
 		return err
 	}
 
-	revert.Add(func() { _ = BucketDBDelete(context.TODO(), b, bucketID) })
+	revert.Add(func() { _ = BucketDBDelete(ctx, b, bucketID) })
 
 	// Create the bucket on the storage device.
 	if memberSpecific {
@@ -4703,7 +4703,7 @@ func (b *lxdBackend) UpdateBucket(projectName string, bucketName string, bucket 
 
 	// Get current config to compare what has changed.
 	var curBucket *db.StorageBucket
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		curBucket, err = tx.GetStoragePoolBucket(ctx, b.id, projectName, memberSpecific, bucketName)
 		return err
 	})
@@ -4777,7 +4777,7 @@ func (b *lxdBackend) UpdateBucket(projectName string, bucketName string, bucket 
 		}
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Update the database record.
 		return tx.UpdateStoragePoolBucket(ctx, b.id, curBucket.ID, bucket)
 	})
@@ -4806,7 +4806,7 @@ func (b *lxdBackend) DeleteBucket(projectName string, bucketName string, op *ope
 	memberSpecific := !b.Driver().Info().Remote // Member specific if storage pool isn't remote.
 
 	var bucket *db.StorageBucket
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		bucket, err = tx.GetStoragePoolBucket(ctx, b.id, projectName, memberSpecific, bucketName)
 		return err
 	})
@@ -4846,7 +4846,7 @@ func (b *lxdBackend) DeleteBucket(projectName string, bucketName string, op *ope
 		}
 	}
 
-	_ = BucketDBDelete(context.TODO(), b, bucket.ID)
+	_ = BucketDBDelete(ctx, b, bucket.ID)
 	if err != nil {
 		return err
 	}
@@ -5038,7 +5038,7 @@ func (b *lxdBackend) CreateBucketKey(projectName string, bucketName string, key 
 	}
 
 	// Must be defined before revert so that its not cancelled by time revert.Fail runs.
-	ctx, ctxCancel := context.WithTimeout(context.TODO(), time.Second*30)
+	ctx, ctxCancel := context.WithTimeout(ctx, time.Second*30)
 	defer ctxCancel()
 
 	revert := revert.New()
@@ -5047,7 +5047,7 @@ func (b *lxdBackend) CreateBucketKey(projectName string, bucketName string, key 
 	memberSpecific := !b.Driver().Info().Remote // Member specific if storage pool isn't remote.
 
 	var bucket *db.StorageBucket
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		bucket, err = tx.GetStoragePoolBucket(ctx, b.id, projectName, memberSpecific, bucketName)
 		return err
 	})
@@ -5126,7 +5126,7 @@ func (b *lxdBackend) CreateBucketKey(projectName string, bucketName string, key 
 		SecretKey:   key.SecretKey,
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err = tx.CreateStoragePoolBucketKey(ctx, bucket.ID, key)
 
 		return err
@@ -5155,7 +5155,7 @@ func (b *lxdBackend) UpdateBucketKey(projectName string, bucketName string, keyN
 	}
 
 	// Must be defined before revert so that its not cancelled by time revert.Fail runs.
-	ctx, ctxCancel := context.WithTimeout(context.TODO(), time.Second*30)
+	ctx, ctxCancel := context.WithTimeout(ctx, time.Second*30)
 	defer ctxCancel()
 
 	memberSpecific := !b.Driver().Info().Remote // Member specific if storage pool isn't remote.
@@ -5163,7 +5163,7 @@ func (b *lxdBackend) UpdateBucketKey(projectName string, bucketName string, keyN
 	// Get current config to compare what has changed.
 	var bucket *db.StorageBucket
 	var curBucketKey *db.StorageBucketKey
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		bucket, err = tx.GetStoragePoolBucket(ctx, b.id, projectName, memberSpecific, bucketName)
 		if err != nil {
 			return err
@@ -5276,7 +5276,7 @@ func (b *lxdBackend) UpdateBucketKey(projectName string, bucketName string, keyN
 		key.SecretKey = newCreds.SecretKey
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Update the database record.
 		return tx.UpdateStoragePoolBucketKey(ctx, bucket.ID, curBucketKey.ID, key)
 	})
@@ -5303,14 +5303,14 @@ func (b *lxdBackend) DeleteBucketKey(projectName string, bucketName string, keyN
 	}
 
 	// Must be defined before revert so that its not cancelled by time revert.Fail runs.
-	ctx, ctxCancel := context.WithTimeout(context.TODO(), time.Second*30)
+	ctx, ctxCancel := context.WithTimeout(ctx, time.Second*30)
 	defer ctxCancel()
 
 	memberSpecific := !b.Driver().Info().Remote // Member specific if storage pool isn't remote.
 
 	var bucket *db.StorageBucket
 	var bucketKey *db.StorageBucketKey
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		bucket, err = tx.GetStoragePoolBucket(ctx, b.id, projectName, memberSpecific, bucketName)
 		if err != nil {
 			return err
@@ -5357,7 +5357,7 @@ func (b *lxdBackend) DeleteBucketKey(projectName string, bucketName string, keyN
 		}
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.DeleteStoragePoolBucketKey(ctx, bucket.ID, bucketKey.ID)
 	})
 	if err != nil {
@@ -6134,7 +6134,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 	for _, srcSnapshot := range snapshots {
 		_, snapName, _ := api.GetParentAndSnapshotName(srcSnapshot.Name)
 		newSnapVolName := drivers.GetSnapshotVolumeName(newVolName, snapName)
-		err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.RenameStoragePoolVolume(ctx, projectName, srcSnapshot.Name, newSnapVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
 		})
 		if err != nil {
@@ -6142,7 +6142,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 		}
 
 		revert.Add(func() {
-			_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.RenameStoragePoolVolume(ctx, projectName, newSnapVolName, srcSnapshot.Name, cluster.StoragePoolVolumeTypeCustom, b.ID())
 			})
 		})
@@ -6151,7 +6151,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 	var backups []db.StoragePoolVolumeBackup
 
 	// Rename each backup to have the new parent volume prefix.
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		backups, err = tx.GetStoragePoolVolumeBackups(ctx, projectName, volName, b.ID())
 		return err
@@ -6175,7 +6175,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 		})
 	}
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
 	})
 	if err != nil {
@@ -6183,7 +6183,7 @@ func (b *lxdBackend) RenameCustomVolume(projectName string, volName string, newV
 	}
 
 	revert.Add(func() {
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.RenameStoragePoolVolume(ctx, projectName, newVolName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID())
 		})
 	})
@@ -6394,7 +6394,7 @@ func (b *lxdBackend) UpdateCustomVolume(projectName string, volName string, newD
 	})
 
 	// Update the database.
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateStoragePoolVolume(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), newDesc, newConfig)
 	})
 	if err != nil {
@@ -6403,7 +6403,7 @@ func (b *lxdBackend) UpdateCustomVolume(projectName string, volName string, newD
 
 	revert.Add(func() {
 		// Update the custom volume with its old config.
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStoragePoolVolume(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), curVol.Description, curVol.Config)
 		})
 	})
@@ -6440,7 +6440,7 @@ func (b *lxdBackend) UpdateCustomVolumeSnapshot(projectName string, volName stri
 
 	var curExpiryDate time.Time
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		curExpiryDate, err = tx.GetStorageVolumeSnapshotExpiry(ctx, curVol.ID)
 
 		return err
@@ -6493,7 +6493,7 @@ func (b *lxdBackend) UpdateCustomVolumeSnapshot(projectName string, volName stri
 	})
 
 	// Update the database. Use current config.
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateStorageVolumeSnapshot(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), newDesc, curVol.Config, newExpiryDate)
 	})
 	if err != nil {
@@ -6501,7 +6501,7 @@ func (b *lxdBackend) UpdateCustomVolumeSnapshot(projectName string, volName stri
 	}
 
 	revert.Add(func() {
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateStorageVolumeSnapshot(ctx, projectName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID(), curVol.Description, curVol.Config, curExpiryDate)
 		})
 	})
@@ -6880,7 +6880,7 @@ func (b *lxdBackend) CreateCustomVolumeSnapshot(projectName, volName string, new
 
 	// Lock this operation to ensure that the only one snapshot is made at the time.
 	// Other operations will wait for this one to finish.
-	unlock, err := locking.Lock(context.TODO(), drivers.OperationLockName("CreateCustomVolumeSnapshot", b.name, vol.Type(), contentType, volName))
+	unlock, err := locking.Lock(ctx, drivers.OperationLockName("CreateCustomVolumeSnapshot", b.name, vol.Type(), contentType, volName))
 	if err != nil {
 		return nil, err
 	}
@@ -7031,7 +7031,7 @@ func (b *lxdBackend) RenameCustomVolumeSnapshot(projectName, volName string, new
 		_ = b.UpdateCustomVolumeBackupFiles(projectName, parentName, true, instances, op)
 	})
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RenameStoragePoolVolume(ctx, projectName, volName, newVolName, cluster.StoragePoolVolumeTypeCustom, b.ID())
 	})
 	if err != nil {
@@ -7039,7 +7039,7 @@ func (b *lxdBackend) RenameCustomVolumeSnapshot(projectName, volName string, new
 	}
 
 	revert.Add(func() {
-		_ = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.RenameStoragePoolVolume(ctx, projectName, newVolName, volName, cluster.StoragePoolVolumeTypeCustom, b.ID())
 		})
 	})
@@ -7683,7 +7683,7 @@ func (b *lxdBackend) ListUnknownVolumes(op *operations.Operation) (map[string][]
 		return nil, fmt.Errorf("Failed getting pool volumes: %w", err)
 	}
 
-	poolVols, err = b.normalizeUnknownVolumes(context.TODO(), poolVols)
+	poolVols, err = b.normalizeUnknownVolumes(ctx, poolVols)
 	if err != nil {
 		return nil, fmt.Errorf("Failed resolving pool volumes: %w", err)
 	}
@@ -7872,7 +7872,7 @@ func (b *lxdBackend) detectUnknownInstanceAndCustomVolumes(vol *drivers.Volume, 
 	var instID int
 	var instSnapshots []string
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Check if an entry for the instance already exists in the DB.
@@ -8176,7 +8176,7 @@ func (b *lxdBackend) ImportInstance(inst instance.Instance, poolVol *backupConfi
 
 	var snapshots []string
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get any snapshots the instance has in the format <instance name>/<snapshot name>.
@@ -8786,7 +8786,7 @@ func (b *lxdBackend) GenerateInstanceCustomVolumeBackupConfig(inst instance.Inst
 
 	// Get the right project name for the disk device.
 	instanceProject := inst.Project()
-	projectName := project.StorageVolumeProjectFromRecord(&instanceProject, cluster.StoragePoolVolumeTypeCustom)
+	projectName := project.StorageVolumeProjectFromRecord(instanceProject, cluster.StoragePoolVolumeTypeCustom)
 
 	var instanceBackupConf = &backupConfig.Config{}
 

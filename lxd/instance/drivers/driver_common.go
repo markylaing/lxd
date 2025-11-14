@@ -216,7 +216,7 @@ func (d *common) Backups() ([]backup.InstanceBackup, error) {
 	var backupNames []string
 
 	// Get all the backups
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		backupNames, err = tx.GetInstanceBackups(ctx, d.project.Name, d.name)
 		return err
@@ -269,7 +269,7 @@ func (d *common) Snapshots() ([]instance.Instance, error) {
 	var snapshotArgs map[int]db.InstanceArgs
 
 	// Get all the snapshots for instance.
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.InstanceSnapshotFilter{
 			Project:  &d.project.Name,
 			Instance: &d.name,
@@ -342,11 +342,11 @@ func (d *common) VolatileSet(changes map[string]string) error {
 	if !d.volatileSetPersistDisable {
 		var err error
 		if d.isSnapshot {
-			err = d.state.DB.Cluster.Transaction(context.TODO(), func(_ context.Context, tx *db.ClusterTx) error {
+			err = d.state.DB.Cluster.Transaction(ctx, func(_ context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateInstanceSnapshotConfig(d.id, changes)
 			})
 		} else {
-			err = d.state.DB.Cluster.Transaction(context.TODO(), func(_ context.Context, tx *db.ClusterTx) error {
+			err = d.state.DB.Cluster.Transaction(ctx, func(_ context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateInstanceConfig(d.id, changes)
 			})
 		}
@@ -681,7 +681,7 @@ func (d *common) rebuildCommon(inst instance.Instance, img *api.Image, op *opera
 		}
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		err = dbCluster.UpdateInstanceConfig(ctx, tx.Tx(), int64(inst.ID()), instLocalConfig)
 		if err != nil {
 			return err
@@ -843,7 +843,7 @@ func (d *common) getAttachedVolumeSnapshots(inst instance.Instance, attachedVolu
 
 	customType := dbCluster.StoragePoolVolumeTypeCustom
 	instanceProject := inst.Project()
-	effectiveProject := project.StorageVolumeProjectFromRecord(&instanceProject, dbCluster.StoragePoolVolumeTypeCustom)
+	effectiveProject := project.StorageVolumeProjectFromRecord(instanceProject, dbCluster.StoragePoolVolumeTypeCustom)
 
 	filter := db.StorageVolumeFilter{
 		Type:    &customType,
@@ -1341,7 +1341,7 @@ func (d *common) resolveRestoreSnapshots(inst instance.Instance, source instance
 // unpopulated then the insert querty is retried until it succeeds or a retry limit is reached.
 // If the insert succeeds or the key is found to have been populated then the value of the key is returned.
 func (d *common) insertConfigkey(key string, value string) (string, error) {
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		err := tx.CreateInstanceConfig(ctx, d.id, map[string]string{key: value})
 		if err == nil {
 			return nil
@@ -1660,7 +1660,7 @@ func (d *common) onStopOperationSetup(target string) (*operationlock.InstanceOpe
 
 // warningsDelete deletes any persistent warnings for the instance.
 func (d *common) warningsDelete() error {
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return dbCluster.DeleteWarnings(ctx, tx.Tx(), dbCluster.EntityType(entity.TypeInstance), d.ID())
 	})
 	if err != nil {
@@ -1729,7 +1729,7 @@ func (d *common) recordLastState() error {
 	d.expandedConfig["volatile.last_state.power"] = instance.PowerStateRunning
 
 	// Database updates
-	return d.state.DB.Cluster.Transaction(context.TODO(), func(_ context.Context, tx *db.ClusterTx) error {
+	return d.state.DB.Cluster.Transaction(ctx, func(_ context.Context, tx *db.ClusterTx) error {
 		// Record power state.
 		err = tx.UpdateInstancePowerState(d.id, instance.PowerStateRunning)
 		if err != nil {
@@ -1876,7 +1876,7 @@ func (d *common) getStoragePool() (storagePools.Pool, error) {
 
 	var poolName string
 
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		poolName, err = tx.GetInstancePool(ctx, d.Project().Name, d.Name())

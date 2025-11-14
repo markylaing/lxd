@@ -513,7 +513,7 @@ func (d *ceph) Unmount() (bool, error) {
 func (d *ceph) GetResources() (*api.ResourcesStoragePool, error) {
 	var stdout bytes.Buffer
 
-	err := shared.RunCommandWithFds(context.TODO(), nil, &stdout,
+	err := shared.RunCommandWithFds(ctx, nil, &stdout,
 		"ceph",
 		"--name", "client."+d.config["ceph.user.name"],
 		"--cluster", d.config["ceph.cluster_name"],

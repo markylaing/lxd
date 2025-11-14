@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -27,7 +28,7 @@ func (r *operationResponse) Render(w http.ResponseWriter, req *http.Request) err
 	// Inject callback function on operation.
 	// If the operation was completed as expected or cancelled by an user, it is considered a success.
 	// Otherwise it is considered a failure.
-	r.op.SetOnDone(func(op *Operation) {
+	r.op.SetOnDone(func(ctx context.Context, op *Operation) {
 		sc := op.Status()
 		if sc == api.Success || sc == api.Cancelled {
 			metrics.UseMetricsCallback(req, metrics.Success)

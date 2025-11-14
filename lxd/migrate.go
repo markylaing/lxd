@@ -52,7 +52,7 @@ func (c *migrationFields) send(m proto.Message) error {
 	c.controlLock.Lock()
 	defer c.controlLock.Unlock()
 
-	conn, err := c.conns[api.SecretNameControl].WebSocket(context.TODO())
+	conn, err := c.conns[api.SecretNameControl].WebSocket(ctx)
 	if err != nil {
 		return fmt.Errorf("Control connection not initialized: %w", err)
 	}
@@ -67,7 +67,7 @@ func (c *migrationFields) send(m proto.Message) error {
 }
 
 func (c *migrationFields) recv(m proto.Message) error {
-	conn, err := c.conns[api.SecretNameControl].WebSocket(context.TODO())
+	conn, err := c.conns[api.SecretNameControl].WebSocket(ctx)
 	if err != nil {
 		return fmt.Errorf("Control connection not initialized: %w", err)
 	}
@@ -77,7 +77,7 @@ func (c *migrationFields) recv(m proto.Message) error {
 
 func (c *migrationFields) disconnect() {
 	c.controlLock.Lock()
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	conn, _ := c.conns[api.SecretNameControl].WebSocket(ctx)
 	if conn != nil {
@@ -103,7 +103,7 @@ func (c *migrationFields) disconnect() {
 
 func (c *migrationFields) sendControl(err error) {
 	c.controlLock.Lock()
-	conn, _ := c.conns[api.SecretNameControl].WebSocket(context.TODO())
+	conn, _ := c.conns[api.SecretNameControl].WebSocket(ctx)
 	if conn != nil {
 		migration.ProtoSendControl(conn, err)
 	}
@@ -157,7 +157,7 @@ func (s *migrationSourceWs) Metadata() any {
 // Connect handles an incoming HTTP request to establish a websocket connection for migration.
 // It verifies the provided secret and matches it to the appropriate connection. If the secret
 // is valid, it accepts the incoming connection. Otherwise, it returns an error.
-func (s *migrationSourceWs) Connect(op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
+func (s *migrationSourceWs) Connect(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
 	incomingSecret := r.FormValue("secret")
 	if incomingSecret == "" {
 		return api.StatusErrorf(http.StatusBadRequest, "Missing migration source secret")
@@ -224,7 +224,7 @@ func (s *migrationSink) Metadata() any {
 }
 
 // Connect connects to the migration source.
-func (s *migrationSink) Connect(op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
+func (s *migrationSink) Connect(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
 	incomingSecret := r.FormValue("secret")
 	if incomingSecret == "" {
 		return api.StatusErrorf(http.StatusBadRequest, "Missing migration sink secret")

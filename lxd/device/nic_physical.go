@@ -183,7 +183,7 @@ func (d *nicPhysical) Start() (*deviceConfig.RunConfig, error) {
 			}
 
 			link := &ip.Link{Name: saveData["host_name"]}
-			err = link.SetAddress(hwaddr)
+			err = link.SetAddress(ctx, hwaddr)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to set the MAC address: %s", err)
 			}

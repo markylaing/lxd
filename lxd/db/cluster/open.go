@@ -60,7 +60,7 @@ func Open(name string, store driver.NodeStore, options ...driver.Option) (*sql.D
 // version and a number of API extensions that match our one.
 // If it's not the case an api.StatusError with code http.StatusPreconditionFailed is returned,
 // this indicates that this member should wait for them to become aligned.
-func EnsureSchema(db *sql.DB, address string, dir string, serverUUID string) error {
+func EnsureSchema(ctx context.Context, db *sql.DB, address string, dir string, serverUUID string) error {
 	apiExtensions := version.APIExtensionsCount()
 
 	backupDone := false
@@ -150,9 +150,9 @@ func EnsureSchema(db *sql.DB, address string, dir string, serverUUID string) err
 	schema.Hook(hook)
 
 	var initial int
-	err := query.Retry(context.TODO(), func(ctx context.Context) error {
+	err := query.Retry(ctx, func(ctx context.Context) error {
 		var err error
-		initial, err = schema.Ensure(db)
+		initial, err = schema.Ensure(ctx, db)
 		if err != nil {
 			return fmt.Errorf("Failed ensuring schema: %w", err)
 		}
@@ -179,7 +179,7 @@ func EnsureSchema(db *sql.DB, address string, dir string, serverUUID string) err
 			return err
 		}
 
-		err = query.Transaction(context.TODO(), db, func(_ context.Context, tx *sql.Tx) error {
+		err = query.Transaction(ctx, db, func(_ context.Context, tx *sql.Tx) error {
 			stmt := `
 INSERT INTO nodes(id, name, address, schema, api_extensions, arch, description) VALUES(1, 'none', '0.0.0.0', ?, ?, ?, '')
 `

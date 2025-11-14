@@ -96,7 +96,7 @@ func (d *zone) usedBy(firstOnly bool) ([]string, error) {
 
 	var networkNames []string
 
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Find networks using the zone.
@@ -331,7 +331,7 @@ func (d *zone) Delete() error {
 		return errors.New("Cannot delete a zone that is in use")
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Delete the database record.
 		err = tx.DeleteNetworkZone(ctx, d.id)
 
@@ -361,7 +361,7 @@ func (d *zone) Content() (*strings.Builder, error) {
 	// Get all managed networks across all projects.
 	var projectNetworks map[string]map[int64]api.Network
 	var zoneProjects map[string]string
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworks, err = tx.GetCreatedNetworks(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed to load all networks: %w", err)

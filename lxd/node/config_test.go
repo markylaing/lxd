@@ -143,7 +143,7 @@ func TestClusterAddress(t *testing.T) {
 
 	var err error
 	var nodeConfig *node.Config
-	err = nodeDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = nodeDB.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -162,7 +162,7 @@ func TestClusterAddress(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = nodeDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = nodeDB.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})

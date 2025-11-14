@@ -78,14 +78,14 @@ func (d *cephobject) s3Client(creds S3Credentials) (*minio.Client, error) {
 // CreateBucket creates a new bucket.
 func (d *cephobject) CreateBucket(bucket Volume, op *operations.Operation) error {
 	// Check if there is an existing cephobjectRadosgwAdminUser user.
-	adminUserInfo, _, err := d.radosgwadminGetUser(context.TODO(), cephobjectRadosgwAdminUser)
+	adminUserInfo, _, err := d.radosgwadminGetUser(ctx, cephobjectRadosgwAdminUser)
 	if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
 		return fmt.Errorf("Failed getting admin user %q: %w", cephobjectRadosgwAdminUser, err)
 	}
 
 	// Create missing cephobjectRadosgwAdminUser user.
 	if adminUserInfo == nil {
-		adminUserInfo, err = d.radosgwadminUserAdd(context.TODO(), cephobjectRadosgwAdminUser, 0)
+		adminUserInfo, err = d.radosgwadminUserAdd(ctx, cephobjectRadosgwAdminUser, 0)
 		if err != nil {
 			return fmt.Errorf("Failed added admin user %q: %w", cephobjectRadosgwAdminUser, err)
 		}
@@ -95,7 +95,7 @@ func (d *cephobject) CreateBucket(bucket Volume, op *operations.Operation) error
 	storageBucketName := d.radosgwBucketName(bucketName)
 
 	// Must be defined before revert so that its not cancelled by time revert.Fail runs.
-	ctx, ctxCancel := context.WithTimeout(context.TODO(), time.Second*30)
+	ctx, ctxCancel := context.WithTimeout(ctx, time.Second*30)
 	defer ctxCancel()
 
 	revert := revert.New()
@@ -124,15 +124,15 @@ func (d *cephobject) CreateBucket(bucket Volume, op *operations.Operation) error
 	revert.Add(func() { _ = minioClient.RemoveBucket(ctx, storageBucketName) })
 
 	// Create bucket user.
-	_, err = d.radosgwadminUserAdd(context.TODO(), storageBucketName, -1)
+	_, err = d.radosgwadminUserAdd(ctx, storageBucketName, -1)
 	if err != nil {
 		return fmt.Errorf("Failed creating bucket user: %w", err)
 	}
 
-	revert.Add(func() { _ = d.radosgwadminUserDelete(context.TODO(), storageBucketName) })
+	revert.Add(func() { _ = d.radosgwadminUserDelete(ctx, storageBucketName) })
 
 	// Link bucket to user.
-	err = d.radosgwadminBucketLink(context.TODO(), storageBucketName, storageBucketName)
+	err = d.radosgwadminBucketLink(ctx, storageBucketName, storageBucketName)
 	if err != nil {
 		return fmt.Errorf("Failed linking bucket to user: %w", err)
 	}
@@ -159,7 +159,7 @@ func (d *cephobject) setBucketQuota(bucket Volume, quotaSize string) error {
 		return fmt.Errorf("Failed parsing bucket quota size: %w", err)
 	}
 
-	err = d.radosgwadminBucketSetQuota(context.TODO(), storageBucketName, sizeBytes)
+	err = d.radosgwadminBucketSetQuota(ctx, storageBucketName, sizeBytes)
 	if err != nil {
 		return fmt.Errorf("Failed setting bucket quota: %w", err)
 	}
@@ -172,12 +172,12 @@ func (d *cephobject) DeleteBucket(bucket Volume, op *operations.Operation) error
 	_, bucketName := project.StorageVolumeParts(bucket.name)
 	storageBucketName := d.radosgwBucketName(bucketName)
 
-	err := d.radosgwadminBucketDelete(context.TODO(), storageBucketName)
+	err := d.radosgwadminBucketDelete(ctx, storageBucketName)
 	if err != nil {
 		return fmt.Errorf("Failed deleting bucket: %w", err)
 	}
 
-	err = d.radosgwadminUserDelete(context.TODO(), storageBucketName)
+	err = d.radosgwadminUserDelete(ctx, storageBucketName)
 	if err != nil {
 		return fmt.Errorf("Failed deleting bucket user: %w", err)
 	}
@@ -220,7 +220,7 @@ func (d *cephobject) CreateBucketKey(bucket Volume, keyName string, creds S3Cred
 		return nil, err
 	}
 
-	_, bucketSubUsers, err := d.radosgwadminGetUser(context.TODO(), storageBucketName)
+	_, bucketSubUsers, err := d.radosgwadminGetUser(ctx, storageBucketName)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting bucket user: %w", err)
 	}
@@ -231,7 +231,7 @@ func (d *cephobject) CreateBucketKey(bucket Volume, keyName string, creds S3Cred
 	}
 
 	// Create a sub user for the key on the bucket user.
-	newCreds, err := d.radosgwadminSubUserAdd(context.TODO(), storageBucketName, keyName, accessRole, creds.AccessKey, creds.SecretKey)
+	newCreds, err := d.radosgwadminSubUserAdd(ctx, storageBucketName, keyName, accessRole, creds.AccessKey, creds.SecretKey)
 	if err != nil {
 		return nil, fmt.Errorf("Failed creating bucket user: %w", err)
 	}
@@ -249,7 +249,7 @@ func (d *cephobject) UpdateBucketKey(bucket Volume, keyName string, creds S3Cred
 		return nil, err
 	}
 
-	_, bucketSubUsers, err := d.radosgwadminGetUser(context.TODO(), storageBucketName)
+	_, bucketSubUsers, err := d.radosgwadminGetUser(ctx, storageBucketName)
 	if err != nil {
 		return nil, fmt.Errorf("Failed getting bucket user: %w", err)
 	}
@@ -261,13 +261,13 @@ func (d *cephobject) UpdateBucketKey(bucket Volume, keyName string, creds S3Cred
 
 	// We delete and recreate the subuser otherwise if the creds.AccessKey has changed a new access key/secret
 	// will be created, leaving the old one behind still active.
-	err = d.radosgwadminSubUserDelete(context.TODO(), storageBucketName, keyName)
+	err = d.radosgwadminSubUserDelete(ctx, storageBucketName, keyName)
 	if err != nil {
 		return nil, fmt.Errorf("Failed deleting bucket key: %w", err)
 	}
 
 	// Create a sub user for the key on the bucket user.
-	newCreds, err := d.radosgwadminSubUserAdd(context.TODO(), storageBucketName, keyName, accessRole, creds.AccessKey, creds.SecretKey)
+	newCreds, err := d.radosgwadminSubUserAdd(ctx, storageBucketName, keyName, accessRole, creds.AccessKey, creds.SecretKey)
 	if err != nil {
 		return nil, fmt.Errorf("Failed creating bucket user: %w", err)
 	}
@@ -280,7 +280,7 @@ func (d *cephobject) DeleteBucketKey(bucket Volume, keyName string, op *operatio
 	_, bucketName := project.StorageVolumeParts(bucket.name)
 	storageBucketName := d.radosgwBucketName(bucketName)
 
-	err := d.radosgwadminSubUserDelete(context.TODO(), storageBucketName, keyName)
+	err := d.radosgwadminSubUserDelete(ctx, storageBucketName, keyName)
 	if err != nil {
 		return fmt.Errorf("Failed deleting bucket key: %w", err)
 	}

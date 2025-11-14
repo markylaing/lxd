@@ -18,7 +18,7 @@ var networkOVNChassis *bool
 
 func networkAutoAttach(cluster *db.Cluster, devName string) error {
 	var networkName string
-	_ = cluster.Transaction(context.TODO(), func(ctx context.Context, c *db.ClusterTx) error {
+	_ = cluster.Transaction(ctx, func(ctx context.Context, c *db.ClusterTx) error {
 		_, dbInfo, err := c.GetNetworkWithInterface(ctx, devName)
 		if err != nil {
 			if !api.StatusErrorCheck(err, http.StatusNotFound) {
@@ -48,7 +48,7 @@ func networkUpdateForkdnsServersTask(s *state.State, heartbeatData *cluster.APIH
 
 	// Get a list of managed networks
 	var networks []string
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, c *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, c *db.ClusterTx) error {
 		var err error
 		networks, err = c.GetCreatedNetworkNamesByProject(ctx, projectName)
 

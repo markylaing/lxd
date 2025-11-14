@@ -276,7 +276,7 @@ func LoadByID(s *state.State, id int) (Instance, error) {
 	var project string
 	var name string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get the DB record
@@ -331,7 +331,7 @@ func LoadByProjectAndName(s *state.State, projectName string, instanceName strin
 	// Get the DB record
 	var args db.InstanceArgs
 	var p *api.Project
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		proj, err := cluster.GetProject(ctx, tx.Tx(), projectName)
 		if err != nil {
 			return err
@@ -378,7 +378,7 @@ func LoadNodeAll(s *state.State, instanceType instancetype.Type) ([]Instance, er
 		filter.Node = &s.ServerName
 	}
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(dbInst db.InstanceArgs, p api.Project) error {
 			inst, err := Load(s, dbInst, p)
 			if err != nil {
@@ -460,7 +460,7 @@ func BackupLoadByName(s *state.State, project, name string) (*backup.InstanceBac
 	var args db.InstanceBackup
 
 	// Get the backup database record
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		args, err = tx.GetInstanceBackup(ctx, project, name)
 		return err
@@ -684,7 +684,7 @@ func CreateInternal(s *state.State, args db.InstanceArgs, clearLogDir bool) (Ins
 	}
 
 	if args.Profiles == nil {
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			args.Profiles, err = tx.GetProfiles(ctx, args.Project, []string{"default"})
 
 			return err
@@ -756,7 +756,7 @@ func CreateInternal(s *state.State, args db.InstanceArgs, clearLogDir bool) (Ins
 
 	var profiles []string
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Validate profiles.
 		profiles, err = tx.GetProfileNames(ctx, args.Project)
 
@@ -798,7 +798,7 @@ func CreateInternal(s *state.State, args db.InstanceArgs, clearLogDir bool) (Ins
 	var dbInst cluster.Instance
 	var p *api.Project
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		proj, err := cluster.GetProject(ctx, tx.Tx(), args.Project)
 		if err != nil {
 			return err
@@ -948,7 +948,7 @@ func CreateInternal(s *state.State, args db.InstanceArgs, clearLogDir bool) (Ins
 	}
 
 	revert.Add(func() {
-		_ = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.DeleteInstance(ctx, dbInst.Project, dbInst.Name)
 		})
 	})
@@ -992,7 +992,7 @@ func NextSnapshotName(s *state.State, inst Instance, defaultPattern string) (str
 	} else if count == 1 {
 		var i int
 
-		_ = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			i = tx.GetNextInstanceSnapshotIndex(ctx, inst.Project().Name, inst.Name(), pattern)
 
 			return nil
@@ -1022,7 +1022,7 @@ func NextSnapshotName(s *state.State, inst Instance, defaultPattern string) (str
 
 		var i int
 
-		_ = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			i = tx.GetNextInstanceSnapshotIndex(ctx, inst.Project().Name, inst.Name(), pattern)
 
 			return nil
@@ -1171,7 +1171,7 @@ func SnapshotProtobufToInstanceArgs(s *state.State, inst Instance, snap *migrati
 
 	var profiles []api.Profile
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		profiles, err = tx.GetProfiles(ctx, inst.Project().Name, snap.Profiles)

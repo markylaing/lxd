@@ -26,7 +26,7 @@ func Open(dir string) (*sql.DB, error) {
 //
 // Return the initial schema version found before starting the update, along
 // with any error occurred.
-func EnsureSchema(db *sql.DB, dir string) (int, error) {
+func EnsureSchema(ctx context.Context, db *sql.DB, dir string) (int, error) {
 	backupDone := false
 
 	schema := Schema()
@@ -51,5 +51,5 @@ func EnsureSchema(db *sql.DB, dir string) (int, error) {
 
 		return nil
 	})
-	return schema.Ensure(db)
+	return schema.Ensure(ctx, db)
 }

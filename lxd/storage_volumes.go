@@ -705,7 +705,7 @@ func storagePoolVolumesGet(d *Daemon, r *http.Request) response.Response {
 
 			// The project name used for custom volumes varies based on whether the
 			// project has the featues.storage.volumes feature enabled.
-			customVolProjectName = project.StorageVolumeProjectFromRecord(p, cluster.StoragePoolVolumeTypeCustom)
+			customVolProjectName = project.StorageVolumeProjectFromRecord(*p, cluster.StoragePoolVolumeTypeCustom)
 
 			projectImages, err = tx.GetImagesFingerprints(ctx, requestProjectName, false)
 			if err != nil {
@@ -1200,7 +1200,7 @@ func doCustomVolumeRefresh(s *state.State, r *http.Request, requestProjectName s
 		}
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		revert := revert.New()
 		defer revert.Fail()
 
@@ -1246,7 +1246,7 @@ func doVolumeCreateOrCopy(s *state.State, r *http.Request, requestProjectName st
 
 	contentType := storagePools.VolumeDBContentTypeToContentType(volumeDBContentType)
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		if req.Source.Name == "" {
 			// Use an empty operation for this sync response to pass the requestor
 			op := &operations.Operation{}
@@ -1317,7 +1317,7 @@ func doVolumeMigration(s *state.State, r *http.Request, requestProjectName strin
 	resources := map[string][]api.URL{}
 	resources["storage_volumes"] = []api.URL{*api.NewURL().Path(version.APIVersion, "storage-pools", poolName, "volumes", "custom", req.Name)}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		// And finally run the migration.
 		err = sink.DoStorage(s, projectName, poolName, req, op)
 		if err != nil {
@@ -1576,7 +1576,7 @@ func storagePoolVolumePost(d *Daemon, r *http.Request) response.Response {
 			return response.BadRequest(errors.New("Target cluster member is offline"))
 		}
 
-		run := func(op *operations.Operation) error {
+		run := func(_ context.Context, op *operations.Operation) error {
 			return migrateStorageVolume(s, r, details.volumeName, details.pool.Name(), targetMemberInfo.Name, targetProjectName, req, op)
 		}
 
@@ -1739,10 +1739,10 @@ func migrateStorageVolume(s *state.State, r *http.Request, sourceVolumeName stri
 		return err
 	}
 
-	return f(op)
+	return f(r.Context(), op)
 }
 
-func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool storagePools.Pool, srcProjectName string, srcVolumeName string, newPoolName string, newProjectName string, newVolumeName string, srcMember db.NodeInfo, newMember db.NodeInfo, volumeOnly bool) (func(op *operations.Operation) error, error) {
+func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool storagePools.Pool, srcProjectName string, srcVolumeName string, newPoolName string, newProjectName string, newVolumeName string, srcMember db.NodeInfo, newMember db.NodeInfo, volumeOnly bool) (func(_ context.Context, op *operations.Operation) error, error) {
 	srcMemberOffline := srcMember.IsOffline(s.GlobalConfig.OfflineThreshold())
 
 	// Make sure that the source member is online if we end up being called from another member after a
@@ -1751,7 +1751,7 @@ func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool
 		return nil, errors.New("The cluster member hosting the storage volume is offline")
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(ctx context.Context, op *operations.Operation) error {
 		if newVolumeName == "" {
 			newVolumeName = srcVolumeName
 		}
@@ -1761,7 +1761,7 @@ func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool
 		// Connect to the destination member, i.e. the member to migrate the custom volume to.
 		// Use the notify argument to indicate to the destination that we are moving a custom volume between
 		// cluster members.
-		dest, err := lxdCluster.Connect(r.Context(), newMember.Address, networkCert, s.ServerCert(), true)
+		dest, err := lxdCluster.Connect(ctx, newMember.Address, networkCert, s.ServerCert(), true)
 		if err != nil {
 			return fmt.Errorf("Failed to connect to destination server %q: %w", newMember.Address, err)
 		}
@@ -1776,7 +1776,7 @@ func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool
 			return fmt.Errorf("Failed setting up storage volume migration on source: %w", err)
 		}
 
-		run := func(op *operations.Operation) error {
+		run := func(ctx context.Context, op *operations.Operation) error {
 			err := srcMigration.DoStorage(s, srcProjectName, srcPool.Name(), srcVolumeName, op)
 			if err != nil {
 				return err
@@ -1790,12 +1790,12 @@ func storageVolumePostClusteringMigrate(s *state.State, r *http.Request, srcPool
 			return nil
 		}
 
-		cancel := func(op *operations.Operation) error {
+		cancel := func(ctx context.Context, op *operations.Operation) error {
 			srcMigration.disconnect()
 			return nil
 		}
 
-		srcOp, err := operations.OperationCreate(r.Context(), s, srcProjectName, operations.OperationClassWebsocket, operationtype.VolumeMigrate, resources, srcMigration.Metadata(), run, cancel, srcMigration.Connect)
+		srcOp, err := operations.OperationCreate(ctx, s, srcProjectName, operations.OperationClassWebsocket, operationtype.VolumeMigrate, resources, srcMigration.Metadata(), run, cancel, srcMigration.Connect)
 		if err != nil {
 			return err
 		}
@@ -1854,7 +1854,7 @@ func storagePoolVolumeTypePostMigration(state *state.State, r *http.Request, req
 		resources["storage_volumes"] = []api.URL{*api.NewURL().Path(version.APIVersion, "storage-pools", poolName, "volumes", "custom", volumeName)}
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		return ws.DoStorage(state, projectName, poolName, volumeName, op)
 	}
 
@@ -1934,12 +1934,12 @@ func storagePoolVolumeTypePostMove(s *state.State, r *http.Request, poolName str
 		return response.SmartError(err)
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		revert := revert.New()
 		defer revert.Fail()
 
 		// Update devices using the volume in instances and profiles.
-		cleanup, err := storagePoolVolumeUpdateUsers(context.TODO(), s, requestProjectName, pool.Name(), vol, newPool.Name(), &newVol)
+		cleanup, err := storagePoolVolumeUpdateUsers(ctx, s, requestProjectName, pool.Name(), vol, newPool.Name(), &newVol)
 		if err != nil {
 			return err
 		}
@@ -2517,7 +2517,7 @@ func createStoragePoolVolumeFromISO(s *state.State, r *http.Request, requestProj
 	// Copy reverter so far so we can use it inside run after this function has finished.
 	runRevert := revert.Clone()
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		defer func() { _ = isoFile.Close() }()
 		defer runRevert.Fail()
 
@@ -2570,7 +2570,7 @@ func createStoragePoolVolumeFromTarball(s *state.State, r *http.Request, request
 		return response.InternalError(err)
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		defer func() { _ = os.Remove(tarFile.Name()) }()
 
 		pool, err := storagePools.LoadByName(s, poolName)
@@ -2729,7 +2729,7 @@ func createStoragePoolVolumeFromBackup(s *state.State, r *http.Request, requestP
 	// Copy reverter so far so we can use it inside run after this function has finished.
 	runRevert := revert.Clone()
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		defer func() { _ = backupFile.Close() }()
 		defer runRevert.Fail()
 

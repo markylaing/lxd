@@ -317,7 +317,7 @@ func (d *cephfs) Create() error {
 
 	// Mount the pool.
 	srcPath := strings.Join(monAddresses, ",") + ":/"
-	err = TryMount(context.TODO(), srcPath, mountPoint, "ceph", 0, d.getMountOptions(d.config["cephfs.user.name"], userSecret, fsName))
+	err = TryMount(ctx, srcPath, mountPoint, "ceph", 0, d.getMountOptions(d.config["cephfs.user.name"], userSecret, fsName))
 	if err != nil {
 		return err
 	}
@@ -378,7 +378,7 @@ func (d *cephfs) Delete(op *operations.Operation) error {
 
 	// Mount the pool.
 	srcPath := strings.Join(monAddresses, ",") + ":/"
-	err = TryMount(context.TODO(), srcPath, mountPoint, "ceph", 0, d.getMountOptions(d.config["cephfs.user.name"], userSecret, fsName))
+	err = TryMount(ctx, srcPath, mountPoint, "ceph", 0, d.getMountOptions(d.config["cephfs.user.name"], userSecret, fsName))
 	if err != nil {
 		return err
 	}
@@ -568,7 +568,7 @@ func (d *cephfs) Mount() (bool, error) {
 
 	// Mount the pool.
 	srcPath := strings.Join(monAddresses, ",") + ":/" + fsPath
-	err = TryMount(context.TODO(), srcPath, GetPoolMountPath(d.name), "ceph", 0, options)
+	err = TryMount(ctx, srcPath, GetPoolMountPath(d.name), "ceph", 0, options)
 	if err != nil {
 		return false, err
 	}

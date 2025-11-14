@@ -1160,7 +1160,7 @@ func nodeIsOffline(threshold time.Duration, heartbeat time.Time) bool {
 func (c *Cluster) LocalNodeIsEvacuated() bool {
 	isEvacuated := false
 
-	err := c.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err := c.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		name, err := tx.GetLocalNodeName(ctx)
 		if err != nil {
 			return err

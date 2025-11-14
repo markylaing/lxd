@@ -64,7 +64,7 @@ func FirewallApplyACLRules(s *state.State, logger logger.Logger, aclProjectName 
 	for _, aclName := range shared.SplitNTrimSpace(aclNet.Config["security.acls"], ",", -1, true) {
 		var aclInfo *api.NetworkACL
 
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			_, aclInfo, err = tx.GetNetworkACL(ctx, aclProjectName, aclName)

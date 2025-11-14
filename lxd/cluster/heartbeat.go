@@ -126,7 +126,7 @@ func (hbState *APIHeartbeat) Update(fullStateList bool, raftNodes []db.RaftNode,
 	}
 
 	if len(raftNodeMap) > 0 && hbState.cluster != nil {
-		_ = hbState.cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = hbState.cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			for addr, raftNode := range raftNodeMap {
 				_, err := tx.GetPendingNodeByAddress(ctx, addr)
 				if err != nil {
@@ -186,7 +186,7 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, networkCert *shared.CertI
 			logger.Warn("Failed heartbeat", logger.Ctx{"remote": address, "err": err})
 
 			if ctx.Err() == nil {
-				err = hbState.cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = hbState.cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					return tx.UpsertWarningLocalNode(ctx, "", entity.TypeClusterMember, int(nodeID), warningtype.OfflineClusterMember, err.Error())
 				})
 				if err != nil {
@@ -329,7 +329,7 @@ func (g *Gateway) heartbeat(ctx context.Context, mode heartbeatMode) {
 	}
 
 	var members []db.NodeInfo
-	err = g.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = g.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err = tx.GetNodes(ctx)
 		if err != nil {
 			return err
@@ -363,7 +363,7 @@ func (g *Gateway) heartbeat(ctx context.Context, mode heartbeatMode) {
 	// been elected leader before the former leader had chance to
 	// send us a fresh update through the heartbeat pool.
 	logger.Debug("Heartbeat updating local raft members", logger.Ctx{"members": raftNodes})
-	err = g.db.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = g.db.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		return tx.ReplaceRaftNodes(raftNodes)
 	})
 	if err != nil {
@@ -413,7 +413,7 @@ func (g *Gateway) heartbeat(ctx context.Context, mode heartbeatMode) {
 	// Look for any new node which appeared since sending last heartbeat.
 	if ctxErr == nil {
 		var currentMembers []db.NodeInfo
-		err = g.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = g.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 			currentMembers, err = tx.GetNodes(ctx)
 			if err != nil {
@@ -460,7 +460,7 @@ func (g *Gateway) heartbeat(ctx context.Context, mode heartbeatMode) {
 			return errors.New("Cluster unavailable")
 		}
 
-		return g.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		return g.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			for _, node := range hbState.Members {
 				if !node.updated {
 					// If member has not been updated during this heartbeat round it means

@@ -50,7 +50,7 @@ func (suite *containerTestSuite) TestContainer_ProfilesDefault() {
 
 func (suite *containerTestSuite) TestContainer_ProfilesMulti() {
 	// Create an unprivileged profile
-	err := suite.d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := suite.d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		profile := cluster.Profile{
 			Name:        "unprivileged",
 			Description: "unprivileged",
@@ -72,14 +72,14 @@ func (suite *containerTestSuite) TestContainer_ProfilesMulti() {
 
 	suite.Req.NoError(err, "Failed to create the unprivileged profile.")
 	defer func() {
-		_ = suite.d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = suite.d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return cluster.DeleteProfile(ctx, tx.Tx(), "default", "unprivileged")
 		})
 	}()
 
 	var testProfiles []api.Profile
 
-	err = suite.d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = suite.d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		testProfiles, err = tx.GetProfiles(ctx, "default", []string{"default", "unprivileged"})
 
 		return err
@@ -122,7 +122,7 @@ func (suite *containerTestSuite) TestContainer_ProfilesOverwriteDefaultNic() {
 		Name: "testFoo",
 	}
 
-	err := suite.d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := suite.d.State().DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNetwork(ctx, api.ProjectDefaultName, "unknownbr0", "", db.NetworkTypeBridge, nil)
 
 		return err
@@ -162,7 +162,7 @@ func (suite *containerTestSuite) TestContainer_LoadFromDB() {
 
 	state := suite.d.State()
 
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNetwork(ctx, api.ProjectDefaultName, "unknownbr0", "", db.NetworkTypeBridge, nil)
 
 		return err
@@ -181,7 +181,7 @@ func (suite *containerTestSuite) TestContainer_LoadFromDB() {
 	pool, err := storagePools.LoadByName(state, poolName)
 	suite.Req.NoError(err)
 
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err = tx.CreateStoragePoolVolume(ctx, c.Project().Name, c.Name(), "", cluster.StoragePoolVolumeTypeContainer, pool.ID(), nil, cluster.StoragePoolVolumeContentTypeFS, time.Now())
 
 		return err
@@ -266,7 +266,7 @@ func (suite *containerTestSuite) TestContainer_AddRoutedNicValidation() {
 
 	var testProfiles []api.Profile
 
-	err := suite.d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := suite.d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		testProfiles, err = tx.GetProfiles(ctx, "default", []string{"default"})

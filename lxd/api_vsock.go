@@ -55,7 +55,7 @@ func authenticateAgentCert(s *state.State, r *http.Request) (bool, instance.Inst
 
 	var clusterInst *cluster.Instance
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		clusterInst, err = tx.GetLocalInstanceWithVsockID(ctx, vsockID)

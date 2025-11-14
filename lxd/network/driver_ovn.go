@@ -355,7 +355,7 @@ func (n *ovn) getExternalSubnetInUse(uplinkNetworkName string) ([]externalSubnet
 	var projectNetworks map[string]map[int64]api.Network
 	var externalSubnets []externalSubnetUsage
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get all managed networks across all projects.
 		projectNetworks, err = tx.GetCreatedNetworks(ctx)
 		if err != nil {
@@ -1192,7 +1192,7 @@ func (n *ovn) getUplinkGatewayUsage() ([]externalSubnetUsage, error) {
 		return nil, fmt.Errorf(`OVN network %q is missing "network" config option`, n.name)
 	}
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, uplinkNetwork, _, err = tx.GetNetworkInAnyState(ctx, api.ProjectDefaultName, uplinkName)
 		return err
 	})
@@ -1398,7 +1398,7 @@ func (n *ovn) allocateUplinkPortIPs(uplinkNet Network, routerMAC net.HardwareAdd
 
 	// Decide whether we need to allocate new IP(s) and go to the expense of retrieving all allocated IPs.
 	if (allocatingIPV4) || (allocatingIPV6) {
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			allAllocatedIPv4, allAllocatedIPv6, err := n.uplinkAllAllocatedIPs(ctx, tx, uplinkNet.Name())
 			if err != nil {
 				return fmt.Errorf("Failed to get all allocated IPs for uplink: %w", err)
@@ -1582,7 +1582,7 @@ func (n *ovn) startUplinkPort() error {
 
 	// Lock uplink network so that if multiple OVN networks are trying to connect to the same uplink we don't
 	// race each other setting up the connection.
-	unlock, err := locking.Lock(context.TODO(), n.uplinkOperationLockName(uplinkNet))
+	unlock, err := locking.Lock(ctx, n.uplinkOperationLockName(uplinkNet))
 	if err != nil {
 		return err
 	}
@@ -1796,7 +1796,7 @@ func (n *ovn) pingOVNRouter() {
 
 			// Try several attempts as it can take a few seconds for the network to come up.
 			for range 5 {
-				err = pingIP(context.TODO(), ip)
+				err = pingIP(ctx, ip)
 				if err == nil {
 					n.logger.Debug("OVN router external IP address reachable", logger.Ctx{"ip": ip.String()})
 					return
@@ -1902,7 +1902,7 @@ func (n *ovn) checkUplinkUse() (bool, error) {
 	var err error
 	var projectNetworks map[string]map[int64]api.Network
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworks, err = tx.GetCreatedNetworks(ctx)
 		return err
 	})
@@ -1936,7 +1936,7 @@ func (n *ovn) deleteUplinkPort() error {
 		}
 
 		// Lock uplink network so we don't race each other networks using the OVS uplink bridge.
-		unlock, err := locking.Lock(context.TODO(), n.uplinkOperationLockName(uplinkNet))
+		unlock, err := locking.Lock(ctx, n.uplinkOperationLockName(uplinkNet))
 		if err != nil {
 			return err
 		}
@@ -2270,7 +2270,7 @@ func (n *ovn) setup(update bool) error {
 	var projectID int64
 	var uplinkNetwork string
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		project, err := dbCluster.GetProject(ctx, tx.Tx(), n.project)
 		if err != nil {
 			return err
@@ -2323,7 +2323,7 @@ func (n *ovn) setup(update bool) error {
 	if len(updatedConfig) > 0 {
 		maps.Copy(n.config, updatedConfig)
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			err = tx.UpdateNetwork(ctx, n.project, n.name, n.description, n.config)
 			if err != nil {
 				return fmt.Errorf("Failed saving updated network config: %w", err)
@@ -2812,7 +2812,7 @@ func (n *ovn) setup(update bool) error {
 	if len(securityACLS) > 0 {
 		var aclNameIDs map[string]int64
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			// Get map of ACL names to DB IDs (used for generating OVN port group names).
@@ -2960,7 +2960,7 @@ func (n *ovn) addChassisGroupEntry() error {
 	// Get all members in cluster.
 	ourMemberID := int(n.state.DB.Cluster.GetNodeID())
 	var memberIDs []int
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed getting cluster members for adding chassis group entry: %w", err)
@@ -3102,7 +3102,7 @@ func (n *ovn) Delete(clientType request.ClientType) error {
 		var forwardListenAddresses map[int64]string
 		var loadBalancerListenAddresses map[int64]string
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			forwardListenAddresses, err = tx.GetNetworkForwardListenAddresses(ctx, n.ID(), memberSpecific)
 			if err != nil {
 				return fmt.Errorf("Failed loading network forwards: %w", err)
@@ -3218,7 +3218,7 @@ func (n *ovn) Start() error {
 
 	var projectID int64
 	var chassisEnabled bool
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the project ID.
 		projectID, err = dbCluster.GetProjectID(context.Background(), tx.Tx(), n.project)
 		if err != nil {
@@ -3315,7 +3315,7 @@ func (n *ovn) Restore() error {
 	var err error
 	var chassisEnabled bool
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Check if we should enable the chassis.
 		chassisEnabled, err = n.chassisEnabled(ctx, tx)
 		return err
@@ -3463,7 +3463,7 @@ func (n *ovn) Update(newNetwork api.NetworkPut, targetNode string, clientType re
 
 		var aclNameIDs map[string]int64
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get map of ACL names to DB IDs (used for generating OVN port group names).
 			aclNameIDs, err = tx.GetNetworkACLIDsByNames(ctx, n.Project())
 
@@ -3705,7 +3705,7 @@ func (n *ovn) InstanceDevicePortValidateExternalRoutes(deviceInstance instance.I
 	var p *api.Project
 	var uplink *api.Network
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get uplink routes.
@@ -3735,7 +3735,7 @@ func (n *ovn) InstanceDevicePortValidateExternalRoutes(deviceInstance instance.I
 	}
 
 	// Load the project to get uplink network restrictions.
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		project, err := dbCluster.GetProject(ctx, tx.Tx(), n.project)
 		if err != nil {
 			return err
@@ -4246,7 +4246,7 @@ func (n *ovn) InstanceDevicePortStart(opts *OVNInstanceNICSetupOpts, securityACL
 	if len(nicACLNames) > 0 || len(securityACLsRemove) > 0 {
 		var aclNameIDs map[string]int64
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get map of ACL names to DB IDs (used for generating OVN port group names).
 			aclNameIDs, err = tx.GetNetworkACLIDsByNames(ctx, n.Project())
 
@@ -4409,7 +4409,7 @@ func (n *ovn) InstanceDevicePortRemove(instanceUUID string, deviceName string, d
 
 	var uplink *api.Network
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Load uplink network config.
 		_, uplink, _, err = tx.GetNetworkInAnyState(ctx, api.ProjectDefaultName, n.config["network"])
 
@@ -4631,10 +4631,10 @@ func (n *ovn) ovnNetworkExternalSubnets(ovnProjectNetworksWithOurUplink map[stri
 func (n *ovn) ovnNICExternalRoutes(ovnProjectNetworksWithOurUplink map[string][]*api.Network) ([]externalSubnetUsage, error) {
 	externalRoutes := make([]externalSubnetUsage, 0)
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			// Get the instance's effective network project name.
-			instNetworkProject := project.NetworkProjectFromRecord(&p)
+			instNetworkProject := project.NetworkProjectFromRecord(p)
 			devices := instancetype.ExpandInstanceDevices(inst.Devices.Clone(), inst.Profiles)
 
 			// Iterate through each of the instance's devices, looking for OVN NICs that are linked to networks
@@ -4751,10 +4751,10 @@ func (n *ovn) handleDependencyChange(uplinkName string, uplinkConfig map[string]
 
 			// Find all instance NICs that use this network, and re-add the logical OVN instance port.
 			// This will restore the l2proxy DNAT_AND_SNAT rules.
-			err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 					// Get the instance's effective network project name.
-					instNetworkProject := project.NetworkProjectFromRecord(&p)
+					instNetworkProject := project.NetworkProjectFromRecord(p)
 
 					// Skip instances who's effective network project doesn't match this network's
 					// project.
@@ -5026,7 +5026,7 @@ func (n *ovn) ForwardCreate(forward api.NetworkForwardsPost, clientType request.
 
 		var forwardID int64
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Create forward DB record.
 			forwardID, err = tx.CreateNetworkForward(ctx, n.ID(), memberSpecific, &forward)
 
@@ -5037,7 +5037,7 @@ func (n *ovn) ForwardCreate(forward api.NetworkForwardsPost, clientType request.
 		}
 
 		revert.Add(func() {
-			_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.DeleteNetworkForward(ctx, n.ID(), forwardID)
 			})
 
@@ -5087,7 +5087,7 @@ func (n *ovn) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, cli
 		var curForwardID int64
 		var curForward *api.NetworkForward
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			curForwardID, curForward, err = tx.GetNetworkForward(ctx, n.ID(), memberSpecific, listenAddress)
@@ -5144,7 +5144,7 @@ func (n *ovn) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, cli
 			}
 		})
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateNetworkForward(ctx, n.ID(), curForwardID, newForward.Writable())
 		})
 		if err != nil {
@@ -5152,7 +5152,7 @@ func (n *ovn) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, cli
 		}
 
 		revert.Add(func() {
-			_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateNetworkForward(ctx, n.ID(), curForwardID, curForward.Writable())
 			})
 		})
@@ -5189,7 +5189,7 @@ func (n *ovn) ForwardDelete(listenAddress string, clientType request.ClientType)
 		var forwardID int64
 		var forward *api.NetworkForward
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			forwardID, forward, err = tx.GetNetworkForward(ctx, n.ID(), memberSpecific, listenAddress)
@@ -5210,7 +5210,7 @@ func (n *ovn) ForwardDelete(listenAddress string, clientType request.ClientType)
 			return fmt.Errorf("Failed deleting OVN load balancer: %w", err)
 		}
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.DeleteNetworkForward(ctx, n.ID(), forwardID)
 		})
 		if err != nil {
@@ -5324,7 +5324,7 @@ func (n *ovn) LoadBalancerCreate(loadBalancer api.NetworkLoadBalancersPost, clie
 
 		var loadBalancerID int64
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Create load balancer DB record.
 			loadBalancerID, err = tx.CreateNetworkLoadBalancer(ctx, n.ID(), memberSpecific, &loadBalancer)
 
@@ -5335,7 +5335,7 @@ func (n *ovn) LoadBalancerCreate(loadBalancer api.NetworkLoadBalancersPost, clie
 		}
 
 		revert.Add(func() {
-			_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.DeleteNetworkLoadBalancer(ctx, n.ID(), loadBalancerID)
 			})
 
@@ -5385,7 +5385,7 @@ func (n *ovn) LoadBalancerUpdate(listenAddress string, req api.NetworkLoadBalanc
 		var curLoadBalancerID int64
 		var curLoadBalancer *api.NetworkLoadBalancer
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			curLoadBalancerID, curLoadBalancer, err = tx.GetNetworkLoadBalancer(ctx, n.ID(), memberSpecific, listenAddress)
@@ -5443,7 +5443,7 @@ func (n *ovn) LoadBalancerUpdate(listenAddress string, req api.NetworkLoadBalanc
 			}
 		})
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateNetworkLoadBalancer(ctx, n.ID(), curLoadBalancerID, newLoadBalancer.Writable())
 		})
 		if err != nil {
@@ -5451,7 +5451,7 @@ func (n *ovn) LoadBalancerUpdate(listenAddress string, req api.NetworkLoadBalanc
 		}
 
 		revert.Add(func() {
-			_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateNetworkLoadBalancer(ctx, n.ID(), curLoadBalancerID, curLoadBalancer.Writable())
 			})
 		})
@@ -5488,7 +5488,7 @@ func (n *ovn) LoadBalancerDelete(listenAddress string, clientType request.Client
 		var loadBalancerID int64
 		var forward *api.NetworkLoadBalancer
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			loadBalancerID, forward, err = tx.GetNetworkLoadBalancer(ctx, n.ID(), memberSpecific, listenAddress)
@@ -5509,7 +5509,7 @@ func (n *ovn) LoadBalancerDelete(listenAddress string, clientType request.Client
 			return fmt.Errorf("Failed deleting OVN load balancer: %w", err)
 		}
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.DeleteNetworkLoadBalancer(ctx, n.ID(), loadBalancerID)
 		})
 		if err != nil {
@@ -5632,7 +5632,7 @@ func (n *ovn) PeerCreate(peer api.NetworkPeersPost) error {
 
 	var peers map[int64]*api.NetworkPeer
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Check if there is an existing peer using the same name, or whether there is already a peering (in any
@@ -5664,7 +5664,7 @@ func (n *ovn) PeerCreate(peer api.NetworkPeersPost) error {
 	var peerID int64
 	var mutualExists bool
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error { // Create peer DB record.
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error { // Create peer DB record.
 		peerID, mutualExists, err = tx.CreateNetworkPeer(ctx, n.ID(), &peer)
 
 		return err
@@ -5680,7 +5680,7 @@ func (n *ovn) PeerCreate(peer api.NetworkPeersPost) error {
 	if mutualExists {
 		var peerInfo *api.NetworkPeer
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Load peering to get mutual peering info.
 			_, peerInfo, err = tx.GetNetworkPeer(ctx, n.ID(), peer.Name)
 
@@ -5900,7 +5900,7 @@ func (n *ovn) PeerUpdate(peerName string, req api.NetworkPeerPut) error {
 	var curPeerID int64
 	var curPeer *api.NetworkPeer
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		curPeerID, curPeer, err = tx.GetNetworkPeer(ctx, n.ID(), peerName)
@@ -5936,7 +5936,7 @@ func (n *ovn) PeerUpdate(peerName string, req api.NetworkPeerPut) error {
 		return nil // Nothing has changed.
 	}
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateNetworkPeer(ctx, n.ID(), curPeerID, newPeer.Writable())
 	})
 	if err != nil {
@@ -5952,7 +5952,7 @@ func (n *ovn) PeerDelete(peerName string) error {
 	var peerID int64
 	var peer *api.NetworkPeer
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		peerID, peer, err = tx.GetNetworkPeer(ctx, n.ID(), peerName)
@@ -6023,7 +6023,7 @@ func (n *ovn) PeerDelete(peerName string) error {
 func (n *ovn) forPeers(f func(targetOVNNet *ovn) error) error {
 	var peers map[int64]*api.NetworkPeer
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		peers, err = tx.GetNetworkPeers(ctx, n.ID())
@@ -6117,7 +6117,7 @@ func (n *ovn) checkInternalAddressNotInUse(listenAddress net.IP) (isInternal boo
 
 	var forwards, loadBalancers map[int64]string
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		forwards, err = tx.GetNetworkForwardListenAddresses(ctx, n.id, false)
 		if err != nil {
 			return fmt.Errorf("Failed to get listen addresses of network forwards on network %q: %w", n.name, err)
@@ -6206,7 +6206,7 @@ func (n *ovn) checkAddressNotInOVNRange(addr net.IP) error {
 	var err error
 
 	// Get uplink network config.
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Uplink has to be in the "default" project.
 		_, uplink, _, err = tx.GetNetworkInAnyState(ctx, api.ProjectDefaultName, uplinkName)
 

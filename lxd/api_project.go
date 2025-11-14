@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -161,62 +163,47 @@ func projectsGet(d *Daemon, r *http.Request) response.Response {
 		return response.InternalError(err)
 	}
 
-	var apiProjects []*api.Project
-	var projectURLs []string
-	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		allProjects, err := dbCluster.GetProjects(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		projects := make([]dbCluster.Project, 0, len(allProjects))
-		for _, project := range allProjects {
-			if userHasPermission(entity.ProjectURL(project.Name)) {
-				projects = append(projects, project)
-			}
-		}
-
-		if recursion {
-			apiProjects = make([]*api.Project, 0, len(projects))
-			for _, project := range projects {
-				apiProject, err := project.ToAPI(ctx, tx.Tx())
-				if err != nil {
-					return err
-				}
-
-				apiProject.UsedBy, err = projectUsedBy(ctx, tx, &project)
-				if err != nil {
-					return err
-				}
-
-				apiProjects = append(apiProjects, apiProject)
-			}
-		} else {
-			projectURLs = make([]string, 0, len(projects))
-			for _, project := range projects {
-				projectURLs = append(projectURLs, entity.ProjectURL(project.Name).String())
-			}
-		}
-
-		return nil
-	})
+	projects, err := broker.GetAllProjects(r.Context())
 	if err != nil {
-		return response.SmartError(err)
+		return response.SmartError(fmt.Errorf("Failed to list projects: %w", err))
 	}
 
 	if !recursion {
-		return response.SyncResponse(true, projectURLs)
+		urls, _ := shared.SliceFilterTransform(projects, func(i int, e broker.Project) (bool, error) {
+			return userHasPermission(e.URL()), nil
+		}, func(i int, e broker.Project) (string, error) {
+			return e.URL().String(), nil
+		})
+
+		return response.SyncResponse(true, urls)
+	}
+
+	projectURLs := make([]string, len(projects))
+	apiProjects, _ := shared.SliceFilterTransform(projects, func(i int, e broker.Project) (bool, error) {
+		return userHasPermission(e.URL()), nil
+	}, func(i int, e broker.Project) (api.Project, error) {
+		projectURLs = append(projectURLs, e.URL().String())
+		return e.ToAPI(), nil
+	})
+
+	var usage map[string][]string
+	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
+		usage, err = projectsUsedBy(r.Context(), tx.Tx())
+		return err
+	})
+	if err != nil {
+		return response.SmartError(fmt.Errorf("Failed to load project references: %w", err))
 	}
 
 	for _, apiProject := range apiProjects {
-		apiProject.UsedBy = projecthelpers.FilterUsedBy(r.Context(), s.Authorizer, apiProject.UsedBy)
+		apiProject.UsedBy = projecthelpers.FilterUsedBy(r.Context(), s.Authorizer, usage[apiProject.Name])
 	}
 
 	if len(withEntitlements) > 0 {
 		urlToProject := make(map[*api.URL]auth.EntitlementReporter, len(apiProjects))
 		for _, p := range apiProjects {
 			u := entity.ProjectURL(p.Name)
-			urlToProject[u] = p
+			urlToProject[u] = &p
 		}
 
 		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeProject, withEntitlements, urlToProject)
@@ -230,7 +217,7 @@ func projectsGet(d *Daemon, r *http.Request) response.Response {
 
 // projectUsedBy returns a list of URLs for all instances, images, profiles,
 // storage volumes, storage buckets, networks, acls, and placement groups that use this project.
-func projectUsedBy(ctx context.Context, tx *db.ClusterTx, project *dbCluster.Project) ([]string, error) {
+func projectUsedBy(ctx context.Context, tx *sql.Tx, projectName string) ([]string, error) {
 	reportedEntityTypes := []entity.Type{
 		entity.TypeInstance,
 		entity.TypeProfile,
@@ -242,9 +229,9 @@ func projectUsedBy(ctx context.Context, tx *db.ClusterTx, project *dbCluster.Pro
 		entity.TypePlacementGroup,
 	}
 
-	entityURLs, err := dbCluster.GetEntityURLs(ctx, tx.Tx(), project.Name, reportedEntityTypes...)
+	entityURLs, err := dbCluster.GetEntityURLs(ctx, tx, projectName, reportedEntityTypes...)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get project used-by URLs: %w", err)
+		return nil, fmt.Errorf("Failed to get entity URLs: %w", err)
 	}
 
 	var usedBy []string
@@ -262,6 +249,42 @@ func projectUsedBy(ctx context.Context, tx *db.ClusterTx, project *dbCluster.Pro
 	}
 
 	return usedBy, nil
+}
+
+// projectUsedBy returns a map project name to list of URLs of all instances, images, profiles, storage volumes, storage buckets, networks, acls, and placement groups that use the project.
+func projectsUsedBy(ctx context.Context, tx *sql.Tx) (map[string][]string, error) {
+	reportedEntityTypes := []entity.Type{
+		entity.TypeInstance,
+		entity.TypeProfile,
+		entity.TypeImage,
+		entity.TypeStorageVolume,
+		entity.TypeNetwork,
+		entity.TypeNetworkACL,
+		entity.TypeStorageBucket,
+		entity.TypePlacementGroup,
+	}
+
+	entityURLs, err := dbCluster.GetEntityURLs(ctx, tx, "", reportedEntityTypes...)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get entity URLs: %w", err)
+	}
+
+	projectToUsedBy := make(map[string][]string)
+	for _, entityIDToURL := range entityURLs {
+		for _, u := range entityIDToURL {
+			projectName := u.Query().Get("project")
+			// Omit the project query parameter if it is the default project.
+			if projectName == api.ProjectDefaultName {
+				q := u.Query()
+				q.Del("project")
+				u.RawQuery = q.Encode()
+			}
+
+			projectToUsedBy[projectName] = append(projectToUsedBy[projectName], u.String())
+		}
+	}
+
+	return projectToUsedBy, nil
 }
 
 // swagger:operation POST /1.0/projects projects projects_post
@@ -438,7 +461,7 @@ func projectCreateDefaultProfile(ctx context.Context, tx *db.ClusterTx, project 
 	}
 
 	if len(devices) > 0 {
-		err = dbCluster.CreateProfileDevices(context.TODO(), tx.Tx(), profileID, devices)
+		err = dbCluster.CreateProfileDevices(ctx, tx.Tx(), profileID, devices)
 		if err != nil {
 			return fmt.Errorf("Add root device to default profile of new project: %w", err)
 		}
@@ -494,28 +517,24 @@ func projectGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
+	project, err := broker.GetProjectByName(r.Context(), name)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	// Get the database entry
-	var project *api.Project
+	var projectUsage []string
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), name)
-		if err != nil {
-			return err
-		}
-
-		project, err = dbProject.ToAPI(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		project.UsedBy, err = projectUsedBy(ctx, tx, dbProject)
+		projectUsage, err = projectUsedBy(ctx, tx.Tx(), project.Name)
 		return err
 	})
 	if err != nil {
 		return response.SmartError(err)
 	}
 
+	apiProject := project.ToAPI()
 	if len(withEntitlements) > 0 {
-		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeProject, withEntitlements, map[*api.URL]auth.EntitlementReporter{entity.ProjectURL(name): project})
+		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeProject, withEntitlements, map[*api.URL]auth.EntitlementReporter{entity.ProjectURL(name): &apiProject})
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -526,7 +545,7 @@ func projectGet(d *Daemon, r *http.Request) response.Response {
 		project.Config,
 	}
 
-	project.UsedBy = projecthelpers.FilterUsedBy(r.Context(), s.Authorizer, project.UsedBy)
+	apiProject.UsedBy = projecthelpers.FilterUsedBy(r.Context(), s.Authorizer, projectUsage)
 
 	return response.SyncResponseETag(true, project, etag)
 }
@@ -568,20 +587,15 @@ func projectPut(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
+	project, err := broker.GetProjectByName(r.Context(), name)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	// Get the current data
-	var project *api.Project
+	apiProject := project.ToAPI()
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), name)
-		if err != nil {
-			return err
-		}
-
-		project, err = dbProject.ToAPI(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		project.UsedBy, err = projectUsedBy(ctx, tx, dbProject)
+		apiProject.UsedBy, err = projectUsedBy(ctx, tx.Tx(), project.Name)
 		if err != nil {
 			return err
 		}
@@ -614,7 +628,7 @@ func projectPut(d *Daemon, r *http.Request) response.Response {
 	requestor := request.CreateRequestor(r.Context())
 	s.Events.SendLifecycle(project.Name, lifecycle.ProjectUpdated.Event(project.Name, requestor, nil))
 
-	return projectChange(r.Context(), s, project, req)
+	return projectChange(r.Context(), s, &apiProject, req)
 }
 
 // swagger:operation PATCH /1.0/projects/{name} projects project_patch
@@ -654,20 +668,15 @@ func projectPatch(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
+	project, err := broker.GetProjectByName(r.Context(), name)
+	if err != nil {
+		return response.SmartError(err)
+	}
+
 	// Get the current data
-	var project *api.Project
+	apiProject := project.ToAPI()
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		dbProject, err := dbCluster.GetProject(ctx, tx.Tx(), name)
-		if err != nil {
-			return err
-		}
-
-		project, err = dbProject.ToAPI(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		project.UsedBy, err = projectUsedBy(ctx, tx, dbProject)
+		apiProject.UsedBy, err = projectUsedBy(ctx, tx.Tx(), project.Name)
 		if err != nil {
 			return err
 		}
@@ -730,7 +739,7 @@ func projectPatch(d *Daemon, r *http.Request) response.Response {
 	requestor := request.CreateRequestor(r.Context())
 	s.Events.SendLifecycle(project.Name, lifecycle.ProjectUpdated.Event(project.Name, requestor, nil))
 
-	return projectChange(r.Context(), s, project, req)
+	return projectChange(r.Context(), s, &apiProject, req)
 }
 
 // isProjectInUse checks if a project is in use by any instances, images, profiles, storage volumes, etc.
@@ -961,8 +970,8 @@ func projectPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Perform the rename.
-	run := func(op *operations.Operation) error {
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	run := func(_ context.Context, op *operations.Operation) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			project, err := dbCluster.GetProject(ctx, tx.Tx(), req.Name)
 			if err != nil && !response.IsNotFoundError(err) {
 				return fmt.Errorf("Failed checking if project %q exists: %w", req.Name, err)
@@ -977,7 +986,7 @@ func projectPost(d *Daemon, r *http.Request) response.Response {
 				return fmt.Errorf("Failed loading project %q: %w", name, err)
 			}
 
-			empty, err := projectIsEmpty(ctx, project, tx)
+			empty, err := projectIsEmpty(ctx, project.Name, tx)
 			if err != nil {
 				return err
 			}
@@ -1041,7 +1050,7 @@ func projectNodeConfigDelete(d *Daemon, s *state.State, name string) error {
 	backupsVolumeConfig := "storage.project." + name + ".backups_volume"
 
 	// Clear the project-specific config keys from the local node config.
-	err := s.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := s.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 
 		config, err = node.ConfigLoad(ctx, tx)
@@ -1097,7 +1106,7 @@ func doProjectForceDelete(ctx context.Context, s *state.State, projectName strin
 			return fmt.Errorf("Failed loading project %q: %w", projectName, err)
 		}
 
-		usedBy, err = projectUsedBy(ctx, tx, project)
+		usedBy, err = projectUsedBy(ctx, tx.Tx(), project.Name)
 		if err != nil {
 			return err
 		}
@@ -1239,13 +1248,13 @@ func projectDelete(d *Daemon, r *http.Request) response.Response {
 		return response.EmptySyncResponse
 	}
 
+	var cachedImages []dbCluster.Image
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
 		project, err := dbCluster.GetProject(ctx, tx.Tx(), name)
 		if err != nil {
 			return fmt.Errorf("Failed loading project %q: %w", name, err)
 		}
 
-		var cachedImages []dbCluster.Image
 		if !force {
 			cached := true
 			cachedImages, err = dbCluster.GetImages(ctx, tx.Tx(), dbCluster.ImageFilter{Project: &project.Name, Cached: &cached})
@@ -1259,31 +1268,13 @@ func projectDelete(d *Daemon, r *http.Request) response.Response {
 			}
 
 			// Verify the project is empty. Skip checking for cached images as these will be deleted below.
-			empty, err := projectIsEmpty(ctx, project, tx, cachedImageURLs...)
+			empty, err := projectIsEmpty(ctx, project.Name, tx, cachedImageURLs...)
 			if err != nil {
 				return err
 			}
 
 			if !empty {
 				return errors.New("Only empty projects can be removed")
-			}
-		}
-
-		// Prune cached images.
-		for _, image := range cachedImages {
-			op, err := doImageDelete(ctx, s, image.Fingerprint, image.ID, project.Name)
-			if err != nil {
-				return fmt.Errorf("Failed creating delete operation for cached image %q: %w", image.Fingerprint, err)
-			}
-
-			err = op.Start()
-			if err != nil {
-				return fmt.Errorf("Failed starting image delete operation for cached image %q: %w", image.Fingerprint, err)
-			}
-
-			err = op.Wait(context.Background())
-			if err != nil {
-				return fmt.Errorf("Failed deleting cached image %q: %w", image.Fingerprint, err)
 			}
 		}
 
@@ -1298,6 +1289,24 @@ func projectDelete(d *Daemon, r *http.Request) response.Response {
 		err = doProjectForceDelete(r.Context(), s, name)
 		if err != nil {
 			return response.SmartError(err)
+		}
+	} else {
+		// Prune cached images.
+		for _, image := range cachedImages {
+			op, err := doImageDelete(r.Context(), s, image.Fingerprint, image.ID, name)
+			if err != nil {
+				return response.SmartError(fmt.Errorf("Failed creating delete operation for cached image %q: %w", image.Fingerprint, err))
+			}
+
+			err = op.Start()
+			if err != nil {
+				return response.SmartError(fmt.Errorf("Failed starting image delete operation for cached image %q: %w", image.Fingerprint, err))
+			}
+
+			err = op.Wait(r.Context())
+			if err != nil {
+				return response.SmartError(fmt.Errorf("Failed deleting cached image %q: %w", image.Fingerprint, err))
+			}
 		}
 	}
 
@@ -1396,8 +1405,8 @@ func projectStateGet(d *Daemon, r *http.Request) response.Response {
 }
 
 // Check if a project is empty. When skipURLs are provided, those entities are ignored when checking if the project is empty.
-func projectIsEmpty(ctx context.Context, project *dbCluster.Project, tx *db.ClusterTx, skipURLs ...string) (bool, error) {
-	usedBy, err := projectUsedBy(ctx, tx, project)
+func projectIsEmpty(ctx context.Context, projectName string, tx *db.ClusterTx, skipURLs ...string) (bool, error) {
+	usedBy, err := projectUsedBy(ctx, tx.Tx(), projectName)
 	if err != nil {
 		return false, err
 	}
@@ -1943,7 +1952,7 @@ func projectValidateRestrictedSubnets(s *state.State, value string) error {
 
 		var uplink *api.Network
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Check uplink exists and load config to compare subnets.
 			_, uplink, _, err = tx.GetNetworkInAnyState(ctx, api.ProjectDefaultName, uplinkName)
 

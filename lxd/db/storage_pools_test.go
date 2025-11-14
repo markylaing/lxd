@@ -28,7 +28,7 @@ func TestGetStoragePoolsLocalConfigs(t *testing.T) {
 	cluster, cleanup := db.NewTestCluster(t)
 	defer cleanup()
 
-	_ = cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Create a storage pool named "local" (like the default clustering one), then delete it and create another one.
 		_, err := tx.CreateStoragePool(ctx, "local", "", "dir", map[string]string{
 			"rsync.bwlimit": "1",
@@ -52,7 +52,7 @@ func TestGetStoragePoolsLocalConfigs(t *testing.T) {
 	// contains the value of the "BTRFS" storage pool.
 	var config map[string]map[string]string
 
-	err := cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		config, err = tx.GetStoragePoolsLocalConfig(ctx)
 		return err
@@ -173,7 +173,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 	defer cleanup()
 
 	// Create a second node (beyond the default one).
-	err := clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNode("n1", "1.2.3.4:666")
 		return err
 	})
@@ -181,7 +181,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 
 	var poolID int64
 
-	_ = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		poolID, err = tx.CreateStoragePool(ctx, "p1", "", "ceph", nil)
 		require.NoError(t, err)
 
@@ -191,7 +191,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 	config := map[string]string{"k": "v"}
 	var volumeID int64
 
-	_ = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		volumeID, err = tx.CreateStoragePoolVolume(ctx, "default", "v1", "", 1, poolID, config, cluster.StoragePoolVolumeContentTypeFS, time.Now())
 
 		return err
@@ -200,7 +200,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 
 	getStoragePoolVolume := func(volumeProjectName string, volumeName string, volumeType cluster.StoragePoolVolumeType, poolID int64) (*db.StorageVolume, error) {
 		var dbVolume *db.StorageVolume
-		err = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			dbVolume, err = tx.GetStoragePoolVolume(context.Background(), poolID, volumeProjectName, volumeType, volumeName, true)
 			return err
 		})
@@ -221,7 +221,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 
 	// Update the volume
 	config["k"] = "v2"
-	err = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateStoragePoolVolume(ctx, "default", "v1", 1, poolID, "volume 1", config)
 	})
 	require.NoError(t, err)
@@ -230,7 +230,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 	assert.Equal(t, "volume 1", volume.Description)
 	assert.Equal(t, config, volume.Config)
 
-	err = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RenameStoragePoolVolume(ctx, "default", "v1", "v1-new", 1, poolID)
 	})
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestStoragePoolVolume_Ceph(t *testing.T) {
 	assert.NotNil(t, volume)
 
 	// Delete the volume
-	err = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.RemoveStoragePoolVolume(ctx, "default", "v1-new", 1, poolID)
 	})
 	require.NoError(t, err)
@@ -256,7 +256,7 @@ func TestCreateStoragePoolVolume_Snapshot(t *testing.T) {
 	var poolID int64
 	var poolID1 int64
 
-	_ = clusterDB.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = clusterDB.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		poolID, err = tx.CreateStoragePool(ctx, "p1", "", "dir", nil)

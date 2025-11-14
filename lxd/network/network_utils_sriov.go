@@ -42,7 +42,7 @@ func SRIOVGetHostDevicesInUse(s *state.State) (map[string]struct{}, error) {
 	var err error
 	var projectNetworks map[string]map[int64]api.Network
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get all managed networks across all projects.
 		projectNetworks, err = tx.GetCreatedNetworks(ctx)
 		if err != nil {
@@ -59,7 +59,7 @@ func SRIOVGetHostDevicesInUse(s *state.State) (map[string]struct{}, error) {
 	reservedDevices := map[string]struct{}{}
 
 	// Check if any instances are using the VF device.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(dbInst db.InstanceArgs, p api.Project) error {
 			// Expand configs so we take into account profile devices.
 			var globalConfigDump map[string]string
@@ -287,7 +287,7 @@ func SRIOVSwitchdevEnabled(deviceName string) bool {
 
 	slotName := "pci/" + pciDev.SlotName
 
-	err = shared.RunCommandWithFds(context.TODO(), nil, &buf, "devlink", "-j", "dev", "eswitch", "show", slotName)
+	err = shared.RunCommandWithFds(ctx, nil, &buf, "devlink", "-j", "dev", "eswitch", "show", slotName)
 	if err != nil {
 		return false
 	}

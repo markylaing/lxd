@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -61,7 +62,7 @@ const ctxProfileDetails request.CtxKey = "profile-details"
 // addProfileDetailsToRequestContext is called.
 type profileDetails struct {
 	profileName      string
-	effectiveProject api.Project
+	effectiveProject broker.Project
 }
 
 // addProfileDetailsToRequestContext sets the effective project in the request.Info and sets ctxProfileDetails (profileDetails)
@@ -73,7 +74,13 @@ func addProfileDetailsToRequestContext(s *state.State, r *http.Request) error {
 	}
 
 	requestProjectName := request.ProjectParam(r)
-	effectiveProject, err := project.ProfileProject(s.DB.Cluster, requestProjectName)
+	requestProject, err := broker.GetProjectByName(r.Context(), requestProjectName)
+	if err != nil {
+		return err
+	}
+
+	effectiveProjectName := project.ProfileProjectFromRecord(requestProject.ToAPI())
+	effectiveProject, err := broker.GetProjectByName(r.Context(), effectiveProjectName)
 	if err != nil {
 		return fmt.Errorf("Failed to check project %q profile feature: %w", requestProjectName, err)
 	}
@@ -223,12 +230,12 @@ func profilesGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
-		p, err := project.ProfileProject(s.DB.Cluster, requestProjectName)
+		requestProject, err := broker.GetProjectByName(r.Context(), requestProjectName)
 		if err != nil {
 			return response.SmartError(err)
 		}
 
-		effectiveProjectName = p.Name
+		effectiveProjectName = project.ProfileProjectFromRecord(requestProject.ToAPI())
 		request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 	}
 
@@ -379,7 +386,13 @@ func profileUsedBy(ctx context.Context, tx *db.ClusterTx, profile dbCluster.Prof
 func profilesPost(d *Daemon, r *http.Request) response.Response {
 	s := d.State()
 
-	p, err := project.ProfileProject(s.DB.Cluster, request.ProjectParam(r))
+	requestProject, err := broker.GetProjectByName(r.Context(), request.ProjectParam(r))
+	if err != nil {
+		return response.SmartError(err)
+	}
+
+	effectiveProjectName := project.ProfileProjectFromRecord(requestProject.ToAPI())
+	p, err := broker.GetProjectByName(r.Context(), effectiveProjectName)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -409,7 +422,7 @@ func profilesPost(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// At this point we don't know the instance type, so just use instancetype.Any type for validation.
-	err = instance.ValidDevices(s, *p, instancetype.Any, deviceConfig.NewDevices(req.Devices), nil)
+	err = instance.ValidDevices(s, p.ToAPI(), instancetype.Any, deviceConfig.NewDevices(req.Devices), nil)
 	if err != nil {
 		return response.BadRequest(err)
 	}
@@ -654,7 +667,7 @@ func profilePut(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(err)
 	}
 
-	err = doProfileUpdate(r.Context(), s, details.effectiveProject, details.profileName, profile, req)
+	err = doProfileUpdate(r.Context(), s, details.effectiveProject.ToAPI(), details.profileName, profile, req)
 
 	if err == nil && !clusterNotification {
 		// Notify all other nodes. If a node is down, it will be ignored.
@@ -797,7 +810,7 @@ func profilePatch(d *Daemon, r *http.Request) response.Response {
 	requestor := request.CreateRequestor(r.Context())
 	s.Events.SendLifecycle(details.effectiveProject.Name, lifecycle.ProfileUpdated.Event(details.profileName, details.effectiveProject.Name, requestor, nil))
 
-	return response.SmartError(doProfileUpdate(r.Context(), s, details.effectiveProject, details.profileName, profile, req))
+	return response.SmartError(doProfileUpdate(r.Context(), s, details.effectiveProject.ToAPI(), details.profileName, profile, req))
 }
 
 // swagger:operation POST /1.0/profiles/{name} profiles profile_post

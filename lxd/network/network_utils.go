@@ -88,7 +88,7 @@ func UsedByInstanceDevices(s *state.State, networkProjectName string, networkNam
 	projects := map[string]api.Project{}
 	var instances []db.InstanceArgs
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			projects[inst.Project] = p
 			instances = append(instances, inst)
@@ -105,7 +105,7 @@ func UsedByInstanceDevices(s *state.State, networkProjectName string, networkNam
 		p := projects[inst.Project]
 
 		// Get the instance's effective network project name.
-		instNetworkProject := project.NetworkProjectFromRecord(&p)
+		instNetworkProject := project.NetworkProjectFromRecord(p)
 
 		// Skip instances who's effective network project doesn't match this Network's project.
 		if instNetworkProject != networkProjectName {
@@ -137,7 +137,7 @@ func UsedBy(s *state.State, networkProjectName string, networkID int64, networkN
 	if networkID > 0 {
 		var peers map[int64]*api.NetworkPeer
 
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			peers, err = tx.GetNetworkPeers(ctx, networkID)
 
 			return err
@@ -163,7 +163,7 @@ func UsedBy(s *state.State, networkProjectName string, networkID int64, networkN
 		// Get all managed networks across all projects.
 		var projectNetworks map[string]map[int64]api.Network
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			projectNetworks, err = tx.GetCreatedNetworks(ctx)
 			return err
 		})
@@ -191,7 +191,7 @@ func UsedBy(s *state.State, networkProjectName string, networkID int64, networkN
 	}
 
 	// Look for profiles. Next cheapest to do.
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get all profiles
 		profiles, err := cluster.GetProfiles(ctx, tx.Tx())
 		if err != nil {
@@ -269,7 +269,7 @@ func usedByProfileDevices(profileDevices map[string]cluster.Device, profileProje
 
 	// Skip profiles who's translated network project doesn't match the requested network's project.
 	// Because its devices can't be using this network.
-	profileNetworkProjectName := project.NetworkProjectFromRecord(profileProject)
+	profileNetworkProjectName := project.NetworkProjectFromRecord(*profileProject)
 	if networkProjectName != profileNetworkProjectName {
 		return false, nil
 	}
@@ -414,7 +414,7 @@ func UpdateDNSMasqStatic(s *state.State, networkName string) error {
 	if networkName == "" {
 		var err error
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Pass api.ProjectDefaultName here, as currently dnsmasq (bridged) networks do not support projects.
 			networks, err = tx.GetNetworks(ctx, api.ProjectDefaultName)
 
@@ -875,7 +875,7 @@ func pingSubnet(subnet *net.IPNet) bool {
 	ping := func(ip net.IP) {
 		defer wgChecks.Done()
 
-		if pingIP(context.TODO(), ip) != nil {
+		if pingIP(ctx, ip) != nil {
 			return
 		}
 

@@ -87,7 +87,7 @@ func (suite *lxdTestSuite) SetupTest() {
 		Config: rootDev,
 	}
 
-	err = suite.d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = suite.d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		profile, err := cluster.GetProfile(ctx, tx.Tx(), "default", "default")
 		if err != nil {
 			return err

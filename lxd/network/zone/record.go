@@ -54,7 +54,7 @@ func (d *zone) AddRecord(req api.NetworkZoneRecordsPost) error {
 		return err
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Add the new record.
 		_, err = tx.CreateNetworkZoneRecord(ctx, d.id, req)
 
@@ -75,7 +75,7 @@ func (d *zone) GetRecords() ([]api.NetworkZoneRecord, error) {
 	records := []api.NetworkZoneRecord{}
 	var record *api.NetworkZoneRecord
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get the record names.
@@ -107,7 +107,7 @@ func (d *zone) GetRecords() ([]api.NetworkZoneRecord, error) {
 func (d *zone) GetRecord(name string) (*api.NetworkZoneRecord, error) {
 	var record *api.NetworkZoneRecord
 
-	err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get the record.
@@ -138,7 +138,7 @@ func (d *zone) UpdateRecord(name string, req api.NetworkZoneRecordPut, clientTyp
 		return err
 	}
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the record.
 		id, _, err := tx.GetNetworkZoneRecord(ctx, d.id, name)
 		if err != nil {
@@ -164,7 +164,7 @@ func (d *zone) UpdateRecord(name string, req api.NetworkZoneRecordPut, clientTyp
 func (d *zone) DeleteRecord(name string) error {
 	s := d.state
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the record.
 		id, _, err := tx.GetNetworkZoneRecord(ctx, d.id, name)
 		if err != nil {

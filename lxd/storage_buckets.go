@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -208,9 +209,14 @@ func storagePoolBucketsGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
+		requestProject, err := broker.GetProjectByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
 		// Project specific requests require an effective project, when "features.storage.buckets" is enabled this is the requested project, otherwise it is the default project.
 		// If the request is project specific, then set effective project name in the request info so that the authorizer can generate the correct URL.
-		effectiveProjectName, err = project.StorageBucketProject(r.Context(), s.DB.Cluster, requestProjectName)
+		effectiveProjectName = project.StorageBucketProjectFromRecord(requestProject.ToAPI())
 		if err != nil {
 			return response.SmartError(err)
 		}
@@ -453,11 +459,12 @@ func storagePoolBucketsPost(d *Daemon, r *http.Request) response.Response {
 		return resp
 	}
 
-	bucketProjectName, err := project.StorageBucketProject(r.Context(), s.DB.Cluster, request.ProjectParam(r))
+	requestProject, err := broker.GetProjectByName(r.Context(), request.ProjectParam(r))
 	if err != nil {
 		return response.SmartError(err)
 	}
 
+	bucketProjectName := project.StorageBucketProjectFromRecord(requestProject.ToAPI())
 	poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])
 	if err != nil {
 		return response.SmartError(err)
@@ -1206,13 +1213,13 @@ func addStorageBucketDetailsToContext(d *Daemon, r *http.Request) error {
 
 	s := d.State()
 
-	projectName := request.ProjectParam(r)
-
-	effectiveProjectName, err := project.StorageBucketProject(r.Context(), s.DB.Cluster, projectName)
+	requestProjectName := request.ProjectParam(r)
+	requestProject, err := broker.GetProjectByName(r.Context(), requestProjectName)
 	if err != nil {
 		return err
 	}
 
+	effectiveProjectName := project.StorageBucketProjectFromRecord(requestProject.ToAPI())
 	request.SetContextValue(r, request.CtxEffectiveProjectName, effectiveProjectName)
 
 	poolName, err := url.PathUnescape(mux.Vars(r)["poolName"])

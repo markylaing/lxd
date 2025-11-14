@@ -35,7 +35,7 @@ const errPatchExists = "Custom patches should not be applied during recovery"
 // ListDatabaseNodes returns a list of database node names.
 func ListDatabaseNodes(database *db.Node) ([]string, error) {
 	nodes := []db.RaftNode{}
-	err := database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 		nodes, err = tx.GetRaftNodes(ctx)
 		return err
@@ -61,7 +61,7 @@ func ListDatabaseNodes(database *db.Node) ([]string, error) {
 // Returns err if no raft_node exists for the local node.
 func localRaftNode(database *db.Node) (*db.RaftNode, error) {
 	var info *db.RaftNode
-	err := database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 		info, err = node.DetermineRaftNode(ctx, tx)
 
@@ -115,7 +115,7 @@ func Recover(database *db.Node) error {
 	}
 
 	// Update the list of raft nodes.
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodes := []db.RaftNode{
 			{
 				NodeInfo: client.NodeInfo{
@@ -137,7 +137,7 @@ func Recover(database *db.Node) error {
 
 // updateLocalAddress updates the cluster.https_address for this node.
 func updateLocalAddress(database *db.Node, address string) error {
-	err := database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 		config, err := node.ConfigLoad(ctx, tx)
 		if err != nil {
@@ -246,7 +246,7 @@ func Reconfigure(database *db.Node, raftNodes []db.RaftNode) (string, error) {
 	}
 
 	// Replace cluster configuration in local raft_nodes database.
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		return tx.ReplaceRaftNodes(raftNodes)
 	})
 	if err != nil {
@@ -339,7 +339,7 @@ func DatabaseReplaceFromTarball(tarballPath string, database *db.Node) error {
 	}
 
 	var localRaftNodes []db.RaftNode
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) (err error) {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) (err error) {
 		localRaftNodes, err = tx.GetRaftNodes(ctx)
 		return err
 	})
@@ -386,7 +386,7 @@ func DatabaseReplaceFromTarball(tarballPath string, database *db.Node) error {
 	}
 
 	// Replace cluster configuration in local raft_nodes database.
-	err = database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		return tx.ReplaceRaftNodes(incomingRaftNodes)
 	})
 	if err != nil {

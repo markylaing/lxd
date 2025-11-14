@@ -33,8 +33,8 @@ func FreshSchema() string {
 
 // SchemaDotGo refreshes the schema.go file in this package, using the updates
 // defined here.
-func SchemaDotGo() error {
-	return schema.DotGo(updates, "cluster", "schema.go")
+func SchemaDotGo(ctx context.Context) error {
+	return schema.DotGo(ctx, updates, "cluster", "schema.go")
 }
 
 // SchemaVersion is the current version of the cluster database schema.

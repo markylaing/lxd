@@ -1275,7 +1275,7 @@ func (n *bridge) startDnsmasq(dnsmasqCmd []string, dnsClustered bool, dnsCluster
 	} else {
 		n.logger.Warn("Skipping AppArmor for dnsmasq due to raw.dnsmasq being set", logger.Ctx{"name": n.name})
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpsertWarningLocalNode(ctx, n.project, entity.TypeNetwork, int(n.id), warningtype.AppArmorDisabledDueToRawDnsmasq, "")
 		})
 		if err != nil {
@@ -1450,7 +1450,7 @@ func (n *bridge) setup(oldConfig map[string]string) error {
 
 		// Set the MAC address on the bridge interface if specified.
 		if bridge.Address != nil {
-			err = bridge.SetAddress(bridge.Address)
+			err = bridge.SetAddress(ctx, bridge.Address)
 			if err != nil {
 				return err
 			}
@@ -1778,7 +1778,7 @@ func (n *bridge) setup(oldConfig map[string]string) error {
 
 		if subnetSize < 64 {
 			n.logger.Warn("IPv6 networks with a prefix larger than 64 aren't properly supported by dnsmasq")
-			err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpsertWarningLocalNode(ctx, n.project, entity.TypeNetwork, int(n.id), warningtype.LargerIPv6PrefixThanSupported, "")
 			})
 			if err != nil {
@@ -3040,10 +3040,10 @@ func (n *bridge) bridgeNetworkExternalSubnets(bridgeProjectNetworks map[string][
 func (n *bridge) bridgedNICExternalRoutes(bridgeProjectNetworks map[string][]*api.Network) ([]externalSubnetUsage, error) {
 	externalRoutes := make([]externalSubnetUsage, 0)
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			// Get the instance's effective network project name.
-			instNetworkProject := project.NetworkProjectFromRecord(&p)
+			instNetworkProject := project.NetworkProjectFromRecord(p)
 
 			if instNetworkProject != api.ProjectDefaultName {
 				return nil // Managed bridge networks can only exist in default project.
@@ -3104,7 +3104,7 @@ func (n *bridge) getExternalSubnetInUse() ([]externalSubnetUsage, error) {
 	var projectNetworksForwardsOnUplink map[string]map[int64][]string
 	var externalSubnets []externalSubnetUsage
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get all managed networks across all projects.
 		projectNetworks, err = tx.GetCreatedNetworks(ctx)
 		if err != nil {
@@ -3146,7 +3146,7 @@ func (n *bridge) getExternalSubnetInUse() ([]externalSubnetUsage, error) {
 	externalSubnets = append(externalSubnets, bridgeNetworkExternalSubnets...)
 	externalSubnets = append(externalSubnets, bridgedNICExternalRoutes...)
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Detect if there are any conflicting proxy devices on all instances with the to be created network forward
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			devices := instancetype.ExpandInstanceDevices(inst.Devices, inst.Profiles)
@@ -3232,7 +3232,7 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 		return nil, api.StatusErrorf(http.StatusNotImplemented, "Automatic listen address allocation not supported for drivers of type %q", n.netType)
 	}
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Check if there is an existing forward using the same listen address.
 		_, _, err := tx.GetNetworkForward(ctx, n.ID(), memberSpecific, forward.ListenAddress)
 
@@ -3286,7 +3286,7 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 
 	var forwardID int64
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Create forward DB record.
 		forwardID, err = tx.CreateNetworkForward(ctx, n.ID(), memberSpecific, &forward)
 
@@ -3297,7 +3297,7 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 	}
 
 	revert.Add(func() {
-		_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.DeleteNetworkForward(ctx, n.ID(), forwardID)
 		})
 		_ = n.forwardSetupFirewall()
@@ -3326,7 +3326,7 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 		if brNetfilterEnabled {
 			var listenAddresses map[int64]string
 
-			err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				listenAddresses, err = tx.GetNetworkForwardListenAddresses(ctx, n.ID(), true)
 
 				return err
@@ -3339,10 +3339,10 @@ func (n *bridge) ForwardCreate(forward api.NetworkForwardsPost, clientType reque
 			if len(listenAddresses) <= 1 {
 				filter := dbCluster.InstanceFilter{Node: &n.state.ServerName}
 
-				err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 						// Get the instance's effective network project name.
-						instNetworkProject := project.NetworkProjectFromRecord(&p)
+						instNetworkProject := project.NetworkProjectFromRecord(p)
 
 						if instNetworkProject != api.ProjectDefaultName {
 							return nil // Managed bridge networks can only exist in default project.
@@ -3401,7 +3401,7 @@ func (n *bridge) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, 
 	var curForwardID int64
 	var curForward *api.NetworkForward
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		curForwardID, curForward, err = tx.GetNetworkForward(ctx, n.ID(), memberSpecific, listenAddress)
@@ -3441,7 +3441,7 @@ func (n *bridge) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, 
 	revert := revert.New()
 	defer revert.Fail()
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateNetworkForward(ctx, n.ID(), curForwardID, newForward.Writable())
 	})
 	if err != nil {
@@ -3449,7 +3449,7 @@ func (n *bridge) ForwardUpdate(listenAddress string, req api.NetworkForwardPut, 
 	}
 
 	revert.Add(func() {
-		_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateNetworkForward(ctx, n.ID(), curForwardID, curForward.Writable())
 		})
 		_ = n.forwardSetupFirewall()
@@ -3471,7 +3471,7 @@ func (n *bridge) ForwardDelete(listenAddress string, clientType request.ClientTy
 	var forwardID int64
 	var forward *api.NetworkForward
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		forwardID, forward, err = tx.GetNetworkForward(ctx, n.ID(), memberSpecific, listenAddress)
@@ -3485,7 +3485,7 @@ func (n *bridge) ForwardDelete(listenAddress string, clientType request.ClientTy
 	revert := revert.New()
 	defer revert.Fail()
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.DeleteNetworkForward(ctx, n.ID(), forwardID)
 	})
 	if err != nil {
@@ -3498,7 +3498,7 @@ func (n *bridge) ForwardDelete(listenAddress string, clientType request.ClientTy
 			ListenAddress:     forward.ListenAddress,
 		}
 
-		_ = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		_ = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			_, _ = tx.CreateNetworkForward(ctx, n.ID(), memberSpecific, &newForward)
 
 			return nil
@@ -3529,7 +3529,7 @@ func (n *bridge) forwardSetupFirewall() error {
 
 	var forwards map[int64]*api.NetworkForward
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		forwards, err = tx.GetNetworkForwards(ctx, n.ID(), memberSpecific)
@@ -3574,7 +3574,7 @@ func (n *bridge) forwardSetupFirewall() error {
 				brNetfilterWarning = true
 				msg := fmt.Sprintf("IPv%d bridge netfilter not enabled. Instances using the bridge will not be able to connect to the forward listen IPs", ipVersion)
 				n.logger.Warn(msg, logger.Ctx{"err": err})
-				err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					return tx.UpsertWarningLocalNode(ctx, n.project, entity.TypeNetwork, int(n.id), warningtype.ProxyBridgeNetfilterNotEnabled, fmt.Sprintf("%s: %v", msg, err))
 				})
 				if err != nil {
@@ -3626,7 +3626,7 @@ func (n *bridge) Leases(projectName string, clientType request.ClientType) ([]ap
 
 			// Include downstream OVN routers using the network as an uplink.
 			var projectNetworks map[string]map[int64]api.Network
-			err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				projectNetworks, err = tx.GetCreatedNetworks(ctx)
 				return err
 			})

@@ -170,7 +170,7 @@ func (n *common) validateZoneNames(config map[string]string) error {
 
 	var err error
 	var zoneProjects map[string]string
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		zoneProjects, err = tx.GetNetworkZones(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed to load all network zones: %w", err)
@@ -239,7 +239,7 @@ func (n *common) validateRoutes(config map[string]string) error {
 
 	// Get all listen addresses for all dependent OVN networks.
 	// OVN networks do not support per-member forwards.
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		forwards, err = tx.GetProjectNetworkForwardListenAddressesByUplink(ctx, n.name, false)
 		if err != nil {
 			return fmt.Errorf("Failed to get listen addresses of OVN network forwards: %w", err)
@@ -510,7 +510,7 @@ func (n *common) update(applyNetwork api.NetworkPut, targetNode string, clientTy
 			}
 		}
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Update the database.
 			return tx.UpdateNetwork(ctx, n.project, n.name, applyNetwork.Description, applyNetwork.Config)
 		})
@@ -584,7 +584,7 @@ func (n *common) rename(newName string) error {
 		}
 	}
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Rename the database entry.
 		return tx.RenameNetwork(ctx, n.project, n.name, newName)
 	})
@@ -600,7 +600,7 @@ func (n *common) rename(newName string) error {
 
 // warningsDelete deletes any persistent warnings for the network.
 func (n *common) warningsDelete() error {
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return dbCluster.DeleteWarnings(ctx, tx.Tx(), dbCluster.EntityType(entity.TypeNetwork), int(n.ID()))
 	})
 	if err != nil {
@@ -656,7 +656,7 @@ func (n *common) notifyDependentNetworks(changedKeys []string) {
 	var err error
 	var projectNames []string
 
-	err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNames, err = dbCluster.GetProjectNames(ctx, tx.Tx())
 		return err
 	})
@@ -668,7 +668,7 @@ func (n *common) notifyDependentNetworks(changedKeys []string) {
 	for _, projectName := range projectNames {
 		var depNets []string
 
-		err = n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get a list of managed networks in project.
 			depNets, err = tx.GetCreatedNetworkNamesByProject(ctx, projectName)
 
@@ -1166,7 +1166,7 @@ func (n *common) ForwardDelete(listenAddress string, clientType request.ClientTy
 func (n *common) forwardBGPSetupPrefixes() error {
 	var fwdListenAddresses map[int64]string
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Retrieve network forwards before clearing existing prefixes, and separate them by IP family.
@@ -1487,7 +1487,7 @@ func (n *common) LoadBalancerDelete(listenAddress string, clientType request.Cli
 func (n *common) loadBalancerBGPSetupPrefixes() error {
 	var listenAddresses map[int64]string
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Retrieve network forwards before clearing existing prefixes, and separate them by IP family.
@@ -1652,7 +1652,7 @@ func (n *common) peerUsedBy(peerName string, firstOnly bool) ([]string, error) {
 
 	var aclNames []string
 
-	err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Find ACLs that have rules that reference the peer connection.
@@ -1667,7 +1667,7 @@ func (n *common) peerUsedBy(peerName string, firstOnly bool) ([]string, error) {
 	for _, aclName := range aclNames {
 		var aclInfo *api.NetworkACL
 
-		err := n.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := n.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			_, aclInfo, err = tx.GetNetworkACL(ctx, n.Project(), aclName)
 
 			return err

@@ -64,7 +64,7 @@ func rsync(args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func runRsync(source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
+func runRsync(ctx context.Context, source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
 	err := os.MkdirAll(dest, 0755)
 	if err != nil {
 		return "", err
@@ -88,7 +88,7 @@ func runRsync(source string, dest string, bwlimit string, xattrs bool, rsyncArgs
 
 	if xattrs {
 		args = append(args, "--xattrs")
-		if AtLeast("3.1.3") {
+		if AtLeast(ctx, "3.1.3") {
 			args = append(args, "--filter=-x security.selinux")
 		}
 	}
@@ -125,18 +125,18 @@ func runRsync(source string, dest string, bwlimit string, xattrs bool, rsyncArgs
 }
 
 // LocalCopy copies a directory using rsync (with the --devices option).
-func LocalCopy(source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
-	return runRsync(shared.AddSlash(source), dest, bwlimit, xattrs, rsyncArgs...)
+func LocalCopy(ctx context.Context, source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
+	return runRsync(ctx, shared.AddSlash(source), dest, bwlimit, xattrs, rsyncArgs...)
 }
 
 // CopyFile copies a single file using rsync (with the --devices option).
-func CopyFile(source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
-	return runRsync(strings.TrimSuffix(source, "/"), dest, bwlimit, xattrs, rsyncArgs...)
+func CopyFile(ctx context.Context, source string, dest string, bwlimit string, xattrs bool, rsyncArgs ...string) (string, error) {
+	return runRsync(ctx, strings.TrimSuffix(source, "/"), dest, bwlimit, xattrs, rsyncArgs...)
 }
 
 // Send sets up the sending half of an rsync, to recursively send the
 // directory pointed to by path over the websocket.
-func Send(name string, path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTracker, features []string, bwlimit string, execPath string, rsyncArgs ...string) error {
+func Send(ctx context.Context, name string, path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTracker, features []string, bwlimit string, execPath string, rsyncArgs ...string) error {
 	/*
 	 * The way rsync works, it invokes a subprocess that does the actual
 	 * talking (given to it by a -E argument). Since there isn't an easy
@@ -186,7 +186,7 @@ func Send(name string, path string, conn io.ReadWriteCloser, tracker *ioprogress
 	}
 
 	if len(features) > 0 {
-		args = append(args, rsyncFeatureArgs(features)...)
+		args = append(args, rsyncFeatureArgs(ctx, features)...)
 	}
 
 	if len(rsyncArgs) > 0 {
@@ -314,7 +314,7 @@ func Send(name string, path string, conn io.ReadWriteCloser, tracker *ioprogress
 // Recv sets up the receiving half of the websocket to rsync (the other
 // half set up by rsync.Send), putting the contents in the directory specified
 // by path.
-func Recv(path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTracker, features []string) error {
+func Recv(ctx context.Context, path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTracker, features []string) error {
 	args := []string{
 		"--server",
 		"-vlogDtpre.iLsfx",
@@ -328,7 +328,7 @@ func Recv(path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTrac
 	}
 
 	if len(features) > 0 {
-		args = append(args, rsyncFeatureArgs(features)...)
+		args = append(args, rsyncFeatureArgs(ctx, features)...)
 	}
 
 	args = append(args, []string{".", path}...)
@@ -421,11 +421,11 @@ func Recv(path string, conn io.ReadWriteCloser, tracker *ioprogress.ProgressTrac
 	return nil
 }
 
-func rsyncFeatureArgs(features []string) []string {
+func rsyncFeatureArgs(ctx context.Context, features []string) []string {
 	args := []string{}
 	if slices.Contains(features, "xattrs") {
 		args = append(args, "--xattrs")
-		if AtLeast("3.1.3") {
+		if AtLeast(ctx, "3.1.3") {
 			args = append(args, "--filter=-x security.selinux")
 		}
 	}
@@ -442,9 +442,9 @@ func rsyncFeatureArgs(features []string) []string {
 }
 
 // AtLeast compares the local version to a minimum version.
-func AtLeast(minimum string) bool {
+func AtLeast(ctx context.Context, minimum string) bool {
 	// Parse the current version.
-	out, err := shared.RunCommandContext(context.TODO(), "rsync", "--version")
+	out, err := shared.RunCommandContext(ctx, "rsync", "--version")
 	if err != nil {
 		return false
 	}

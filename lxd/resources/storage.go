@@ -3,6 +3,7 @@ package resources
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,7 +129,7 @@ func storageAddDriveInfo(devicePath string, disk *api.ResourcesStorageDisk) erro
 }
 
 // GetStorage returns a filled api.ResourcesStorage struct ready for use by LXD.
-func GetStorage() (*api.ResourcesStorage, error) {
+func GetStorage(ctx context.Context) (*api.ResourcesStorage, error) {
 	storage := api.ResourcesStorage{}
 	storage.Disks = []api.ResourcesStorageDisk{}
 
@@ -365,7 +366,7 @@ func GetStorage() (*api.ResourcesStorage, error) {
 				partition.Size = partitionSize * 512
 
 				// Pull device filesystem UUID information.
-				partition.DeviceFSUUID, err = block.DiskFSUUID(filepath.Join("/dev", subEntryName))
+				partition.DeviceFSUUID, err = block.DiskFSUUID(ctx, filepath.Join("/dev", subEntryName))
 				if err != nil {
 					return nil, err
 				}
@@ -434,7 +435,7 @@ func GetStorage() (*api.ResourcesStorage, error) {
 			}
 
 			// Pull device filesystem UUID information.
-			disk.DeviceFSUUID, err = block.DiskFSUUID(filepath.Join("/dev", entryName))
+			disk.DeviceFSUUID, err = block.DiskFSUUID(ctx, filepath.Join("/dev", entryName))
 			if err != nil {
 				return nil, err
 			}

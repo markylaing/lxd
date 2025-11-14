@@ -119,7 +119,7 @@ func TestBootstrap(t *testing.T) {
 	require.NoError(t, err)
 
 	// The cluster database has now an entry in the nodes table
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(t, err)
 		require.Len(t, members, 1)
@@ -240,7 +240,7 @@ func TestAccept(t *testing.T) {
 	f.RaftNode("1.2.3.4:666")
 	f.ClusterNode("1.2.3.4:666")
 
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		state.GlobalConfig, err = clusterConfig.Load(ctx, tx)
@@ -314,7 +314,7 @@ func TestJoin(t *testing.T) {
 	targetState.ServerCert = func() *shared.CertInfo { return targetCert }
 	require.NoError(t, err)
 
-	err = targetState.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = targetState.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		targetState.GlobalConfig, err = clusterConfig.Load(ctx, tx)
 		if err != nil {
 			return err
@@ -339,7 +339,7 @@ func TestJoin(t *testing.T) {
 	err = cluster.Bootstrap(targetState, targetGateway, "buzz")
 	require.NoError(t, err)
 
-	err = targetState.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = targetState.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err = tx.GetNetworks(ctx, api.ProjectDefaultName)
 
 		return err
@@ -377,7 +377,7 @@ func TestJoin(t *testing.T) {
 	state.DB.Cluster, err = db.OpenCluster(context.Background(), "db.bin", store, address, "/unused/db/dir", 5*time.Second, nil, server2UUID.String(), driver.WithDialFunc(dialFunc))
 	require.NoError(t, err)
 
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		state.GlobalConfig, err = clusterConfig.Load(ctx, tx)
 		if err != nil {
 			return err
@@ -436,7 +436,7 @@ func TestJoin(t *testing.T) {
 	require.NoError(t, err)
 
 	// The node has gone from the cluster db.
-	err = targetState.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = targetState.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		require.NoError(t, err)
 		assert.Len(t, members, 1)
@@ -503,7 +503,7 @@ func (h *membershipFixtures) RaftNodes() []db.RaftNode {
 
 // Add the given address to the nodes table of the cluster database.
 func (h *membershipFixtures) ClusterNode(address string) {
-	err := h.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := h.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNode("rusp", address)
 		return err
 	})

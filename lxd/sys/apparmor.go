@@ -134,7 +134,7 @@ func haveMacAdmin() bool {
 
 // getVersion reads and parses the AppArmor version.
 func appArmorGetVersion() (*version.DottedVersion, error) {
-	out, err := shared.RunCommandContext(context.TODO(), "apparmor_parser", "--version")
+	out, err := shared.RunCommandContext(ctx, "apparmor_parser", "--version")
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func appArmorGetCacheDir(ver *version.DottedVersion, cacheLoc string) (string, e
 
 	// `--print-cache-dir` returns a subdirectory under `--cache-loc`.
 	// The subdirectory used will be influenced by the features available and enabled.
-	out, err := shared.RunCommandContext(context.TODO(), "apparmor_parser", "--cache-loc", cacheLoc, "--print-cache-dir")
+	out, err := shared.RunCommandContext(ctx, "apparmor_parser", "--cache-loc", cacheLoc, "--print-cache-dir")
 	if err != nil {
 		return "", err
 	}

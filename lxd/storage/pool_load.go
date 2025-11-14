@@ -48,7 +48,7 @@ func volIDFuncMake(state *state.State, poolID int64) func(volType drivers.Volume
 
 		// Get the storage volume.
 		var dbVolume *db.StorageVolume
-		err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			dbVolume, err = tx.GetStoragePoolVolume(ctx, poolID, projectName, volTypeID, volName, true)
 			return err
 		})
@@ -187,7 +187,7 @@ func LoadByName(s *state.State, name string) (Pool, error) {
 	var dbPool *api.StoragePool
 	var poolNodes map[int64]db.StoragePoolNode
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Load the database record.
@@ -258,7 +258,7 @@ func Patch(s *state.State, patchName string) error {
 
 	var pools []string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Load all the pools.

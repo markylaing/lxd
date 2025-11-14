@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,7 +85,7 @@ func (s *consoleWs) Metadata() any {
 }
 
 // Connect connects to the websocket.
-func (s *consoleWs) Connect(op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
+func (s *consoleWs) Connect(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
 	err := op.CheckRequestor(r)
 	if err != nil {
 		return err
@@ -216,7 +217,7 @@ func (s *consoleWs) connectVGA(r *http.Request, w http.ResponseWriter) error {
 }
 
 // Do connects to the websocket and executes the operation.
-func (s *consoleWs) Do(_ *operations.Operation) error {
+func (s *consoleWs) Do(ctx context.Context, op *operations.Operation) error {
 	switch s.protocol {
 	case instance.ConsoleTypeConsole:
 		return s.doConsole()

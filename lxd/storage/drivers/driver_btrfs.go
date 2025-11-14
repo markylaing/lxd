@@ -57,7 +57,7 @@ func (d *btrfs) load() error {
 
 	// Detect and record the version.
 	if btrfsVersion == "" {
-		out, err := shared.RunCommandContext(context.TODO(), "btrfs", "version")
+		out, err := shared.RunCommandContext(ctx, "btrfs", "version")
 		if err != nil {
 			return err
 		}
@@ -274,7 +274,7 @@ func (d *btrfs) Create() error {
 			}
 
 			// Create the subvolume.
-			_, err := shared.RunCommandContext(context.TODO(), "btrfs", "subvolume", "create", hostPath)
+			_, err := shared.RunCommandContext(ctx, "btrfs", "subvolume", "create", hostPath)
 			if err != nil {
 				return err
 			}
@@ -382,7 +382,7 @@ func (d *btrfs) Update(changedConfig map[string]string) error {
 		mntFlags, mntOptions := filesystem.ResolveMountOptions(strings.Split(d.getMountOptions(), ","))
 		mntFlags |= unix.MS_REMOUNT
 
-		err := TryMount(context.TODO(), "", GetPoolMountPath(d.name), "none", mntFlags, mntOptions)
+		err := TryMount(ctx, "", GetPoolMountPath(d.name), "none", mntFlags, mntOptions)
 		if err != nil {
 			return err
 		}
@@ -424,7 +424,7 @@ func (d *btrfs) Update(changedConfig map[string]string) error {
 			return err
 		}
 
-		_, err = shared.RunCommandContext(context.TODO(), "btrfs", "filesystem", "resize", "max", GetPoolMountPath(d.name))
+		_, err = shared.RunCommandContext(ctx, "btrfs", "filesystem", "resize", "max", GetPoolMountPath(d.name))
 		if err != nil {
 			return err
 		}
@@ -477,7 +477,7 @@ func (d *btrfs) Mount() (bool, error) {
 	// Handle bind-mounts first.
 	if mntFilesystem == "none" {
 		// Setup the bind-mount itself.
-		err := TryMount(context.TODO(), mntSrc, mntDst, mntFilesystem, unix.MS_BIND, "")
+		err := TryMount(ctx, mntSrc, mntDst, mntFilesystem, unix.MS_BIND, "")
 		if err != nil {
 			return false, err
 		}
@@ -489,7 +489,7 @@ func (d *btrfs) Mount() (bool, error) {
 
 		// Now apply the custom options.
 		mntFlags |= unix.MS_REMOUNT
-		err = TryMount(context.TODO(), "", mntDst, mntFilesystem, mntFlags, mntOptions)
+		err = TryMount(ctx, "", mntDst, mntFilesystem, mntFlags, mntOptions)
 		if err != nil {
 			return false, err
 		}
@@ -498,7 +498,7 @@ func (d *btrfs) Mount() (bool, error) {
 	}
 
 	// Handle traditional mounts.
-	err = TryMount(context.TODO(), mntSrc, mntDst, mntFilesystem, mntFlags, mntOptions)
+	err = TryMount(ctx, mntSrc, mntDst, mntFilesystem, mntFlags, mntOptions)
 	if err != nil {
 		return false, err
 	}

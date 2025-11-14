@@ -20,7 +20,7 @@ type ClassHTB struct {
 }
 
 // Add adds class to a node.
-func (class *ClassHTB) Add() error {
+func (class *ClassHTB) Add(ctx context.Context) error {
 	cmd := []string{"class", "add", "dev", class.Dev, "parent", class.Parent}
 	if class.Classid != "" {
 		cmd = append(cmd, "classid", class.Classid)
@@ -31,7 +31,7 @@ func (class *ClassHTB) Add() error {
 		cmd = append(cmd, "rate", class.Rate)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "tc", cmd...)
+	_, err := shared.RunCommandContext(ctx, "tc", cmd...)
 	if err != nil {
 		return err
 	}

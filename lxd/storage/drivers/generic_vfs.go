@@ -1239,7 +1239,7 @@ func mountVolume(d Driver, vol Volume, getDevicePath getVolumePathFunc, op *oper
 			}
 
 			mountFlags, mountOptions := filesystem.ResolveMountOptions(strings.Split(vol.ConfigBlockMountOptions(), ","))
-			err = TryMount(context.TODO(), volDevPath, mountPath, fsType, mountFlags, mountOptions)
+			err = TryMount(ctx, volDevPath, mountPath, fsType, mountFlags, mountOptions)
 			if err != nil {
 				return err
 			}

@@ -78,7 +78,7 @@ func MaybeUpdate(state *state.State) error {
 		return errors.New("Failed checking cluster update, state not initialised yet")
 	}
 
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		outdated, err := tx.NodeIsOutdated(ctx)
 		if err != nil {
 			return err
@@ -118,7 +118,7 @@ func triggerUpdate() error {
 	time.Sleep(wait)
 
 	logger.Info("Triggering cluster auto-update now")
-	_, err := shared.RunCommandContext(context.TODO(), updateExecutable)
+	_, err := shared.RunCommandContext(ctx, updateExecutable)
 	if err != nil {
 		logger.Error("Triggering cluster update failed", logger.Ctx{"err": err})
 		return err

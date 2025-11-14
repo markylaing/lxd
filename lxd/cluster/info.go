@@ -15,7 +15,7 @@ import (
 func loadInfo(database *db.Node) (*db.RaftNode, error) {
 	// Figure out if we actually need to act as dqlite node.
 	var info *db.RaftNode
-	err := database.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := database.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		var err error
 		info, err = node.DetermineRaftNode(ctx, tx)
 		return err

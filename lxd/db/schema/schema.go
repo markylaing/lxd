@@ -138,10 +138,10 @@ func (s *Schema) File(path string) {
 //
 // If no error occurs, the integer returned by this method is the
 // initial version that the schema has been upgraded from.
-func (s *Schema) Ensure(db *sql.DB) (int, error) {
+func (s *Schema) Ensure(ctx context.Context, db *sql.DB) (int, error) {
 	var current int
 	var gracefulAbortErr error
-	err := query.Transaction(context.TODO(), db, func(ctx context.Context, tx *sql.Tx) error {
+	err := query.Transaction(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
 		err := execFromFile(ctx, tx, s.path, s.hook)
 		if err != nil {
 			return fmt.Errorf("failed to execute queries from %s: %w", s.path, err)
@@ -203,9 +203,9 @@ func (s *Schema) Ensure(db *sql.DB) (int, error) {
 //
 // It requires that all patches in this schema have been applied, otherwise an
 // error will be returned.
-func (s *Schema) Dump(db *sql.DB) (string, error) {
+func (s *Schema) Dump(ctx context.Context, db *sql.DB) (string, error) {
 	var statements []string
-	err := query.Transaction(context.TODO(), db, func(ctx context.Context, tx *sql.Tx) error {
+	err := query.Transaction(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
 		err := checkAllUpdatesAreApplied(ctx, tx, s.updates)
 		if err != nil {
 			return err
@@ -250,7 +250,7 @@ func (s *Schema) Trim(version int) []Update {
 // given hook for populating the database with test data. Finally it applies
 // the update with the given version, returning the database handle for further
 // inspection of the resulting state.
-func (s *Schema) ExerciseUpdate(version int, hook func(*sql.DB)) (*sql.DB, error) {
+func (s *Schema) ExerciseUpdate(ctx context.Context, version int, hook func(*sql.DB)) (*sql.DB, error) {
 	// Create an in-memory database.
 	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=1")
 	if err != nil {
@@ -259,7 +259,7 @@ func (s *Schema) ExerciseUpdate(version int, hook func(*sql.DB)) (*sql.DB, error
 
 	// Apply all updates to the given version, excluded.
 	trimmed := s.Trim(version - 1)
-	_, err = s.Ensure(db)
+	_, err = s.Ensure(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply previous updates: %w", err)
 	}
@@ -271,7 +271,7 @@ func (s *Schema) ExerciseUpdate(version int, hook func(*sql.DB)) (*sql.DB, error
 
 	// Apply the update with the given version
 	s.Add(trimmed[0])
-	_, err = s.Ensure(db)
+	_, err = s.Ensure(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply given update: %w", err)
 	}

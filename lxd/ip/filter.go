@@ -58,7 +58,7 @@ type U32Filter struct {
 }
 
 // Add adds universal 32bit traffic control filter to a node.
-func (u32 *U32Filter) Add() error {
+func (u32 *U32Filter) Add(ctx context.Context) error {
 	cmd := []string{"filter", "add", "dev", u32.Dev}
 	if u32.Parent != "" {
 		cmd = append(cmd, "parent", u32.Parent)
@@ -76,7 +76,7 @@ func (u32 *U32Filter) Add() error {
 		cmd = append(cmd, "flowid", u32.Flowid)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "tc", cmd...)
+	_, err := shared.RunCommandContext(ctx, "tc", cmd...)
 	if err != nil {
 		return err
 	}

@@ -110,7 +110,7 @@ func doInstanceDelete(ctx context.Context, s *state.State, name string, projectN
 		}
 	}
 
-	rmct := func(op *operations.Operation) error {
+	rmct := func(_ context.Context, op *operations.Operation) error {
 		return inst.Delete(false, "")
 	}
 

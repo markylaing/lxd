@@ -20,7 +20,7 @@ func TestGetNetworksLocalConfigs(t *testing.T) {
 	cluster, cleanup := db.NewTestCluster(t)
 	defer cleanup()
 
-	err := cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNetwork(ctx, api.ProjectDefaultName, "lxdbr0", "", db.NetworkTypeBridge, map[string]string{
 			"dns.mode":                   "none",
 			"bridge.external_interfaces": "vlan0",
@@ -32,7 +32,7 @@ func TestGetNetworksLocalConfigs(t *testing.T) {
 
 	var config map[string]map[string]string
 
-	err = cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		config, err = tx.GetNetworksLocalConfig(ctx)
 		return err

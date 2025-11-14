@@ -29,7 +29,7 @@ func TestClusterState(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -53,7 +53,7 @@ func TestClusterState(t *testing.T) {
 	}
 
 	var members []db.NodeInfo
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err = tx.GetNodes(ctx)
 		return err
 	})

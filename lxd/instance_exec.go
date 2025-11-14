@@ -74,7 +74,7 @@ func (s *execWs) Metadata() any {
 }
 
 // Connect connects to the websocket.
-func (s *execWs) Connect(op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
+func (s *execWs) Connect(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
 	secret := r.FormValue("secret")
 	if secret == "" {
 		return errors.New("missing secret")
@@ -138,7 +138,7 @@ func (s *execWs) Connect(op *operations.Operation, r *http.Request, w http.Respo
 }
 
 // Do connects to the websocket and executes the operation.
-func (s *execWs) Do(op *operations.Operation) error {
+func (s *execWs) Do(ctx context.Context, op *operations.Operation) error {
 	// Once this function ends ensure that any connected websockets are closed.
 	defer func() {
 		s.connsLock.Lock()
@@ -692,7 +692,7 @@ func instanceExecPost(d *Daemon, r *http.Request) response.Response {
 		return operations.OperationResponse(op)
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(ctx context.Context, op *operations.Operation) error {
 		metadata := shared.Jmap{}
 
 		var err error

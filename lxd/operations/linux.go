@@ -17,7 +17,7 @@ func registerDBOperation(op *Operation, opType operationtype.Type) error {
 		return nil
 	}
 
-	err := op.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := op.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		opInfo := cluster.Operation{
 			UUID:   op.id,
 			Type:   opType,
@@ -48,7 +48,7 @@ func removeDBOperation(op *Operation) error {
 		return nil
 	}
 
-	err := op.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := op.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return cluster.DeleteOperation(ctx, tx.Tx(), op.id)
 	})
 

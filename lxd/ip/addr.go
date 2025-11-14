@@ -15,8 +15,8 @@ type Addr struct {
 }
 
 // Add adds new protocol address.
-func (a *Addr) Add() error {
-	_, err := shared.RunCommandContext(context.TODO(), "ip", a.Family, "addr", "add", "dev", a.DevName, a.Address)
+func (a *Addr) Add(ctx context.Context) error {
+	_, err := shared.RunCommandContext(ctx, "ip", a.Family, "addr", "add", "dev", a.DevName, a.Address)
 	if err != nil {
 		return err
 	}
@@ -25,7 +25,7 @@ func (a *Addr) Add() error {
 }
 
 // Flush flushes protocol addresses.
-func (a *Addr) Flush() error {
+func (a *Addr) Flush(ctx context.Context) error {
 	cmd := []string{}
 	if a.Family != "" {
 		cmd = append(cmd, a.Family)
@@ -36,7 +36,7 @@ func (a *Addr) Flush() error {
 		cmd = append(cmd, "scope", a.Scope)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "ip", cmd...)
+	_, err := shared.RunCommandContext(ctx, "ip", cmd...)
 	if err != nil {
 		return err
 	}

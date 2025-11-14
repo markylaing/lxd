@@ -187,7 +187,7 @@ func (d *btrfs) snapshotSubvolume(path string, dest string, recursion bool) (rev
 
 	// Single subvolume creation.
 	snapshot := func(path string, dest string) error {
-		_, err := shared.RunCommandContext(context.TODO(), "btrfs", "subvolume", "snapshot", path, dest)
+		_, err := shared.RunCommandContext(ctx, "btrfs", "subvolume", "snapshot", path, dest)
 		if err != nil {
 			return err
 		}
@@ -241,7 +241,7 @@ func (d *btrfs) deleteSubvolume(rootPath string, recursion bool) error {
 		// Attempt (but don't fail on) to delete any qgroup on the subvolume.
 		qgroup, _, err := d.getQGroup(path)
 		if err == nil {
-			_, _ = shared.RunCommandContext(context.TODO(), "btrfs", "qgroup", "destroy", qgroup, path)
+			_, _ = shared.RunCommandContext(ctx, "btrfs", "qgroup", "destroy", qgroup, path)
 		}
 
 		// Temporarily change ownership & mode to help with nesting.
@@ -249,7 +249,7 @@ func (d *btrfs) deleteSubvolume(rootPath string, recursion bool) error {
 		_ = os.Chown(path, 0, 0)
 
 		// Delete the subvolume itself.
-		_, err = shared.RunCommandContext(context.TODO(), "btrfs", "subvolume", "delete", path)
+		_, err = shared.RunCommandContext(ctx, "btrfs", "subvolume", "delete", path)
 
 		return err
 	}
@@ -307,7 +307,7 @@ func (d *btrfs) deleteSubvolume(rootPath string, recursion bool) error {
 
 func (d *btrfs) getQGroup(path string) (string, int64, error) {
 	// Try to get the qgroup details.
-	output, err := shared.RunCommandContext(context.TODO(), "btrfs", "qgroup", "show", "-e", "-f", "--raw", path)
+	output, err := shared.RunCommandContext(ctx, "btrfs", "qgroup", "show", "-e", "-f", "--raw", path)
 	if err != nil {
 		return "", -1, errBtrfsNoQuota
 	}
@@ -407,7 +407,7 @@ func (d *btrfs) setSubvolumeReadonlyProperty(path string, readonly bool) error {
 
 	args = append(args, "-ts", path, "ro", strconv.FormatBool(readonly))
 
-	_, err := shared.RunCommandContext(context.TODO(), "btrfs", args...)
+	_, err := shared.RunCommandContext(ctx, "btrfs", args...)
 	return err
 }
 

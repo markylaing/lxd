@@ -98,7 +98,7 @@ func ensureImageIsLocallyAvailable(ctx context.Context, s *state.State, img *api
 
 	var memberAddress string
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		memberAddress, err = tx.LocateImage(ctx, img.Fingerprint)
 
 		return err
@@ -114,7 +114,7 @@ func ensureImageIsLocallyAvailable(ctx context.Context, s *state.State, img *api
 			return fmt.Errorf("Failed transferring image %q from %q: %w", img.Fingerprint, memberAddress, err)
 		}
 
-		err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// As the image record already exists in the project, just add the node ID to the image.
 			return tx.AddImageToLocalNode(ctx, projectName, img.Fingerprint)
 		})
@@ -160,7 +160,7 @@ func instanceCreateFromImage(s *state.State, img *api.Image, args db.InstanceArg
 	revert.Add(cleanup)
 	defer instOp.Done(nil)
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		err = tx.UpdateImageLastUseDate(ctx, args.Project, img.Fingerprint, time.Now().UTC())
 		if err != nil {
 			return fmt.Errorf("Error updating image last use date: %w", err)
@@ -667,11 +667,11 @@ func pruneExpiredAndAutoCreateInstanceSnapshotsTask(stateFunc func() *state.Stat
 		// Handle snapshot expiry first before creating new ones to reduce the chances of running out of
 		// disk space.
 		if len(expiredSnapshotInstances) > 0 {
-			opRun := func(op *operations.Operation) error {
+			opRun := func(_ context.Context, op *operations.Operation) error {
 				return pruneExpiredInstanceSnapshots(ctx, expiredSnapshotInstances)
 			}
 
-			op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.SnapshotsExpire, nil, nil, opRun, nil, nil)
+			op, err := operations.r.Context(), s, "", operations.OperationClassTask, operationtype.SnapshotsExpire, nil, nil, opRun, nil, nil)
 			if err != nil {
 				logger.Error("Failed creating instance snapshots expiry operation", logger.Ctx{"err": err})
 			} else {
@@ -693,11 +693,11 @@ func pruneExpiredAndAutoCreateInstanceSnapshotsTask(stateFunc func() *state.Stat
 
 		// Handle snapshot auto creation.
 		if len(instances) > 0 {
-			opRun := func(op *operations.Operation) error {
+			opRun := func(_ context.Context, op *operations.Operation) error {
 				return autoCreateInstanceSnapshots(ctx, s, instances)
 			}
 
-			op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.SnapshotCreate, nil, nil, opRun, nil, nil)
+			op, err := operations.r.Context(), s, "", operations.OperationClassTask, operationtype.SnapshotCreate, nil, nil, opRun, nil, nil)
 			if err != nil {
 				logger.Error("Failed creating scheduled instance snapshot operation", logger.Ctx{"err": err})
 			} else {

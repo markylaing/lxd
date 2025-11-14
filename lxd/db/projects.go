@@ -15,7 +15,7 @@ import (
 func (db *DB) GetProject(ctx context.Context, projectName string) (*cluster.Project, error) {
 	var err error
 	var p *cluster.Project
-	err = db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err = db.Cluster.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		p, err = cluster.GetProject(ctx, tx.Tx(), projectName)
 		if err != nil {
 			return err

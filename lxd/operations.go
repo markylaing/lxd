@@ -178,7 +178,7 @@ func operationGet(d *Daemon, r *http.Request) response.Response {
 
 	// Then check if the query is from an operation on another node, and, if so, forward it
 	var address string
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.OperationFilter{UUID: &id}
 		ops, err := dbCluster.GetOperations(ctx, tx.Tx(), filter)
 		if err != nil {
@@ -298,7 +298,7 @@ func operationDelete(d *Daemon, r *http.Request) response.Response {
 
 	// Then check if the query is from an operation on another node, and, if so, forward it
 	var address string
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.OperationFilter{UUID: &id}
 		ops, err := dbCluster.GetOperations(ctx, tx.Tx(), filter)
 		if err != nil {
@@ -350,7 +350,7 @@ func operationCancel(ctx context.Context, s *state.State, projectName string, op
 	// If not found locally, try connecting to remote member to delete it.
 	var memberAddress string
 	var err error
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.OperationFilter{UUID: &op.ID}
 		ops, err := dbCluster.GetOperations(ctx, tx.Tx(), filter)
 		if err != nil {
@@ -653,7 +653,7 @@ func operationsGet(d *Daemon, r *http.Request) response.Response {
 	// Get all nodes with running operations in this project.
 	var membersWithOps []string
 	var members []db.NodeInfo
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		if allProjects {
@@ -776,7 +776,7 @@ func operationsGetByType(ctx context.Context, s *state.State, projectName string
 	// Get all operations of the specified type in project.
 	var members []db.NodeInfo
 	memberOps := make(map[string]map[string]dbCluster.Operation)
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		members, err = tx.GetNodes(ctx)
@@ -1029,7 +1029,7 @@ func operationWaitGet(d *Daemon, r *http.Request) response.Response {
 
 	// Then check if the query is from an operation on another node, and, if so, forward it
 	var address string
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.OperationFilter{UUID: &id}
 		ops, err := dbCluster.GetOperations(ctx, tx.Tx(), filter)
 		if err != nil {
@@ -1172,7 +1172,7 @@ func operationWebsocketGet(d *Daemon, r *http.Request) response.Response {
 	}
 
 	var address string
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		filter := dbCluster.OperationFilter{UUID: &id}
 		ops, err := dbCluster.GetOperations(ctx, tx.Tx(), filter)
 		if err != nil {
@@ -1228,11 +1228,11 @@ func autoRemoveOrphanedOperationsTask(stateFunc func() *state.State) (task.Func,
 			return
 		}
 
-		opRun := func(op *operations.Operation) error {
+		opRun := func(_ context.Context, op *operations.Operation) error {
 			return autoRemoveOrphanedOperations(ctx, s)
 		}
 
-		op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.RemoveOrphanedOperations, nil, nil, opRun, nil, nil)
+		op, err := operations.r.Context(), s, "", operations.OperationClassTask, operationtype.RemoveOrphanedOperations, nil, nil, opRun, nil, nil)
 		if err != nil {
 			logger.Error("Failed creating remove orphaned operations operation", logger.Ctx{"err": err})
 			return
@@ -1339,15 +1339,15 @@ func operationWaitHandler(d *Daemon, r *http.Request) response.Response {
 		return response.BadRequest(fmt.Errorf("Invalid operation type %q", req.OpType))
 	}
 
-	run := func(op *operations.Operation) error {
+	run := func(_ context.Context, op *operations.Operation) error {
 		// Just sleep for the duration.
 		time.Sleep(duration)
 		return nil
 	}
 
-	var onConnect func(op *operations.Operation, r *http.Request, w http.ResponseWriter) error
+	var onConnect func(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error
 	if req.OpClass == operations.OperationClassWebsocket {
-		onConnect = func(op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
+		onConnect = func(ctx context.Context, op *operations.Operation, r *http.Request, w http.ResponseWriter) error {
 			// Do nothing
 			return nil
 		}

@@ -93,7 +93,7 @@ func (p *Process) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	spawnUnlock, err := locking.Lock(context.TODO(), minioLockPrefix+p.bucketName)
+	spawnUnlock, err := locking.Lock(ctx, minioLockPrefix+p.bucketName)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func EnsureRunning(s *state.State, bucketVol storageDrivers.Volume) (*Process, e
 	bucketName := bucketVol.Name()
 
 	// Prevent concurrent spawning of same bucket.
-	spawnUnlock, err := locking.Lock(context.TODO(), minioLockPrefix+bucketName)
+	spawnUnlock, err := locking.Lock(ctx, minioLockPrefix+bucketName)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +372,7 @@ func EnsureRunning(s *state.State, bucketVol storageDrivers.Volume) (*Process, e
 // Get returns an existing MinIO process if it exists.
 func Get(bucketName string) (*Process, error) {
 	// Wait for any ongoing spawn of the bucket process to finish.
-	spawnUnlock, err := locking.Lock(context.TODO(), minioLockPrefix+bucketName)
+	spawnUnlock, err := locking.Lock(ctx, minioLockPrefix+bucketName)
 	if err != nil {
 		return nil, err
 	}

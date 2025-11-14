@@ -15,8 +15,8 @@ type NeighProxy struct {
 }
 
 // Show list neighbour proxy entries.
-func (n *NeighProxy) Show() ([]NeighProxy, error) {
-	out, err := shared.RunCommandContext(context.TODO(), "ip", "neigh", "show", "proxy", "dev", n.DevName)
+func (n *NeighProxy) Show(ctx context.Context) ([]NeighProxy, error) {
+	out, err := shared.RunCommandContext(ctx, "ip", "neigh", "show", "proxy", "dev", n.DevName)
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +45,8 @@ func (n *NeighProxy) Show() ([]NeighProxy, error) {
 }
 
 // Add a neighbour proxy entry.
-func (n *NeighProxy) Add() error {
-	_, err := shared.RunCommandContext(context.TODO(), "ip", "neigh", "add", "proxy", n.Addr.String(), "dev", n.DevName)
+func (n *NeighProxy) Add(ctx context.Context) error {
+	_, err := shared.RunCommandContext(ctx, "ip", "neigh", "add", "proxy", n.Addr.String(), "dev", n.DevName)
 	if err != nil {
 		return err
 	}
@@ -55,8 +55,8 @@ func (n *NeighProxy) Add() error {
 }
 
 // Delete a neighbour proxy entry.
-func (n *NeighProxy) Delete() error {
-	_, err := shared.RunCommandContext(context.TODO(), "ip", "neigh", "delete", "proxy", n.Addr.String(), "dev", n.DevName)
+func (n *NeighProxy) Delete(ctx context.Context) error {
+	_, err := shared.RunCommandContext(ctx, "ip", "neigh", "delete", "proxy", n.Addr.String(), "dev", n.DevName)
 	if err != nil {
 		return err
 	}

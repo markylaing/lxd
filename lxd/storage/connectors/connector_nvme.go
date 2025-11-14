@@ -60,13 +60,13 @@ func (c *connectorNVMe) Version() (string, error) {
 
 // LoadModules loads the NVMe/TCP kernel modules.
 // Returns true if the modules can be loaded.
-func (c *connectorNVMe) LoadModules() error {
-	err := util.LoadModule("nvme_fabrics")
+func (c *connectorNVMe) LoadModules(ctx context.Context) error {
+	err := util.LoadModule(ctx, "nvme_fabrics")
 	if err != nil {
 		return err
 	}
 
-	return util.LoadModule("nvme_tcp")
+	return util.LoadModule(ctx, "nvme_tcp")
 }
 
 // QualifiedName returns a custom NQN generated from the server UUID.

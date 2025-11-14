@@ -1772,7 +1772,7 @@ func (d *lxc) DeviceEventHandler(runConf *deviceConfig.RunConfig) error {
 
 			ueventArray[5] = strconv.Itoa(length)
 			ueventArray = append(ueventArray, eventParts...)
-			_, _, err := shared.RunCommandSplit(context.TODO(), nil, []*os.File{pidFd}, d.state.OS.ExecPath, ueventArray...)
+			_, _, err := shared.RunCommandSplit(ctx, nil, []*os.File{pidFd}, d.state.OS.ExecPath, ueventArray...)
 			if err != nil {
 				return err
 			}
@@ -2260,7 +2260,7 @@ func (d *lxc) detachInterfaceRename(netns string, ifName string, hostName string
 
 	// Run forknet detach
 	_, err := shared.RunCommandContext(
-		context.TODO(),
+		ctx,
 		d.state.OS.ExecPath,
 		"forknet",
 		"detach",
@@ -2340,7 +2340,7 @@ func (d *lxc) Start(stateful bool) error {
 		}
 
 		d.stateful = false
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateInstanceStatefulFlag(ctx, d.id, false)
 		})
 		if err != nil {
@@ -2360,7 +2360,7 @@ func (d *lxc) Start(stateful bool) error {
 
 	// Start the LXC container
 	_, err = shared.RunCommandContext(
-		context.TODO(),
+		ctx,
 		d.state.OS.ExecPath,
 		"forkstart",
 		name,
@@ -2474,7 +2474,7 @@ func (d *lxc) onStart(_ map[string]string) error {
 			return err
 		}
 
-		err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Remove the volatile key from the DB
 			return tx.DeleteInstanceConfigKey(ctx, int64(d.id), key)
 		})
@@ -3537,7 +3537,7 @@ func (d *lxc) delete(force bool) error {
 		d.cleanup()
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Remove the database record of the instance or snapshot instance.
 		return tx.DeleteInstance(ctx, d.project.Name, d.Name())
 	})
@@ -3620,7 +3620,7 @@ func (d *lxc) Rename(newName string, applyTemplateTrigger bool) error {
 	if !d.IsSnapshot() {
 		var results []string
 
-		err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			// Rename all the instance snapshot database entries.
@@ -3651,7 +3651,7 @@ func (d *lxc) Rename(newName string, applyTemplateTrigger bool) error {
 	}
 
 	// Rename the instance database entry.
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		if d.IsSnapshot() {
 			oldParts := strings.SplitN(oldName, shared.SnapshotDelimiter, 2)
 			newParts := strings.SplitN(newName, shared.SnapshotDelimiter, 2)
@@ -3829,7 +3829,7 @@ func (d *lxc) Update(args db.InstanceArgs, userRequested bool) error {
 
 	var profiles []string
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Validate the new profiles
 		profiles, err = tx.GetProfileNames(ctx, args.Project)
 
@@ -4489,7 +4489,7 @@ func (d *lxc) Update(args db.InstanceArgs, userRequested bool) error {
 	}
 
 	// Finally, apply the changes to the database
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Snapshots should update only their descriptions and expiry date.
 		if d.IsSnapshot() {
 			return tx.UpdateInstanceSnapshot(d.id, d.description, d.expiryDate)
@@ -5752,7 +5752,7 @@ func (d *lxc) inheritInitPidFd() (int, *os.File) {
 // FileSFTPConn returns a connection to the forkfile handler.
 func (d *lxc) FileSFTPConn() (net.Conn, error) {
 	// Lock to avoid concurrent spawning.
-	spawnUnlock, err := locking.Lock(context.TODO(), fmt.Sprint("forkfile_", d.id))
+	spawnUnlock, err := locking.Lock(ctx, fmt.Sprint("forkfile_", d.id))
 	if err != nil {
 		return nil, err
 	}
@@ -5817,7 +5817,7 @@ func (d *lxc) FileSFTPConn() (net.Conn, error) {
 	chReady := make(chan error)
 	go func() {
 		// Lock to avoid concurrent running forkfile.
-		runUnlock, err := locking.Lock(context.TODO(), d.forkfileRunningLockName())
+		runUnlock, err := locking.Lock(ctx, d.forkfileRunningLockName())
 		if err != nil {
 			chReady <- err
 			return
@@ -5997,7 +5997,7 @@ func (d *lxc) stopForkfile(force bool) {
 	// Make sure that when the function exits, no forkfile is running by acquiring the lock (which indicates
 	// that forkfile isn't running and holding the lock) and then releasing it.
 	defer func() {
-		unlock, err := locking.Lock(context.TODO(), d.forkfileRunningLockName())
+		unlock, err := locking.Lock(ctx, d.forkfileRunningLockName())
 		if err != nil {
 			return
 		}
@@ -6405,7 +6405,7 @@ func (d *lxc) networkState(hostInterfaces []net.Interface) map[string]api.Instan
 
 		// Get the network state from the container
 		out, _, err := shared.RunCommandSplit(
-			context.TODO(),
+			ctx,
 			nil,
 			[]*os.File{pidFd},
 			d.state.OS.ExecPath,
@@ -6659,7 +6659,7 @@ func (d *lxc) insertMountLXC(source, target, fstype string, flags int) error {
 	}
 
 	_, err := shared.RunCommandContext(
-		context.TODO(),
+		ctx,
 		d.state.OS.ExecPath,
 		"forkmount",
 		"lxc-mount",
@@ -6754,7 +6754,7 @@ func (d *lxc) removeMount(mount string) error {
 		}
 
 		_, err := shared.RunCommandContext(
-			context.TODO(),
+			ctx,
 			d.state.OS.ExecPath,
 			"forkmount",
 			"lxc-umount",
@@ -6774,7 +6774,7 @@ func (d *lxc) removeMount(mount string) error {
 		}
 
 		_, err := shared.RunCommandInheritFds(
-			context.TODO(),
+			ctx,
 			[]*os.File{pidFd},
 			d.state.OS.ExecPath,
 			"forkmount",

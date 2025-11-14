@@ -33,13 +33,13 @@ func TestGetInstanceSnapshots(t *testing.T) {
 	addInstanceSnapshotDevice(t, tx, "c2", "snap2", "eth0", "nic", nil)
 	addInstanceSnapshotDevice(t, tx, "c2", "snap3", "root", "disk", map[string]string{"x": "y"})
 
-	snapshots, err := cluster.GetInstanceSnapshots(context.TODO(), tx.Tx())
+	snapshots, err := cluster.GetInstanceSnapshots(ctx, tx.Tx())
 	require.NoError(t, err)
 	assert.Len(t, snapshots, 3)
 
-	s1Config, err := cluster.GetInstanceSnapshotConfig(context.TODO(), tx.Tx(), snapshots[0].ID)
+	s1Config, err := cluster.GetInstanceSnapshotConfig(ctx, tx.Tx(), snapshots[0].ID)
 	require.NoError(t, err)
-	s1Devices, err := cluster.GetInstanceSnapshotDevices(context.TODO(), tx.Tx(), snapshots[0].ID)
+	s1Devices, err := cluster.GetInstanceSnapshotDevices(ctx, tx.Tx(), snapshots[0].ID)
 	require.NoError(t, err)
 
 	s1 := snapshots[0]
@@ -48,9 +48,9 @@ func TestGetInstanceSnapshots(t *testing.T) {
 	assert.Equal(t, map[string]string{}, s1Config)
 	assert.Empty(t, s1Devices)
 
-	s2Config, err := cluster.GetInstanceSnapshotConfig(context.TODO(), tx.Tx(), snapshots[1].ID)
+	s2Config, err := cluster.GetInstanceSnapshotConfig(ctx, tx.Tx(), snapshots[1].ID)
 	require.NoError(t, err)
-	s2Devices, err := cluster.GetInstanceSnapshotDevices(context.TODO(), tx.Tx(), snapshots[1].ID)
+	s2Devices, err := cluster.GetInstanceSnapshotDevices(ctx, tx.Tx(), snapshots[1].ID)
 	require.NoError(t, err)
 
 	s2 := snapshots[1]
@@ -62,9 +62,9 @@ func TestGetInstanceSnapshots(t *testing.T) {
 	assert.Equal(t, "nic", s2Devices["eth0"].Type.String())
 	assert.Equal(t, map[string]string{}, s2Devices["eth0"].Config)
 
-	s3Config, err := cluster.GetInstanceSnapshotConfig(context.TODO(), tx.Tx(), snapshots[2].ID)
+	s3Config, err := cluster.GetInstanceSnapshotConfig(ctx, tx.Tx(), snapshots[2].ID)
 	require.NoError(t, err)
-	s3Devices, err := cluster.GetInstanceSnapshotDevices(context.TODO(), tx.Tx(), snapshots[2].ID)
+	s3Devices, err := cluster.GetInstanceSnapshotDevices(ctx, tx.Tx(), snapshots[2].ID)
 	require.NoError(t, err)
 
 	s3 := snapshots[2]
@@ -92,7 +92,7 @@ func TestGetInstanceSnapshots_FilterByInstance(t *testing.T) {
 	project := "default"
 	instance := "c2"
 	filter := cluster.InstanceSnapshotFilter{Project: &project, Instance: &instance}
-	snapshots, err := cluster.GetInstanceSnapshots(context.TODO(), tx.Tx(), filter)
+	snapshots, err := cluster.GetInstanceSnapshots(ctx, tx.Tx(), filter)
 	require.NoError(t, err)
 	assert.Len(t, snapshots, 2)
 
@@ -126,7 +126,7 @@ func TestGetInstanceSnapshots_SameNameInDifferentProjects(t *testing.T) {
 		Stateful:     true,
 	}
 
-	_, err = cluster.CreateInstance(context.TODO(), tx.Tx(), i1default)
+	_, err = cluster.CreateInstance(ctx, tx.Tx(), i1default)
 	require.NoError(t, err)
 
 	// Create an instance in project p1 using the same name.
@@ -140,7 +140,7 @@ func TestGetInstanceSnapshots_SameNameInDifferentProjects(t *testing.T) {
 		Stateful:     true,
 	}
 
-	_, err = cluster.CreateInstance(context.TODO(), tx.Tx(), i1p1)
+	_, err = cluster.CreateInstance(ctx, tx.Tx(), i1p1)
 	require.NoError(t, err)
 
 	// Create two snapshots with the same names.
@@ -150,7 +150,7 @@ func TestGetInstanceSnapshots_SameNameInDifferentProjects(t *testing.T) {
 		Name:     "s1",
 	}
 
-	_, err = cluster.CreateInstanceSnapshot(context.TODO(), tx.Tx(), s1default)
+	_, err = cluster.CreateInstanceSnapshot(ctx, tx.Tx(), s1default)
 	require.NoError(t, err)
 
 	s1p1 := cluster.InstanceSnapshot{
@@ -159,13 +159,13 @@ func TestGetInstanceSnapshots_SameNameInDifferentProjects(t *testing.T) {
 		Name:     "s1",
 	}
 
-	_, err = cluster.CreateInstanceSnapshot(context.TODO(), tx.Tx(), s1p1)
+	_, err = cluster.CreateInstanceSnapshot(ctx, tx.Tx(), s1p1)
 	require.NoError(t, err)
 
 	instance := "i1"
 	project := "p1"
 	filter := cluster.InstanceSnapshotFilter{Project: &project, Instance: &instance}
-	snapshots, err := cluster.GetInstanceSnapshots(context.TODO(), tx.Tx(), filter)
+	snapshots, err := cluster.GetInstanceSnapshots(ctx, tx.Tx(), filter)
 	require.NoError(t, err)
 
 	assert.Len(t, snapshots, 1)
@@ -174,7 +174,7 @@ func TestGetInstanceSnapshots_SameNameInDifferentProjects(t *testing.T) {
 	assert.Equal(t, "i1", snapshots[0].Instance)
 	assert.Equal(t, "s1", snapshots[0].Name)
 
-	snapshot, err := cluster.GetInstanceSnapshot(context.TODO(), tx.Tx(), "default", "i1", "s1")
+	snapshot, err := cluster.GetInstanceSnapshot(ctx, tx.Tx(), "default", "i1", "s1")
 	require.NoError(t, err)
 
 	assert.Equal(t, "default", snapshot.Project)

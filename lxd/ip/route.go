@@ -19,7 +19,7 @@ type Route struct {
 }
 
 // Add adds new route.
-func (r *Route) Add() error {
+func (r *Route) Add(ctx context.Context) error {
 	cmd := []string{r.Family, "route", "add"}
 	if r.Table != "" {
 		cmd = append(cmd, "table", r.Table)
@@ -38,7 +38,7 @@ func (r *Route) Add() error {
 		cmd = append(cmd, "proto", r.Proto)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "ip", cmd...)
+	_, err := shared.RunCommandContext(ctx, "ip", cmd...)
 	if err != nil {
 		return err
 	}
@@ -47,8 +47,8 @@ func (r *Route) Add() error {
 }
 
 // Delete deletes routing table.
-func (r *Route) Delete() error {
-	_, err := shared.RunCommandContext(context.TODO(), "ip", r.Family, "route", "delete", "table", r.Table, r.Route, "dev", r.DevName)
+func (r *Route) Delete(ctx context.Context) error {
+	_, err := shared.RunCommandContext(ctx, "ip", r.Family, "route", "delete", "table", r.Table, r.Route, "dev", r.DevName)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (r *Route) Delete() error {
 }
 
 // Flush flushes routing tables.
-func (r *Route) Flush() error {
+func (r *Route) Flush(ctx context.Context) error {
 	cmd := []string{}
 	if r.Family != "" {
 		cmd = append(cmd, r.Family)
@@ -77,7 +77,7 @@ func (r *Route) Flush() error {
 		cmd = append(cmd, "proto", r.Proto)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "ip", cmd...)
+	_, err := shared.RunCommandContext(ctx, "ip", cmd...)
 	if err != nil {
 		return err
 	}
@@ -86,10 +86,10 @@ func (r *Route) Flush() error {
 }
 
 // Replace changes or adds new route.
-func (r *Route) Replace(routes []string) error {
+func (r *Route) Replace(ctx context.Context, routes []string) error {
 	cmd := []string{r.Family, "route", "replace", "dev", r.DevName, "proto", r.Proto}
 	cmd = append(cmd, routes...)
-	_, err := shared.RunCommandContext(context.TODO(), "ip", cmd...)
+	_, err := shared.RunCommandContext(ctx, "ip", cmd...)
 	if err != nil {
 		return err
 	}
@@ -98,9 +98,9 @@ func (r *Route) Replace(routes []string) error {
 }
 
 // Show lists routes.
-func (r *Route) Show() ([]string, error) {
+func (r *Route) Show(ctx context.Context) ([]string, error) {
 	routes := []string{}
-	out, err := shared.RunCommandContext(context.TODO(), "ip", r.Family, "route", "show", "dev", r.DevName, "proto", r.Proto)
+	out, err := shared.RunCommandContext(ctx, "ip", r.Family, "route", "show", "dev", r.DevName, "proto", r.Proto)
 	if err != nil {
 		return routes, err
 	}

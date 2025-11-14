@@ -188,7 +188,7 @@ func storageStop(s *state.State) {
 	var err error
 	var pools []string
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		pools, err = tx.GetStoragePoolNames(ctx)
 
 		return err

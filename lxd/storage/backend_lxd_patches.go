@@ -34,7 +34,7 @@ func patchMissingSnapshotRecords(b *lxdBackend) error {
 	var err error
 	var localNode string
 
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		localNode, err = tx.GetLocalNodeName(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed to get local member name: %w", err)
@@ -53,7 +53,7 @@ func patchMissingSnapshotRecords(b *lxdBackend) error {
 	var contentType drivers.ContentType
 	var snapshots []cluster.Instance
 	instances := make([]struct{ Name, projectName string }, 0)
-	err = b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			// Check we can convert the instance to the volume type needed.
 			volType, err = InstanceTypeToVolumeType(inst.Type)
@@ -147,7 +147,7 @@ func patchMissingSnapshotRecords(b *lxdBackend) error {
 // patchDeleteOldSnapshotRecords deletes the remaining snapshot records in storage_volumes
 // (a previous patch would have already moved them into storage_volume_snapshots).
 func patchDeleteOldSnapshotRecords(b *lxdBackend) error {
-	err := b.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := b.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		nodeID := tx.GetNodeID()
 		_, err := tx.Tx().Exec(`
 DELETE FROM storage_volumes WHERE id IN (

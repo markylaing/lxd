@@ -164,7 +164,7 @@ func (s *Server) updateTSIG() error {
 
 	var secrets map[string]string
 
-	err := s.db.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.db.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all the secrets.

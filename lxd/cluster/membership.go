@@ -53,7 +53,7 @@ func Bootstrap(state *state.State, gateway *Gateway, serverName string) error {
 
 	var localClusterAddress string
 
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		// Fetch current network address and raft nodes
 		config, err := node.ConfigLoad(ctx, tx)
 		if err != nil {
@@ -81,7 +81,7 @@ func Bootstrap(state *state.State, gateway *Gateway, serverName string) error {
 	}
 
 	// Update our own entry in the nodes table.
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Make sure cluster database state is in order.
 		err := membershipCheckClusterStateForBootstrapOrJoin(ctx, tx)
 		if err != nil {
@@ -158,7 +158,7 @@ func Bootstrap(state *state.State, gateway *Gateway, serverName string) error {
 		// lock and makes the Go SQL pooling system invalidate the old
 		// connection, so new queries will be executed over the new network
 		// connection.
-		err = t(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = t(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			_, err = tx.GetNodes(ctx)
 			if err != nil {
 				return fmt.Errorf("Failed getting cluster members: %w", err)
@@ -246,7 +246,7 @@ func Accept(state *state.State, gateway *Gateway, name, address string, schema, 
 
 	// Insert the new node into the nodes table.
 	var id int64
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Check that the node can be accepted with these parameters.
 		err := membershipCheckClusterStateForAccept(ctx, tx, name, address, schema, api)
 		if err != nil {
@@ -336,7 +336,7 @@ func Join(state *state.State, gateway *Gateway, networkCert *shared.CertInfo, se
 	}
 
 	var localClusterAddress string
-	err := state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		// Fetch current network address and raft nodes
 		config, err := node.ConfigLoad(ctx, tx)
 		if err != nil {
@@ -372,7 +372,7 @@ func Join(state *state.State, gateway *Gateway, networkCert *shared.CertInfo, se
 	var networks map[string]map[string]string
 	var operations []cluster.Operation
 
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		pools, err = tx.GetStoragePoolsLocalConfig(ctx)
 		if err != nil {
 			return err
@@ -426,7 +426,7 @@ func Join(state *state.State, gateway *Gateway, networkCert *shared.CertInfo, se
 		}
 
 		reverter.Add(func() {
-			err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+			err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 				return tx.ReplaceRaftNodes([]db.RaftNode{})
 			})
 			if err != nil {
@@ -519,7 +519,7 @@ func Join(state *state.State, gateway *Gateway, networkCert *shared.CertInfo, se
 		// network connection. Also, update the storage_pools and networks
 		// tables with our local configuration.
 		logger.Info("Migrate local data to cluster database")
-		err = t(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = t(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			node, err := tx.GetPendingNodeByAddress(ctx, localClusterAddress)
 			if err != nil {
 				return fmt.Errorf("Failed to get ID of joining node: %w", err)
@@ -660,7 +660,7 @@ func NotifyHeartbeat(state *state.State, gateway *Gateway) {
 	var err error
 	var raftNodes []db.RaftNode
 	var localClusterAddress string
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		raftNodes, err = tx.GetRaftNodes(ctx)
 		if err != nil {
 			return err
@@ -681,7 +681,7 @@ func NotifyHeartbeat(state *state.State, gateway *Gateway) {
 	}
 
 	var members []db.NodeInfo
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err = tx.GetNodes(ctx)
 		if err != nil {
 			return err
@@ -771,7 +771,7 @@ func Rebalance(state *state.State, gateway *Gateway, unavailableMembers []string
 func Assign(state *state.State, gateway *Gateway, nodes []db.RaftNode) error {
 	// Figure out our own address.
 	address := ""
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		address, err = tx.GetLocalNodeAddress(ctx)
 		if err != nil {
@@ -803,7 +803,7 @@ func Assign(state *state.State, gateway *Gateway, nodes []db.RaftNode) error {
 	}
 
 	// Replace our local list of raft nodes with the given one (which includes ourselves).
-	err = state.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		err = tx.ReplaceRaftNodes(nodes)
 		if err != nil {
 			return fmt.Errorf("Failed to set raft nodes: %w", err)
@@ -968,7 +968,7 @@ func Leave(state *state.State, gateway *Gateway, name string, force bool) (strin
 
 	// Check if the node can be deleted and track its address.
 	var address string
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the node (if it doesn't exists an error is returned).
 		node, err := tx.GetNodeByName(ctx, name)
 		if err != nil {
@@ -1080,7 +1080,7 @@ func Handover(state *state.State, gateway *Gateway, address string) (string, []d
 // Build an app.RolesChanges object feeded with the current cluster state.
 func newRolesChanges(state *state.State, gateway *Gateway, nodes []db.RaftNode, unavailableMembers []string) (*app.RolesChanges, error) {
 	var domains map[string]uint64
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		domains, err = tx.GetNodesFailureDomains(ctx)
@@ -1131,7 +1131,7 @@ func newRolesChanges(state *state.State, gateway *Gateway, nodes []db.RaftNode, 
 func Purge(c *db.Cluster, name string) error {
 	logger.Debugf("Remove node %s from the database", name)
 
-	return c.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return c.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the node (if it doesn't exists an error is returned).
 		node, err := tx.GetNodeByName(ctx, name)
 		if err != nil {
@@ -1161,7 +1161,7 @@ func Purge(c *db.Cluster, name string) error {
 // cluster.
 func Count(state *state.State) (int, error) {
 	var count int
-	err := state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		count, err = tx.GetNodesCount(ctx)
 		return err
@@ -1174,7 +1174,7 @@ func Count(state *state.State) (int, error) {
 // node.
 func Enabled(node *db.Node) (bool, error) {
 	enabled := false
-	err := node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err := node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		addresses, err := tx.GetRaftNodeAddresses(ctx)
 		if err != nil {
 			return err

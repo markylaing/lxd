@@ -75,7 +75,7 @@ func (c *cmdActivateifneeded) run(cmd *cobra.Command, args []string) error {
 	d.db.Node = db.DirectAccess(sqldb)
 
 	// Load the configured address from the database
-	err = d.db.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = d.db.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		d.localConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -167,7 +167,7 @@ func (c *cmdActivateifneeded) run(cmd *cobra.Command, args []string) error {
 
 	// Check for scheduled volume snapshots
 	var volumes []db.StorageVolumeArgs
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		volumes, err = tx.GetStoragePoolVolumesWithType(ctx, cluster.StoragePoolVolumeTypeCustom, false)
 		if err != nil {
 			return err

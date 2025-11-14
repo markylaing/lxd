@@ -21,7 +21,7 @@ func LoadByName(s *state.State, projectName string, name string) (NetworkACL, er
 	var id int64
 	var aclInfo *api.NetworkACL
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		id, aclInfo, err = tx.GetNetworkACL(ctx, projectName, name)
@@ -53,7 +53,7 @@ func Create(s *state.State, projectName string, aclInfo *api.NetworkACLsPost) er
 		return err
 	}
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Insert DB record.
 		_, err := tx.CreateNetworkACL(ctx, projectName, aclInfo)
 
@@ -71,7 +71,7 @@ func Create(s *state.State, projectName string, aclInfo *api.NetworkACLsPost) er
 func Exists(s *state.State, projectName string, name ...string) error {
 	var existingACLNames []string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		existingACLNames, err = tx.GetNetworkACLs(ctx, projectName)
@@ -110,7 +110,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 	var profiles []cluster.Profile
 	profileDevices := map[string]map[string]cluster.Device{}
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Find networks using the ACLs. Cheapest to do.
 		networkNames, err := tx.GetCreatedNetworkNamesByProject(ctx, aclProjectName)
 		if err != nil && !response.IsNotFoundError(err) {
@@ -184,7 +184,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 			matchedACLNames := isInUseByDevice(devConfig, matchACLNames...)
 			if len(matchedACLNames) > 0 {
 				// Call usageFunc with a list of matched ACLs and info about the instance NIC.
-				err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					return usageFunc(ctx, tx, matchedACLNames, profile, devName, devConfig)
 				})
 				if err != nil {
@@ -196,7 +196,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 
 	var aclNames []string
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Find ACLs that have rules that reference the ACLs.
 		aclNames, err = tx.GetNetworkACLs(ctx, aclProjectName)
 
@@ -207,7 +207,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 	}
 
 	for _, aclName := range aclNames {
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			_, aclInfo, err := tx.GetNetworkACL(ctx, aclProjectName, aclName)
 			if err != nil {
 				return err
@@ -246,7 +246,7 @@ func UsedBy(s *state.State, aclProjectName string, usageFunc func(ctx context.Co
 			// Find instances using the ACLs. Most expensive to do.
 			err = tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 				// Get the instance's effective network project name.
-				instNetworkProject := project.NetworkProjectFromRecord(&p)
+				instNetworkProject := project.NetworkProjectFromRecord(p)
 
 				// Skip instances who's effective network project doesn't match this Network ACL's project.
 				if instNetworkProject != aclProjectName {

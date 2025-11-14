@@ -1086,7 +1086,7 @@ func (d *ceph) DeleteVolume(vol Volume, op *operations.Operation) error {
 
 // hasVolume indicates whether a specific RBD volume exists on the storage pool.
 func (d *ceph) hasVolume(rbdVolumeName string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	_, err := shared.RunCommandContext(ctx,
@@ -1257,7 +1257,7 @@ func (d *ceph) GetVolumeUsage(vol Volume) (int64, error) {
 		Images []cephDuLine `json:"images"`
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	jsonInfo, err := shared.RunCommandContext(ctx,
@@ -1569,7 +1569,7 @@ func (d *ceph) MountVolume(vol Volume, op *operations.Operation) error {
 			}
 
 			mountFlags, mountOptions := filesystem.ResolveMountOptions(strings.Split(vol.ConfigBlockMountOptions(), ","))
-			err = TryMount(context.TODO(), volDevPath, mountPath, fsType, mountFlags, mountOptions)
+			err = TryMount(ctx, volDevPath, mountPath, fsType, mountFlags, mountOptions)
 			if err != nil {
 				return err
 			}
@@ -2059,7 +2059,7 @@ func (d *ceph) MountVolumeSnapshot(snapVol Volume, op *operations.Operation) err
 			}
 		}
 
-		err = TryMount(context.TODO(), rbdDevPath, mountPath, RBDFilesystem, mountFlags, mountOptions)
+		err = TryMount(ctx, rbdDevPath, mountPath, RBDFilesystem, mountFlags, mountOptions)
 		if err != nil {
 			return err
 		}

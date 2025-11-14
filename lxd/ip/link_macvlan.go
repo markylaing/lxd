@@ -1,5 +1,7 @@
 package ip
 
+import "context"
+
 // Macvlan represents arguments for link of type macvlan.
 type Macvlan struct {
 	Link
@@ -7,6 +9,6 @@ type Macvlan struct {
 }
 
 // Add adds new virtual link.
-func (macvlan *Macvlan) Add() error {
-	return macvlan.add("macvlan", []string{"mode", macvlan.Mode})
+func (macvlan *Macvlan) Add(ctx context.Context) error {
+	return macvlan.add(ctx, "macvlan", []string{"mode", macvlan.Mode})
 }

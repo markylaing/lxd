@@ -44,7 +44,7 @@ func TestNotifyUpgradeCompleted(t *testing.T) {
 	// Populate state.LocalConfig after nodes created above.
 	var err error
 	var nodeConfig *node.Config
-	err = state0.DB.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = state0.DB.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		nodeConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -88,7 +88,7 @@ func TestMaybeUpdate_Upgrade(t *testing.T) {
 		return nil
 	})
 
-	_ = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		id, err := tx.CreateNode("buzz", "1.2.3.4:666")
 		require.NoError(t, err)
 
@@ -172,7 +172,7 @@ func TestUpgradeMembersWithoutRole(t *testing.T) {
 
 	// Add a couple of members to the database.
 	var members []db.NodeInfo
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		_, err := tx.CreateNode("foo", "1.2.3.4")
 		require.NoError(t, err)
 		_, err = tx.CreateNode("bar", "5.6.7.8")

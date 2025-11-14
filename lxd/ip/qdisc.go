@@ -32,9 +32,9 @@ func (qdisc *Qdisc) mainCmd() []string {
 }
 
 // Add adds qdisc to a node.
-func (qdisc *Qdisc) Add() error {
+func (qdisc *Qdisc) Add(ctx context.Context) error {
 	cmd := qdisc.mainCmd()
-	_, err := shared.RunCommandContext(context.TODO(), "tc", cmd...)
+	_, err := shared.RunCommandContext(ctx, "tc", cmd...)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (qdisc *Qdisc) Add() error {
 }
 
 // Delete deletes qdisc from node.
-func (qdisc *Qdisc) Delete() error {
+func (qdisc *Qdisc) Delete(ctx context.Context) error {
 	cmd := []string{"qdisc", "del", "dev", qdisc.Dev}
 	if qdisc.Root {
 		cmd = append(cmd, "root")
@@ -53,7 +53,7 @@ func (qdisc *Qdisc) Delete() error {
 		cmd = append(cmd, "ingress")
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "tc", cmd...)
+	_, err := shared.RunCommandContext(ctx, "tc", cmd...)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ type QdiscHTB struct {
 }
 
 // Add adds qdisc to a node.
-func (qdisc *QdiscHTB) Add() error {
+func (qdisc *QdiscHTB) Add(ctx context.Context) error {
 	cmd := qdisc.mainCmd()
 	cmd = append(cmd, "htb")
 
@@ -76,7 +76,7 @@ func (qdisc *QdiscHTB) Add() error {
 		cmd = append(cmd, "default", qdisc.Default)
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "tc", cmd...)
+	_, err := shared.RunCommandContext(ctx, "tc", cmd...)
 	if err != nil {
 		return err
 	}

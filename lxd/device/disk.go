@@ -552,10 +552,10 @@ func (d *disk) validateConfig(instConf instance.ConfigReader) error {
 
 				// Derive the effective storage project name from the instance config's project.
 				instProj := instConf.Project()
-				storageProjectName = project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+				storageProjectName = project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 				// GetStoragePoolVolume returns a volume with an empty Location field for remote drivers.
-				err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					dbCustomVolume, err = tx.GetStoragePoolVolume(ctx, d.pool.ID(), storageProjectName, dbVolumeType, volumeName, true)
 					return err
 				})
@@ -769,7 +769,7 @@ func (d *disk) Register() error {
 		}
 
 		instProj := d.inst.Project()
-		storageProjectName := project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+		storageProjectName := project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 		// Try to mount the volume that should already be mounted to reinitialise the ref counter.
 		if dbVolumeType == cluster.StoragePoolVolumeTypeVM {
@@ -914,10 +914,10 @@ func (d *disk) startContainer() (*deviceConfig.RunConfig, error) {
 			}
 
 			instProj := d.inst.Project()
-			storageProjectName := project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+			storageProjectName := project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 			var dbVolume *db.StorageVolume
-			err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				dbVolume, err = tx.GetStoragePoolVolume(ctx, d.pool.ID(), storageProjectName, dbVolumeType, volumeName, true)
 				return err
 			})
@@ -1170,11 +1170,11 @@ func (d *disk) startVM() (*deviceConfig.RunConfig, error) {
 
 				// Derive the effective storage project name from the instance config's project.
 				instProj := d.inst.Project()
-				storageProjectName := project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+				storageProjectName := project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 				// GetStoragePoolVolume returns a volume with an empty Location field for remote drivers.
 				var dbVolume *db.StorageVolume
-				err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					dbVolume, err = tx.GetStoragePoolVolume(ctx, d.pool.ID(), storageProjectName, dbVolumeType, volumeName, true)
 					return err
 				})
@@ -1309,7 +1309,7 @@ func (d *disk) startVM() (*deviceConfig.RunConfig, error) {
 							d.logger.Warn("Unable to use virtio-fs for device, using 9p as a fallback", logger.Ctx{"err": errUnsupported})
 
 							if errUnsupported == ErrMissingVirtiofsd {
-								_ = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+								_ = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 									return tx.UpsertWarningLocalNode(ctx, d.inst.Project().Name, entity.TypeInstance, d.inst.ID(), warningtype.MissingVirtiofsd, "Using 9p as a fallback")
 								})
 							} else {
@@ -1694,7 +1694,7 @@ func (d *disk) mountPoolVolume() (func(), string, *storagePools.MountInfo, error
 	}
 
 	instProj := d.inst.Project()
-	storageProjectName := project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+	storageProjectName := project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 	if dbVolumeType == cluster.StoragePoolVolumeTypeVM {
 		diskInst, err := instance.LoadByProjectAndName(d.state, d.inst.Project().Name, volumeName)
@@ -1729,7 +1729,7 @@ func (d *disk) mountPoolVolume() (func(), string, *storagePools.MountInfo, error
 	}
 
 	var dbVolume *db.StorageVolume
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		dbVolume, err = tx.GetStoragePoolVolume(ctx, d.pool.ID(), storageProjectName, dbVolumeType, volumeName, true)
 		return err
 	})
@@ -1963,7 +1963,7 @@ func (d *disk) localSourceOpen(srcPath string) (*os.File, error) {
 func (d *disk) storagePoolVolumeAttachShift(projectName, poolName, volumeName string, volumeType cluster.StoragePoolVolumeType, remapPath string) error {
 	var err error
 	var dbVolume *db.StorageVolume
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		dbVolume, err = tx.GetStoragePoolVolume(ctx, d.pool.ID(), projectName, volumeType, volumeName, true)
 		return err
 	})
@@ -2134,7 +2134,7 @@ func (d *disk) storagePoolVolumeAttachShift(projectName, poolName, volumeName st
 	// Update last idmap.
 	poolVolumePut.Config["volatile.idmap.last"] = jsonIdmap
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.UpdateStoragePoolVolume(ctx, projectName, volumeName, volumeType, d.pool.ID(), poolVolumePut.Description, poolVolumePut.Config)
 	})
 	if err != nil {
@@ -2208,7 +2208,7 @@ func (d *disk) postStop() error {
 
 		// Only custom volumes can be attached currently.
 		instProj := d.inst.Project()
-		storageProjectName := project.StorageVolumeProjectFromRecord(&instProj, dbVolumeType)
+		storageProjectName := project.StorageVolumeProjectFromRecord(instProj, dbVolumeType)
 
 		if dbVolumeType == cluster.StoragePoolVolumeTypeVM {
 			var diskInst instance.Instance
@@ -2492,7 +2492,7 @@ func (d *disk) getParentBlocks(path string) ([]string, error) {
 		// Accessible zfs filesystems
 		poolName := strings.Split(dev[1], "/")[0]
 
-		output, err := shared.RunCommandContext(context.TODO(), "zpool", "status", "-P", "-L", poolName)
+		output, err := shared.RunCommandContext(ctx, "zpool", "status", "-P", "-L", poolName)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to query zfs filesystem information for %q: %w", dev[1], err)
 		}
@@ -2544,7 +2544,7 @@ func (d *disk) getParentBlocks(path string) ([]string, error) {
 		}
 	} else if fs == "btrfs" && shared.PathExists(dev[1]) {
 		// Accessible btrfs filesystems
-		output, err := shared.RunCommandContext(context.TODO(), "btrfs", "filesystem", "show", dev[1])
+		output, err := shared.RunCommandContext(ctx, "btrfs", "filesystem", "show", dev[1])
 		if err != nil {
 			// Fallback to using device path to support BTRFS on block volumes (like LVM).
 			_, major, minor, errFallback := unixDeviceAttributes(dev[1])
@@ -2666,7 +2666,7 @@ func (d *disk) generateVMConfigDrive() (string, error) {
 	// templates on first boot. The vendor-data template then modifies the system so that the
 	// config drive is mounted and the agent is started on subsequent boots.
 	isoPath := filepath.Join(d.inst.Path(), "config.iso")
-	_, err = shared.RunCommandContext(context.TODO(), mkisofsPath, "-joliet", "-rock", "-input-charset", "utf8", "-output-charset", "utf8", "-volid", "cidata", "-o", isoPath, scratchDir)
+	_, err = shared.RunCommandContext(ctx, mkisofsPath, "-joliet", "-rock", "-input-charset", "utf8", "-output-charset", "utf8", "-volid", "cidata", "-o", isoPath, scratchDir)
 	if err != nil {
 		return "", err
 	}

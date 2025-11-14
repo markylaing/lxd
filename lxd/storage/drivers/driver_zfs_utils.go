@@ -75,7 +75,7 @@ func (d *zfs) createDataset(dataset string, options ...string) error {
 
 	args = append(args, dataset)
 
-	_, err := shared.RunCommandContext(context.TODO(), "zfs", args...)
+	_, err := shared.RunCommandContext(ctx, "zfs", args...)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func (d *zfs) createVolume(dataset string, size int64, options ...string) error 
 
 	args = append(args, dataset)
 
-	_, err := shared.RunCommandContext(context.TODO(), "zfs", args...)
+	_, err := shared.RunCommandContext(ctx, "zfs", args...)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (d *zfs) createVolume(dataset string, size int64, options ...string) error 
 }
 
 func (d *zfs) datasetExists(dataset string) (bool, error) {
-	out, err := shared.RunCommandContext(context.TODO(), "zfs", "get", "-H", "-o", "name", "name", dataset)
+	out, err := shared.RunCommandContext(ctx, "zfs", "get", "-H", "-o", "name", "name", dataset)
 	if err != nil {
 		return false, nil
 	}
@@ -154,7 +154,7 @@ func (d *zfs) deleteDatasetRecursive(dataset string) error {
 }
 
 func (d *zfs) getClones(dataset string) ([]string, error) {
-	out, err := shared.RunCommandContext(context.TODO(), "zfs", "get", "-H", "-p", "-r", "-o", "value", "clones", dataset)
+	out, err := shared.RunCommandContext(ctx, "zfs", "get", "-H", "-p", "-r", "-o", "value", "clones", dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func (d *zfs) getClones(dataset string) ([]string, error) {
 }
 
 func (d *zfs) getDatasets(dataset string, types string) ([]string, error) {
-	out, err := shared.RunCommandContext(context.TODO(), "zfs", "get", "-H", "-r", "-o", "name", "-t", types, "name", dataset)
+	out, err := shared.RunCommandContext(ctx, "zfs", "get", "-H", "-r", "-o", "name", "-t", types, "name", dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (d *zfs) setDatasetProperties(dataset string, options ...string) error {
 	args = append(args, options...)
 	args = append(args, dataset)
 
-	_, err := shared.RunCommandContext(context.TODO(), "zfs", args...)
+	_, err := shared.RunCommandContext(ctx, "zfs", args...)
 	if err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func (d *zfs) setBlocksize(vol Volume, size int64) error {
 }
 
 func (d *zfs) getDatasetProperty(dataset string, key string) (string, error) {
-	output, err := shared.RunCommandContext(context.TODO(), "zfs", "get", "-H", "-p", "-o", "value", key, dataset)
+	output, err := shared.RunCommandContext(ctx, "zfs", "get", "-H", "-p", "-o", "value", key, dataset)
 	if err != nil {
 		return "", err
 	}
@@ -280,7 +280,7 @@ func (d *zfs) getDatasetProperty(dataset string, key string) (string, error) {
 }
 
 func (d *zfs) getDatasetProperties(dataset string, keys ...string) (map[string]string, error) {
-	output, err := shared.RunCommandContext(context.TODO(), "zfs", "get", "-H", "-p", "-o", "property,value", strings.Join(keys, ","), dataset)
+	output, err := shared.RunCommandContext(ctx, "zfs", "get", "-H", "-p", "-o", "property,value", strings.Join(keys, ","), dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -308,14 +308,14 @@ func (d *zfs) version() (string, error) {
 	}
 
 	// Module information version
-	out, err := shared.RunCommandContext(context.TODO(), "modinfo", "-F", "version", "zfs")
+	out, err := shared.RunCommandContext(ctx, "modinfo", "-F", "version", "zfs")
 	if err == nil {
 		return strings.TrimSpace(out), nil
 	}
 
 	// This function is only really ever relevant on Ubuntu as the only
 	// distro that ships out of sync tools and kernel modules
-	out, err = shared.RunCommandContext(context.TODO(), "dpkg-query", "--showformat=${Version}", "--show", "zfsutils-linux")
+	out, err = shared.RunCommandContext(ctx, "dpkg-query", "--showformat=${Version}", "--show", "zfsutils-linux")
 	if out != "" && err == nil {
 		return strings.TrimSpace(out), nil
 	}
@@ -514,7 +514,7 @@ func (d *zfs) randomVolumeName(vol Volume) string {
 }
 
 func (d *zfs) delegateDataset(vol Volume, pid int) error {
-	_, err := shared.RunCommandContext(context.TODO(), "zfs", "zone", fmt.Sprintf("/proc/%d/ns/user", pid), d.dataset(vol, false))
+	_, err := shared.RunCommandContext(ctx, "zfs", "zone", fmt.Sprintf("/proc/%d/ns/user", pid), d.dataset(vol, false))
 	if err != nil {
 		return err
 	}

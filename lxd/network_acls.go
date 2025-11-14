@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/lxd/auth"
@@ -167,8 +168,13 @@ func networkACLsGet(d *Daemon, r *http.Request) response.Response {
 
 	var effectiveProjectName string
 	if !allProjects {
+		requestProject, err := broker.GetProjectByName(r.Context(), requestProjectName)
+		if err != nil {
+			return response.SmartError(fmt.Errorf("Failed to load requested project: %w", err))
+		}
+
 		// Project specific requests require an effective project, when "features.networks" is enabled this is the requested project, otherwise it is the default project.
-		effectiveProjectName, _, err = project.NetworkProject(s.DB.Cluster, requestProjectName)
+		effectiveProjectName = project.NetworkProjectFromRecord(requestProject.ToAPI())
 		if err != nil {
 			return response.SmartError(err)
 		}

@@ -181,9 +181,9 @@ type OVNRouterPeering struct {
 }
 
 // NewOVN initialises new OVN client wrapper with the connection set in network.ovn.northbound_connection config.
-func NewOVN(nbConnection string, sslSettings func() (sslCACert string, sslClientCert string, sslClientKey string)) (*OVN, error) {
+func NewOVN(ctx context.Context, nbConnection string, sslSettings func() (sslCACert string, sslClientCert string, sslClientKey string)) (*OVN, error) {
 	// Get database connection strings.
-	sbConnection, err := NewOVS().OVNSouthboundDBRemoteAddress()
+	sbConnection, err := NewOVS().OVNSouthboundDBRemoteAddress(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get OVN southbound connection string: %w", err)
 	}

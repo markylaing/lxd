@@ -304,7 +304,7 @@ func (d Nftables) networkSetupACLChainAndJumpRules(networkName string) error {
 		return fmt.Errorf("Failed running %q template: %w", nftablesNetACLSetup.Name(), err)
 	}
 
-	err = shared.RunCommandWithFds(context.TODO(), strings.NewReader(config.String()), nil, "nft", "-f", "-")
+	err = shared.RunCommandWithFds(ctx, strings.NewReader(config.String()), nil, "nft", "-f", "-")
 	if err != nil {
 		return err
 	}
@@ -546,7 +546,7 @@ func (d Nftables) InstanceSetupProxyNAT(projectName string, instanceName string,
 		return fmt.Errorf("Failed running %q template: %w", nftablesNetProxyNAT.Name(), err)
 	}
 
-	err = shared.RunCommandWithFds(context.TODO(), strings.NewReader(config.String()), nil, "nft", "-f", "-")
+	err = shared.RunCommandWithFds(ctx, strings.NewReader(config.String()), nil, "nft", "-f", "-")
 	if err != nil {
 		return err
 	}
@@ -583,7 +583,7 @@ func (d Nftables) applyNftConfig(tpl *template.Template, tplFields map[string]an
 		return fmt.Errorf("Failed running %q template: %w", tpl.Name(), err)
 	}
 
-	err = shared.RunCommandWithFds(context.TODO(), strings.NewReader(config.String()), nil, "nft", "-f", "-")
+	err = shared.RunCommandWithFds(ctx, strings.NewReader(config.String()), nil, "nft", "-f", "-")
 	if err != nil {
 		return fmt.Errorf("Failed apply nftables config: %w", err)
 	}
@@ -624,7 +624,7 @@ func (d Nftables) removeChains(families []string, chainSuffix string, chains ...
 			continue
 		}
 
-		_, err = shared.RunCommandContext(context.TODO(), "nft", "flush", "chain", item.Family, nftablesNamespace, item.Name, ";", "delete", "chain", item.Family, nftablesNamespace, item.Name)
+		_, err = shared.RunCommandContext(ctx, "nft", "flush", "chain", item.Family, nftablesNamespace, item.Name, ";", "delete", "chain", item.Family, nftablesNamespace, item.Name)
 		if err != nil {
 			return fmt.Errorf("Failed deleting nftables chain %q (%s): %w", item.Name, item.Family, err)
 		}
@@ -748,7 +748,7 @@ func (d Nftables) NetworkApplyACLRules(networkName string, rules []ACLRule) erro
 		return fmt.Errorf("Failed running %q template: %w", nftablesNetACLRules.Name(), err)
 	}
 
-	err = shared.RunCommandWithFds(context.TODO(), strings.NewReader(config.String()), nil, "nft", "-f", "-")
+	err = shared.RunCommandWithFds(ctx, strings.NewReader(config.String()), nil, "nft", "-f", "-")
 	if err != nil {
 		return err
 	}
@@ -1076,7 +1076,7 @@ func (d Nftables) NetworkApplyForwards(networkName string, rules []AddressForwar
 			return fmt.Errorf("Failed running %q template: %w", nftablesNetProxyNAT.Name(), err)
 		}
 
-		err = shared.RunCommandWithFds(context.TODO(), strings.NewReader(config.String()), nil, "nft", "-f", "-")
+		err = shared.RunCommandWithFds(ctx, strings.NewReader(config.String()), nil, "nft", "-f", "-")
 		if err != nil {
 			return err
 		}

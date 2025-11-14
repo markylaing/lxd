@@ -1,5 +1,7 @@
 package ip
 
+import "context"
+
 // Vxlan represents arguments for link of type vxlan.
 type Vxlan struct {
 	Link
@@ -49,6 +51,6 @@ func (vxlan *Vxlan) additionalArgs() []string {
 }
 
 // Add adds new virtual link.
-func (vxlan *Vxlan) Add() error {
-	return vxlan.add("vxlan", vxlan.additionalArgs())
+func (vxlan *Vxlan) Add(ctx context.Context) error {
+	return vxlan.add(ctx, "vxlan", vxlan.additionalArgs())
 }

@@ -1927,7 +1927,7 @@ func networkStop(s *state.State, evacuateOnly bool) {
 	// Get a list of projects.
 	var projectNames []string
 
-	err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNames, err = dbCluster.GetProjectNames(ctx, tx.Tx())
 		return err
 	})
@@ -1939,7 +1939,7 @@ func networkStop(s *state.State, evacuateOnly bool) {
 	for _, projectName := range projectNames {
 		var networks []string
 
-		err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Get a list of managed networks.
 			networks, err = tx.GetNetworks(ctx, projectName)
 

@@ -228,7 +228,7 @@ func patchDnsmasqEntriesIncludeDeviceName(name string, d *Daemon) error {
 }
 
 func patchRemoveWarningsWithEmptyNode(name string, d *Daemon) error {
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		warnings, err := dbCluster.GetWarnings(ctx, tx.Tx())
 		if err != nil {
 			return err
@@ -258,7 +258,7 @@ func patchClusteringServerCertTrust(name string, d *Daemon) error {
 	}
 
 	var serverName string
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 		serverName, err = tx.GetLocalNodeName(ctx)
 		return err
@@ -274,7 +274,7 @@ func patchClusteringServerCertTrust(name string, d *Daemon) error {
 	}
 	// Update our own entry in the nodes table.
 	logger.Infof("Adding local server certificate to global trust store for %q patch", name)
-	err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return cluster.EnsureServerCertificateTrusted(serverName, serverCert, tx)
 	})
 	if err != nil {
@@ -287,7 +287,7 @@ func patchClusteringServerCertTrust(name string, d *Daemon) error {
 	for {
 		var err error
 		var dbCerts []dbCluster.Certificate
-		err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			dbCerts, err = dbCluster.GetCertificates(ctx, tx.Tx())
 			return err
 		})
@@ -304,7 +304,7 @@ func patchClusteringServerCertTrust(name string, d *Daemon) error {
 		}
 
 		var members []db.NodeInfo
-		err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			members, err = tx.GetNodes(ctx)
 			if err != nil {
 				return fmt.Errorf("Failed getting cluster members: %w", err)
@@ -354,7 +354,7 @@ func patchNetworkACLRemoveDefaults(name string, d *Daemon) error {
 	var projectNames []string
 
 	// Get projects.
-	err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNames, err = dbCluster.GetProjectNames(ctx, tx.Tx())
 		return err
 	})
@@ -362,7 +362,7 @@ func patchNetworkACLRemoveDefaults(name string, d *Daemon) error {
 		return err
 	}
 
-	err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get ACLs in projects.
 		for _, projectName := range projectNames {
 			aclNames, err := tx.GetNetworkACLs(ctx, projectName)
@@ -483,7 +483,7 @@ func patchVMRenameUUIDKey(name string, d *Daemon) error {
 
 	s := d.State()
 
-	return s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		return tx.InstanceList(ctx, func(inst db.InstanceArgs, p api.Project) error {
 			if inst.Type != instancetype.VM {
 				return nil
@@ -548,20 +548,20 @@ func patchThinpoolTypoFix(name string, d *Daemon) error {
 	revert.Add(func() { _ = tx.Rollback() })
 
 	// Fetch the IDs of all existing nodes.
-	nodeIDs, err := query.SelectIntegers(context.TODO(), tx, "SELECT id FROM nodes")
+	nodeIDs, err := query.SelectIntegers(ctx, tx, "SELECT id FROM nodes")
 	if err != nil {
 		return fmt.Errorf("Failed to get IDs of current nodes: %w", err)
 	}
 
 	// Fetch the IDs of all existing lvm pools.
-	poolIDs, err := query.SelectIntegers(context.TODO(), tx, "SELECT id FROM storage_pools WHERE driver='lvm'")
+	poolIDs, err := query.SelectIntegers(ctx, tx, "SELECT id FROM storage_pools WHERE driver='lvm'")
 	if err != nil {
 		return fmt.Errorf("Failed to get IDs of current lvm pools: %w", err)
 	}
 
 	for _, poolID := range poolIDs {
 		// Fetch the config for this lvm pool and check if it has the lvm.thinpool_name.
-		config, err := query.SelectConfig(context.TODO(), tx, "storage_pools_config", "storage_pool_id=? AND node_id IS NULL", poolID)
+		config, err := query.SelectConfig(ctx, tx, "storage_pools_config", "storage_pool_id=? AND node_id IS NULL", poolID)
 		if err != nil {
 			return fmt.Errorf("Failed to fetch of lvm pool config: %w", err)
 		}
@@ -604,7 +604,7 @@ INSERT INTO storage_pools_config(storage_pool_id, node_id, key, value)
 // This prevents outbound connectivity breaking on existing fan networks now that the default behaviour of not
 // having "ipv4.nat" set is to disable NAT (bringing in line with the non-fan bridge behavior and docs).
 func patchNetworkFANEnableNAT(name string, d *Daemon) error {
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworks, err := tx.GetCreatedNetworks(ctx)
 		if err != nil {
 			return err
@@ -652,7 +652,7 @@ func patchNetworkFANEnableNAT(name string, d *Daemon) error {
 // patchNetworkOVNRemoveRoutes removes the "ipv4.routes.external" and "ipv6.routes.external" settings from OVN
 // networks. It was decided that the OVN NIC level equivalent settings were sufficient.
 func patchNetworkOVNRemoveRoutes(name string, d *Daemon) error {
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworks, err := tx.GetCreatedNetworks(ctx)
 		if err != nil {
 			return err
@@ -704,7 +704,7 @@ func patchNetworkOVNRemoveRoutes(name string, d *Daemon) error {
 // the new NAT settings which default to disabled if not specified.
 // patchNetworkCearBridgeVolatileHwaddr removes the unsupported `volatile.bridge.hwaddr` config key from networks.
 func patchNetworkOVNEnableNAT(name string, d *Daemon) error {
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		projectNetworks, err := tx.GetCreatedNetworks(ctx)
 		if err != nil {
 			return err
@@ -801,7 +801,7 @@ func patchGenericNetwork(f func(name string, d *Daemon) error) func(name string,
 }
 
 func patchClusteringDropDatabaseRole(name string, d *Daemon) error {
-	return d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	return d.State().DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		members, err := tx.GetNodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed getting cluster members: %w", err)
@@ -822,7 +822,7 @@ func patchNetworkClearBridgeVolatileHwaddr(name string, d *Daemon) error {
 	// Use api.ProjectDefaultName, as bridge networks don't support projects.
 	projectName := api.ProjectDefaultName
 
-	err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Get the list of networks.
 		networks, err := tx.GetNetworks(ctx, projectName)
 		if err != nil {
@@ -866,7 +866,7 @@ func patchZfsSetContentTypeUserProperty(name string, d *Daemon) error {
 
 	var pools []string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all storage pool names.
@@ -962,7 +962,7 @@ func patchStorageZfsUnsetInvalidBlockSettingsV2(_ string, d *Daemon) error {
 
 	var pools []string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all storage pool names.
@@ -1061,7 +1061,7 @@ func patchStorageZfsUnsetInvalidBlockSettingsV2(_ string, d *Daemon) error {
 				continue
 			}
 
-			err = s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				return tx.UpdateStoragePoolVolume(ctx, vol.Project, vol.Name, volType, pool, vol.Description, config)
 			})
 			if err != nil {
@@ -1215,7 +1215,7 @@ func patchStorageRenameCustomISOBlockVolumesV2(name string, d *Daemon) error {
 
 	var pools []string
 
-	err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all storage pool names.
@@ -1611,7 +1611,7 @@ func patchClusterConfigVolatileUUID(name string, d *Daemon) error {
 // patchUpdatePowerFlexCloneCopySetting checks whether or not the 'powerflex.clone_copy' setting is present on any applicable storage pool.
 // If set it's getting replaced with the new 'powerflex.snapshot_copy' setting which also inverts the original value.
 func patchUpdatePowerFlexCloneCopySetting(_ string, d *Daemon) error {
-	err := d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err := d.State().DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all storage pool names.
@@ -1674,7 +1674,7 @@ func patchUpdatePowerFlexSnapshotPrefix(_ string, d *Daemon) error {
 	// Cache a list of snapshots, by pool and volume.
 	poolVolumesSnapshots := make(map[string]map[*db.StorageVolume][]db.StorageVolumeArgs)
 
-	err = d.State().DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.State().DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		var err error
 
 		// Get all storage pool names.

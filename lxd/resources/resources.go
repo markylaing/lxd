@@ -1,13 +1,14 @@
 package resources
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/canonical/lxd/shared/api"
 )
 
 // GetResources returns a filled api.Resources struct ready for use by LXD.
-func GetResources() (*api.Resources, error) {
+func GetResources(ctx context.Context) (*api.Resources, error) {
 	// Get CPU information
 	cpu, err := GetCPU()
 	if err != nil {
@@ -33,7 +34,7 @@ func GetResources() (*api.Resources, error) {
 	}
 
 	// Get storage information
-	storage, err := GetStorage()
+	storage, err := GetStorage(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to retrieve storage information: %w", err)
 	}

@@ -18,7 +18,7 @@ func TestLocateImage(t *testing.T) {
 	cluster, cleanup := db.NewTestCluster(t)
 	defer cleanup()
 
-	_ = cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		err := tx.CreateImage(ctx,
 			"default", "abc", "x.gz", 16, false, false, "amd64", time.Now(), time.Now(), map[string]string{}, "container", nil)
 		require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestImageExists(t *testing.T) {
 	cluster, cleanup := db.NewTestCluster(t)
 	defer cleanup()
 
-	_ = cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		exists, err := tx.ImageExists(ctx, "default", "abc")
 		require.NoError(t, err)
 
@@ -74,7 +74,7 @@ func TestGetImage(t *testing.T) {
 	defer cleanup()
 	project := "default"
 
-	_ = dbCluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = dbCluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// public image with 'default' project
 		err := tx.CreateImage(ctx, project, "abcd1", "x.gz", 16, true, false, "amd64", time.Now(), time.Now(), map[string]string{}, "container", nil)
 		require.NoError(t, err)

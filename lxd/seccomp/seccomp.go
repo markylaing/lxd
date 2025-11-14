@@ -1298,7 +1298,7 @@ func CallForkmknod(c Instance, dev deviceConfig.Device, requestPID int, s *state
 	}
 
 	_, stderr, err := shared.RunCommandSplit(
-		context.TODO(),
+		ctx,
 		nil,
 		[]*os.File{pidFd},
 		util.GetExecPath(),
@@ -1624,7 +1624,7 @@ func (s *Server) HandleSetxattrSyscall(c Instance, siov *Iovec) int {
 	}
 
 	_, stderr, err := shared.RunCommandSplit(
-		context.TODO(),
+		ctx,
 		nil,
 		[]*os.File{pidFd},
 		util.GetExecPath(),
@@ -1776,7 +1776,7 @@ func (s *Server) HandleSchedSetschedulerSyscall(c Instance, siov *Iovec) int {
 	args.schedPriority = schedParamArgs.sched_priority
 
 	_, stderr, err := shared.RunCommandSplit(
-		context.TODO(),
+		ctx,
 		nil,
 		[]*os.File{pidFd},
 		util.GetExecPath(),
@@ -2091,7 +2091,7 @@ func (s *Server) HandleFinitModuleSyscall(c Instance, siov *Iovec) int {
 		return int(-C.EPERM)
 	}
 
-	exitCode, err := p.Wait(context.TODO())
+	exitCode, err := p.Wait(ctx)
 	if err != nil || exitCode != 0 {
 		ctx["err"] = fmt.Sprintf("forksyscallgo finit_module_parse helper failed. Err: %v exitCode: %d stdout: %s stderr: %s",
 			err, exitCode, output.String(), buffer.String())
@@ -2443,7 +2443,7 @@ func (s *Server) HandleMountSyscall(c Instance, siov *Iovec) int {
 		ctx["fuse_target"] = args.target
 		ctx["fuse_opts"] = fuseOpts
 		_, _, err = shared.RunCommandSplit(
-			context.TODO(),
+			ctx,
 			nil,
 			[]*os.File{pidFd},
 			util.GetExecPath(),
@@ -2461,7 +2461,7 @@ func (s *Server) HandleMountSyscall(c Instance, siov *Iovec) int {
 			fuseOpts)
 	} else {
 		_, _, err = shared.RunCommandSplit(
-			context.TODO(),
+			ctx,
 			nil,
 			[]*os.File{pidFd},
 			util.GetExecPath(),

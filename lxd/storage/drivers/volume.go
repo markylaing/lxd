@@ -210,7 +210,7 @@ func (v Volume) mountLockName() string {
 
 // MountLock attempts to lock the mount lock for the volume and returns the UnlockFunc.
 func (v Volume) MountLock() (locking.UnlockFunc, error) {
-	return locking.Lock(context.TODO(), v.mountLockName())
+	return locking.Lock(ctx, v.mountLockName())
 }
 
 // MountRefCountIncrement increments the mount ref counter for the volume and returns the new value.

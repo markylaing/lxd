@@ -189,7 +189,7 @@ func (s *dbTestSuite) Test_ImageGet_finds_image_for_fingerprint() {
 	var result *api.Image
 	project := "default"
 
-	err := s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err := s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		var err error
 		_, result, err = tx.GetImage(ctx, "fingerprint", cluster.ImageFilter{Project: &project})
 		return err
@@ -206,7 +206,7 @@ func (s *dbTestSuite) Test_ImageGet_finds_image_for_fingerprint() {
 func (s *dbTestSuite) Test_ImageGet_for_missing_fingerprint() {
 	project := "default"
 
-	err := s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err := s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		_, _, err := tx.GetImage(ctx, "unknown", cluster.ImageFilter{Project: &project})
 		return err
 	})
@@ -217,7 +217,7 @@ func (s *dbTestSuite) Test_ImageGet_for_missing_fingerprint() {
 func (s *dbTestSuite) Test_ImageExists_true() {
 	var exists bool
 
-	err := s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err := s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		var err error
 		exists, err = tx.ImageExists(ctx, "default", "fingerprint")
 		return err
@@ -230,7 +230,7 @@ func (s *dbTestSuite) Test_ImageExists_true() {
 func (s *dbTestSuite) Test_ImageExists_false() {
 	var exists bool
 
-	err := s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	err := s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		var err error
 		exists, err = tx.ImageExists(ctx, "default", "foobar")
 		return err
@@ -275,7 +275,7 @@ func (s *dbTestSuite) Test_CreateImageAlias() {
 func (s *dbTestSuite) Test_GetCachedImageSourceFingerprint() {
 	project := "default"
 
-	_ = s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	_ = s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		imageID, _, err := tx.GetImage(ctx, "fingerprint", cluster.ImageFilter{Project: &project})
 		s.NoError(err)
 
@@ -292,7 +292,7 @@ func (s *dbTestSuite) Test_GetCachedImageSourceFingerprint() {
 func (s *dbTestSuite) Test_GetCachedImageSourceFingerprint_no_match() {
 	project := "default"
 
-	_ = s.db.Transaction(context.TODO(), func(ctx context.Context, tx *ClusterTx) error {
+	_ = s.db.Transaction(ctx, func(ctx context.Context, tx *ClusterTx) error {
 		imageID, _, err := tx.GetImage(ctx, "fingerprint", cluster.ImageFilter{Project: &project})
 		s.NoError(err)
 

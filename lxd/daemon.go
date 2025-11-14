@@ -23,6 +23,7 @@ import (
 
 	dqliteClient "github.com/canonical/go-dqlite/v3/client"
 	"github.com/canonical/go-dqlite/v3/driver"
+	"github.com/canonical/lxd/lxd/db/broker"
 	"github.com/gorilla/mux"
 	liblxc "github.com/lxc/go-lxc"
 	"golang.org/x/sys/unix"
@@ -860,6 +861,9 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			return
 		}
 
+		// Initialize data broker
+		broker.Initialize(r, d.db.Cluster)
+
 		// Reject internal queries to remote, non-cluster, clients
 		if version == "internal" && !slices.Contains([]string{request.ProtocolUnix, request.ProtocolCluster}, requestor.Protocol) {
 			// Except for the initial cluster accept request (done over trusted TLS)
@@ -890,6 +894,45 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			logger.Warn("Rejecting request from untrusted client", logger.Ctx{"ip": r.RemoteAddr})
 			_ = response.Forbidden(nil).Render(w, r)
 			return
+		}
+
+		requiresProject, _ := c.MetricsType.RequiresProject()
+		if requiresProject {
+			requestProject, allProjects, err := request.ProjectParams(r)
+			if err != nil {
+				_ = response.SmartError(err).Render(w, r)
+				return
+			}
+
+			if !requestor.Trusted {
+				if allProjects || requestProject != api.ProjectDefaultName {
+					_ = response.Forbidden(nil).Render(w, r)
+					return
+				}
+			} else if !allProjects {
+				loadProjects := []string{requestProject}
+				if requestProject != api.ProjectDefaultName {
+					loadProjects = append(loadProjects, api.ProjectDefaultName)
+				}
+
+				_, err := broker.GetProjectsByName(r.Context(), loadProjects...)
+				if err != nil {
+					if api.StatusErrorCheck(err, http.StatusNotFound) {
+						_ = response.NotFound(nil).Render(w, r)
+						return
+					}
+
+					_ = response.SmartError(err).Render(w, r)
+				}
+
+				if requestProject != api.ProjectDefaultName {
+					err = d.authorizer.CheckPermission(r.Context(), entity.ProjectURL(requestProject), auth.EntitlementCanView)
+					if err != nil {
+						_ = response.SmartError(err).Render(w, r)
+						return
+					}
+				}
+			}
 		}
 
 		// Set OpenFGA cache in request context.
@@ -1421,7 +1464,7 @@ func (d *Daemon) init() error {
 
 	// Load local config (must come after processing incoming recovery tarball as it can update local config).
 	logger.Info("Loading daemon configuration")
-	err = d.db.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = d.db.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		d.localConfig, err = node.ConfigLoad(ctx, tx)
 		return err
 	})
@@ -1926,7 +1969,7 @@ func (d *Daemon) init() error {
 					logger.Warn("Unable to connect to MAAS, trying again in a minute", logger.Ctx{"url": maasAPIURL, "err": err})
 
 					if !warningAdded {
-						_ = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+						_ = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 							err := tx.UpsertWarningLocalNode(ctx, "", "", -1, warningtype.UnableToConnectToMAAS, err.Error())
 							if err != nil {
 								logger.Warn("Failed to create warning", logger.Ctx{"err": err})
@@ -1949,7 +1992,7 @@ func (d *Daemon) init() error {
 		}
 	}
 
-	err = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Remove volatile.last_state.ready key as we don't know if the instances are ready.
 		return tx.DeleteReadyStateFromLocalInstances(ctx)
 	})
@@ -1959,7 +2002,7 @@ func (d *Daemon) init() error {
 
 	close(d.setupChan)
 
-	_ = d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	_ = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Create warnings that have been collected
 		for _, w := range dbWarnings {
 			err := tx.UpsertWarningLocalNode(ctx, "", "", -1, warningtype.Type(w.TypeCode), w.LastMessage)
@@ -2207,7 +2250,7 @@ func (d *Daemon) Stop(ctx context.Context, sig os.Signal) error {
 
 		if d.db.Cluster != nil {
 			// Remove remaining operations before closing the database.
-			err := s.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			err := s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				err := dbCluster.DeleteOperations(ctx, tx.Tx(), s.DB.Cluster.GetNodeID())
 				if err != nil {
 					logger.Error("Failed cleaning up operations")
@@ -2413,7 +2456,7 @@ func (d *Daemon) heartbeatHandler(w http.ResponseWriter, r *http.Request, isLead
 			logger.Warn("Time skew detected between leader and local", logger.Ctx{"leaderTime": hbData.Time, "localTime": now})
 
 			if d.db.Cluster != nil {
-				err := d.db.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+				err := d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 					return tx.UpsertWarningLocalNode(ctx, "", "", -1, warningtype.ClusterTimeSkew, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
 				})
 				if err != nil {
@@ -2462,7 +2505,7 @@ func (d *Daemon) heartbeatHandler(w http.ResponseWriter, r *http.Request, isLead
 
 	// Accept raft node list from any heartbeat type so that we get freshest data quickly.
 	logger.Debug("Replace current raft nodes", logger.Ctx{"raftMembers": raftNodes})
-	err = d.db.Node.Transaction(context.TODO(), func(ctx context.Context, tx *db.NodeTx) error {
+	err = d.db.Node.Transaction(ctx, func(ctx context.Context, tx *db.NodeTx) error {
 		return tx.ReplaceRaftNodes(raftNodes)
 	})
 	if err != nil {

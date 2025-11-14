@@ -1433,7 +1433,7 @@ func (d *qemu) start(stateful bool, op *operationlock.InstanceOperation) error {
 		d.logger.Warn("Unable to use virtio-fs for config drive, using 9p as a fallback", logger.Ctx{"err": errUnsupported})
 
 		if errUnsupported == device.ErrMissingVirtiofsd {
-			_ = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+			_ = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 				// Create a warning if virtiofsd is missing.
 				return tx.UpsertWarning(ctx, d.node, d.project.Name, entity.TypeInstance, d.ID(), warningtype.MissingVirtiofsd, "Using 9p as a fallback")
 			})
@@ -1553,7 +1553,7 @@ func (d *qemu) start(stateful bool, op *operationlock.InstanceOperation) error {
 		}
 
 		d.stateful = false
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateInstanceStatefulFlag(ctx, d.id, false)
 		})
 		if err != nil {
@@ -1813,7 +1813,7 @@ func (d *qemu) start(stateful bool, op *operationlock.InstanceOperation) error {
 		_ = os.Remove(d.StatePath())
 		d.stateful = false
 
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateInstanceStatefulFlag(ctx, d.id, false)
 		})
 		if err != nil {
@@ -3169,7 +3169,7 @@ echo "To start it now, unmount this filesystem and run: systemctl start lxd-agen
 			return err
 		}
 
-		err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			// Remove the volatile key from the DB.
 			return tx.DeleteInstanceConfigKey(ctx, int64(d.id), key)
 		})
@@ -5255,7 +5255,7 @@ func (d *qemu) Stop(stateful bool) error {
 		}
 
 		d.stateful = true
-		err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			return tx.UpdateInstanceStatefulFlag(ctx, d.id, true)
 		})
 		if err != nil {
@@ -5516,7 +5516,7 @@ func (d *qemu) Rename(newName string, applyTemplateTrigger bool) error {
 	if !d.IsSnapshot() {
 		var results []string
 
-		err := d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+		err := d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 			var err error
 
 			// Rename all the instance snapshot database entries.
@@ -5546,7 +5546,7 @@ func (d *qemu) Rename(newName string, applyTemplateTrigger bool) error {
 	}
 
 	// Rename the instance database entry.
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		if d.IsSnapshot() {
 			oldParts := strings.SplitN(oldName, shared.SnapshotDelimiter, 2)
 			newParts := strings.SplitN(newName, shared.SnapshotDelimiter, 2)
@@ -5648,7 +5648,7 @@ func allowRemoveSecurityProtectionStart(state *state.State, poolName string, vol
 	}
 
 	volumeType := dbCluster.StoragePoolVolumeTypeVM
-	volumeProject := project.StorageVolumeProjectFromRecord(proj, volumeType)
+	volumeProject := project.StorageVolumeProjectFromRecord(*proj, volumeType)
 
 	var dbVolume *db.StorageVolume
 	err = state.DB.Cluster.Transaction(state.ShutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
@@ -5736,7 +5736,7 @@ func (d *qemu) Update(args db.InstanceArgs, userRequested bool) error {
 
 	var profiles []string
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Validate the new profiles.
 		profiles, err = tx.GetProfileNames(ctx, args.Project)
 
@@ -6126,7 +6126,7 @@ func (d *qemu) Update(args db.InstanceArgs, userRequested bool) error {
 	}
 
 	// Finally, apply the changes to the database.
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Snapshots should update only their descriptions and expiry date.
 		if d.IsSnapshot() {
 			return tx.UpdateInstanceSnapshot(d.id, d.description, d.expiryDate)
@@ -6457,7 +6457,7 @@ func (d *qemu) delete(force bool) error {
 		d.cleanup()
 	}
 
-	err = d.state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = d.state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		// Remove the database record of the instance or snapshot instance.
 		return tx.DeleteInstance(ctx, d.Project().Name, d.Name())
 	})
@@ -8997,7 +8997,7 @@ func (d *qemu) Info() instance.Info {
 		return data
 	}
 
-	stdout, stderr, err := shared.RunCommandSplit(context.TODO(), nil, nil, qemuPath, "--version")
+	stdout, stderr, err := shared.RunCommandSplit(ctx, nil, nil, qemuPath, "--version")
 	if err != nil {
 		logger.Errorf("Failed getting version during QEMU initialization: %v (%s)", err, stderr)
 		data.Error = errors.New("Failed getting QEMU version")

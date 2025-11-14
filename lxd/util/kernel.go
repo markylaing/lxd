@@ -13,12 +13,12 @@ import (
 
 // LoadModule loads the kernel module with the given name, by invoking
 // modprobe. This respects any modprobe configuration on the system.
-func LoadModule(module string) error {
+func LoadModule(ctx context.Context, module string) error {
 	if shared.PathExists("/sys/module/" + module) {
 		return nil
 	}
 
-	_, err := shared.RunCommandContext(context.TODO(), "modprobe", "-b", module)
+	_, err := shared.RunCommandContext(ctx, "modprobe", "-b", module)
 	return err
 }
 

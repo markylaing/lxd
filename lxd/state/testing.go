@@ -31,7 +31,7 @@ func NewTestState(t *testing.T) (*State, func()) {
 	}
 
 	state := &State{
-		ShutdownCtx:         context.TODO(),
+		ShutdownCtx:         ctx,
 		DB:                  &db.DB{Node: node, Cluster: cluster},
 		OS:                  os,
 		Firewall:            firewall.New(),
@@ -39,7 +39,7 @@ func NewTestState(t *testing.T) (*State, func()) {
 	}
 
 	var err error
-	err = state.DB.Cluster.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
+	err = state.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
 		state.GlobalConfig, err = clusterConfig.Load(ctx, tx)
 		return err
 	})

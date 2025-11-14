@@ -58,7 +58,7 @@ func autoRemoveExpiredTokens(ctx context.Context, s *state.State) {
 		return
 	}
 
-	opRun := func(op *operations.Operation) error {
+	opRun := func(_ context.Context, op *operations.Operation) error {
 		for _, op := range expiredTokenOps {
 			_, err := op.Cancel()
 			if err != nil {
@@ -83,7 +83,7 @@ func autoRemoveExpiredTokens(ctx context.Context, s *state.State) {
 		return nil
 	}
 
-	op, err := operations.OperationCreate(context.Background(), s, "", operations.OperationClassTask, operationtype.RemoveExpiredTokens, nil, nil, opRun, nil, nil)
+	op, err := operations.r.Context(), s, "", operations.OperationClassTask, operationtype.RemoveExpiredTokens, nil, nil, opRun, nil, nil)
 	if err != nil {
 		logger.Warn("Failed creating remove expired tokens operation", logger.Ctx{"err": err})
 		return

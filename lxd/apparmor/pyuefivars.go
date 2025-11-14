@@ -108,12 +108,12 @@ func PythonUEFIVars(sysOS *sys.OS, stdin io.Reader, stdout io.Writer, efiVarsPat
 	// Set AppArmor profile to run with
 	p.SetApparmor(profileName)
 
-	err = p.Start(context.TODO())
+	err = p.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("Failed running pyuefivars: %w", err)
 	}
 
-	_, err = p.Wait(context.TODO())
+	_, err = p.Wait(ctx)
 	if err != nil {
 		return shared.NewRunError(cmd[0], cmd[1:], err, nil, &buffer)
 	}
