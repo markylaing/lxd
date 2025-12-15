@@ -380,7 +380,7 @@ func (op *Operation) Start() error {
 // returns an error.
 func (op *Operation) Cancel() {
 	op.lock.Lock()
-	if op.status != api.Running {
+	if op.running.Err() != nil {
 		op.lock.Unlock()
 		return
 	}
@@ -424,9 +424,9 @@ func (op *Operation) Connect(r *http.Request, w http.ResponseWriter) (chan error
 		return nil, errors.New("Only websocket operations can be connected")
 	}
 
-	if op.status != api.Running {
+	if op.running.Err() != nil {
 		op.lock.Unlock()
-		return nil, errors.New("Only running operations can be connected")
+		return nil, api.NewStatusError(http.StatusBadRequest, "Only running operations can be connected")
 	}
 
 	chanConnect := make(chan error, 1)
@@ -524,9 +524,9 @@ func (op *Operation) Wait(ctx context.Context) error {
 // if the operation is not pending or running, or the operation is read-only.
 func (op *Operation) UpdateResources(opResources map[string][]api.URL) error {
 	op.lock.Lock()
-	if op.status != api.Pending && op.status != api.Running {
+	if op.finished.Err() != nil {
 		op.lock.Unlock()
-		return errors.New("Only pending or running operations can be updated")
+		return api.NewStatusError(http.StatusBadRequest, "Operations cannot be updated after they have completed")
 	}
 
 	if op.readonly {
@@ -552,9 +552,9 @@ func (op *Operation) UpdateResources(opResources map[string][]api.URL) error {
 // if the operation is not pending or running, or the operation is read-only.
 func (op *Operation) UpdateMetadata(opMetadata any) error {
 	op.lock.Lock()
-	if op.status != api.Pending && op.status != api.Running {
+	if op.finished.Err() != nil {
 		op.lock.Unlock()
-		return errors.New("Only pending or running operations can be updated")
+		return api.NewStatusError(http.StatusBadRequest, "Operations cannot be updated after they have completed")
 	}
 
 	if op.readonly {
@@ -587,9 +587,9 @@ func (op *Operation) ExtendMetadata(metadata any) error {
 	op.lock.Lock()
 
 	// Quick checks.
-	if op.status != api.Pending && op.status != api.Running {
+	if op.finished.Err() != nil {
 		op.lock.Unlock()
-		return errors.New("Only pending or running operations can be updated")
+		return api.NewStatusError(http.StatusBadRequest, "Operations cannot be updated after they have completed")
 	}
 
 	if op.readonly {
