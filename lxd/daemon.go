@@ -23,6 +23,8 @@ import (
 
 	dqliteClient "github.com/canonical/go-dqlite/v3/client"
 	"github.com/canonical/go-dqlite/v3/driver"
+	"github.com/canonical/lxd/lxd/db/cache"
+	"github.com/canonical/lxd/shared/datastructures"
 	"github.com/gorilla/mux"
 	liblxc "github.com/lxc/go-lxc"
 	"golang.org/x/sys/unix"
@@ -267,6 +269,39 @@ func allowAuthenticated(_ *Daemon, r *http.Request) response.Response {
 	return response.Forbidden(nil)
 }
 
+func allowProjectPermissionWithFeatureFlag(flag string, entitlement auth.Entitlement) func(d *Daemon, r *http.Request) response.Response {
+	return func(d *Daemon, r *http.Request) response.Response {
+		requestProjectName := request.ProjectParam(r)
+		projectNames := []string{requestProjectName}
+		if requestProjectName != api.ProjectDefaultName {
+			projectNames = append(projectNames, api.ProjectDefaultName)
+		}
+
+		projects, err := cache.GetProjectsFullByName(r.Context(), projectNames...)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		nameToProject, _ := datastructures.SliceToMap(projects, func(i int, e cache.ProjectFull) (string, cache.ProjectFull, error) {
+			return e.Name, e, nil
+		})
+
+		var effectiveProjectID int64
+		if shared.IsTrue(nameToProject[requestProjectName].Config[flag]) {
+			effectiveProjectID = nameToProject[requestProjectName].ID
+		} else {
+			effectiveProjectID = nameToProject[api.ProjectDefaultName].ID
+		}
+
+		err = d.State().Authorizer.CheckPermissionByID(r.Context(), entity.TypeProject, effectiveProjectID, entitlement)
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		return response.EmptySyncResponse
+	}
+}
+
 // allowPermission is a wrapper to check access against a given object, an object being an image, instance, network, etc.
 // Mux vars should be passed in so that the object we are checking can be created. For example, a certificate object requires
 // a fingerprint, the mux var for certificate fingerprints is "fingerprint", so that string should be passed in.
@@ -333,14 +368,9 @@ func allowProjectResourceList(allowAllProjects bool) func(d *Daemon, r *http.Req
 			return response.EmptySyncResponse
 		}
 
-		id := requestor.CallerIdentity()
-		if id == nil {
-			return response.InternalError(errors.New("No identity present in request details"))
-		}
-
-		idType := requestor.CallerIdentityType()
+		idType, err := requestor.CallerIdentityType()
 		if idType == nil {
-			return response.InternalError(errors.New("No identity type present in request details"))
+			return response.SmartError(fmt.Errorf("Failed to get caller identity type: %w", err))
 		}
 
 		requestProjectName, allProjects, err := request.ProjectParams(r)
@@ -380,12 +410,90 @@ func allowProjectResourceList(allowAllProjects bool) func(d *Daemon, r *http.Req
 		}
 
 		// Disallow listing resources in projects the caller does not have access to.
-		if !slices.Contains(id.Projects, requestProjectName) {
+		if !slices.Contains(requestor.ProjectNames(), requestProjectName) {
 			return response.Forbidden(errors.New("Certificate is restricted"))
 		}
 
 		return response.EmptySyncResponse
 	}
+}
+
+// reportEntitlements takes a map of entity URLs to EntitlementReporters (in practice, API types that implement the ReportEntitlements method), and
+// reports the entitlements that the caller has on each entity URL to the corresponding EntitlementReporter.
+func reportEntitlementsByID(ctx context.Context, authorizer auth.Authorizer, entityType entity.Type, requestedEntitlements []auth.Entitlement, entityIDToEntitlementReporter map[int64]auth.EntitlementReporter) error {
+	// Nothing to do
+	if len(entityIDToEntitlementReporter) == 0 {
+		return nil
+	}
+
+	requestor, err := request.GetRequestor(ctx)
+	if err != nil {
+		return err
+	}
+
+	// No fine-grained identities are global admins. Check this first in case the caller is using e.g. the unix socket.
+	if requestor.IsAdmin() {
+		return api.NewStatusError(http.StatusBadRequest, "Cannot report entitlements for identities that do not use fine-grained authorization")
+	}
+
+	// Any other requestor should have an identity type present.
+	identityType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return fmt.Errorf("Failed to get caller identity type: %w", err)
+	}
+
+	// Check the identity type is fine-grained (it could be a restricted client certificate).
+	if !identityType.IsFineGrained() {
+		return api.NewStatusError(http.StatusBadRequest, "Cannot report entitlements for identities that do not use fine-grained authorization")
+	}
+
+	// In the case where we have only one entity URL, we'll use the authorizer's CheckPermission method
+	// whereas if we have multiple entity URLs, we'll use the authorizer's GetPermissionChecker method that
+	// is more efficient for returning entitlements for a batch of entities.
+	if len(entityIDToEntitlementReporter) == 1 {
+		for id, r := range entityIDToEntitlementReporter {
+			entitlements := make([]string, 0, len(requestedEntitlements))
+			for _, entitlement := range requestedEntitlements {
+				err = authorizer.CheckPermissionByID(ctx, entityType, id, entitlement)
+				if err != nil {
+					if auth.IsDeniedError(err) {
+						continue
+					}
+
+					return fmt.Errorf("Failed to check entitlement %q for entity URL %q: %w", entitlement, id, err)
+				}
+
+				entitlements = append(entitlements, string(entitlement))
+			}
+
+			r.ReportEntitlements(entitlements)
+		}
+
+		return nil
+	}
+
+	checkersByEntitlement := make(map[auth.Entitlement]auth.IDPermissionChecker)
+	for _, entitlement := range requestedEntitlements {
+		checker, err := authorizer.GetIDPermissionChecker(ctx, entityType, entitlement)
+		if err != nil {
+			return fmt.Errorf("Failed to get a permission checker for entitlement %q and for entity type %q: %w", entitlement, entityType, err)
+		}
+
+		checkersByEntitlement[entitlement] = checker
+	}
+
+	for u, reporter := range entityIDToEntitlementReporter {
+		entitlements := make([]string, 0, len(requestedEntitlements))
+		for entitlement, checker := range checkersByEntitlement {
+			if checker(u) {
+				entitlements = append(entitlements, string(entitlement))
+			}
+		}
+
+		reporter.ReportEntitlements(entitlements)
+	}
+
+	return nil
 }
 
 // reportEntitlements takes a map of entity URLs to EntitlementReporters (in practice, API types that implement the ReportEntitlements method), and
@@ -407,9 +515,9 @@ func reportEntitlements(ctx context.Context, authorizer auth.Authorizer, entityT
 	}
 
 	// Any other requestor should have an identity type present.
-	identityType := requestor.CallerIdentityType()
+	identityType, err := requestor.CallerIdentityType()
 	if identityType == nil {
-		return errors.New("No identity type present in request details")
+		return fmt.Errorf("Failed to get caller identity type: %w", err)
 	}
 
 	// Check the identity type is fine-grained (it could be a restricted client certificate).
@@ -504,8 +612,9 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 	// Perform mTLS check against server certificates. If this passes, the request was made by another cluster member
 	// and the protocol is [request.ProtocolCluster].
 	if r.TLS != nil {
+		serverCerts := d.identityCache.GetServerCertificates()
 		for _, i := range r.TLS.PeerCertificates {
-			trusted, fingerprint := util.CheckMutualTLS(*i, d.identityCache.X509Certificates(api.IdentityTypeCertificateServer))
+			trusted, fingerprint := util.CheckMutualTLS(*i, serverCerts)
 			if trusted {
 				return &request.RequestorArgs{
 					Trusted:  true,
@@ -549,11 +658,6 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 			return nil, fmt.Errorf("Failed OIDC Authentication: %w", err)
 		}
 
-		err = d.handleOIDCAuthenticationResult(result)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to process OIDC authentication result: %w", err)
-		}
-
 		return &request.RequestorArgs{
 			Trusted:                true,
 			Username:               result.Email,
@@ -562,20 +666,7 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 		}, nil
 	}
 
-	isMetricsRequest := func(u url.URL) bool {
-		return strings.HasPrefix(u.Path, "/1.0/metrics")
-	}
-
-	// List of candidate identity types for this request. We have already checked server certificates at the beginning of this method
-	// so we only need to consider client and metrics certificates. (OIDC auth was completed above).
-	candidateIdentityTypes := []string{api.IdentityTypeCertificateClientUnrestricted, api.IdentityTypeCertificateClientRestricted, api.IdentityTypeCertificateClient}
-	if isMetricsRequest(*r.URL) {
-		// Metrics certificates can only authenticate when calling metrics related endpoints.
-		candidateIdentityTypes = append(candidateIdentityTypes, api.IdentityTypeCertificateMetricsUnrestricted, api.IdentityTypeCertificateMetricsRestricted)
-	}
-
-	// Map of candidate certificates of mTLS check.
-	candidateCertificates := make(map[string]x509.Certificate)
+	clientCerts := d.identityCache.GetClientCertificates()
 
 	// If the network cert has a CA, validate the peer certificates against it.
 	if d.endpoints.NetworkCert().CA() != nil {
@@ -587,14 +678,10 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 			}
 
 			// Check if a matching certificate is present in the identity cache.
-			id, err := d.identityCache.Get(api.AuthenticationMethodTLS, fingerprint)
-			if err != nil {
-				if !api.StatusErrorCheck(err, http.StatusNotFound) {
-					return nil, err
-				}
-
-				// If we have a not found error and `core.trust_ca_certificates` is true, then the identity is implicitly
-				// trusted because their certificate was signed by the CA.
+			trustedCert, ok := clientCerts[fingerprint]
+			if !ok {
+				// If there is no certificate with a matching fingerprint and `core.trust_ca_certificates` is true,
+				// then the identity is implicitly trusted because their certificate was signed by the CA.
 				if trustCACertificates {
 					return &request.RequestorArgs{
 						Trusted:  true,
@@ -608,23 +695,21 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 				return &request.RequestorArgs{Trusted: false}, nil
 			}
 
-			// The identity type must be in our list of candidate types (e.g. if this certificate is a metrics certificate
-			// and we're on a non-metrics related route).
-			if !slices.Contains(candidateIdentityTypes, id.IdentityType) {
-				return &request.RequestorArgs{Trusted: false}, nil
+			// In CA mode we only consider if this exact certificate is valid.
+			requestor := &request.RequestorArgs{}
+			requestor.Trusted, _ = util.CheckMutualTLS(*peerCertificate, map[string]x509.Certificate{fingerprint: trustedCert})
+			if requestor.Trusted {
+				requestor.Protocol = api.AuthenticationMethodTLS
+				requestor.Username = fingerprint
 			}
 
-			// In CA mode we only consider if this exact certificate is valid via mTLS checks below.
-			candidateCertificates[id.Identifier] = *id.Certificate
+			return requestor, nil
 		}
-	} else {
-		// In non-CA mode we consider all certificates that would be valid for this API route.
-		candidateCertificates = d.identityCache.X509Certificates(candidateIdentityTypes...)
 	}
 
-	// Perform mTLS check on candidates.
+	// Perform mTLS check on client certificates.
 	for _, i := range r.TLS.PeerCertificates {
-		trusted, fingerprint := util.CheckMutualTLS(*i, candidateCertificates)
+		trusted, fingerprint := util.CheckMutualTLS(*i, clientCerts)
 		if trusted {
 			return &request.RequestorArgs{
 				Trusted:  true,
@@ -636,29 +721,6 @@ func (d *Daemon) Authenticate(w http.ResponseWriter, r *http.Request) (*request.
 
 	// Reject unauthorized.
 	return &request.RequestorArgs{Trusted: false}, nil
-}
-
-// handleOIDCAuthenticationResult checks the identity cache for the OIDC identity by their email address.
-// If no identity is found, the cache is refreshed.
-// This is for new OIDC logins and is currently required for authorization to work because group membership is saved to the cache.
-// The [oidc.Verifier] has already handled adding the identity to the database via the [oidc.SessionHandler].
-//
-// Note that in this case we do not need to notify other cluster members about the new identity.
-// This is because the cache is not required for authentication.
-// If this identity makes a request to another cluster member, that cluster member will call this same function to refresh
-// their cache if the identity is missing.
-func (d *Daemon) handleOIDCAuthenticationResult(result *oidc.AuthenticationResult) error {
-	s := d.State()
-	_, err := s.IdentityCache.Get(api.AuthenticationMethodOIDC, result.Email)
-	if err == nil {
-		return nil
-	} else if !api.StatusErrorCheck(err, http.StatusNotFound) {
-		return err
-	}
-
-	s.UpdateIdentityCache()
-
-	return nil
 }
 
 // getCoreAuthSecrets gets a copy of the current, cluster-wide secrets. The approach can be summarized as follows:
@@ -853,8 +915,11 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			return
 		}
 
+		// Initialise the request scoped cache
+		cache.Initialize(r, d.db.Cluster)
+
 		// Initialise the request info.
-		err = request.SetRequestor(r, d.identityCache, *requestor)
+		err = request.SetRequestor(r, *requestor)
 		if err != nil {
 			_ = response.SmartError(err).Render(w, r)
 			return
@@ -1112,6 +1177,71 @@ func (d *Daemon) setupLoki(URL string, cert string, key string, caCert string, i
 	return nil
 }
 
+func (d *Daemon) requestorDBHook(ctx context.Context, callerUsername string, callerProtocol string, callerIdentityProviderGroups []string) (identityID *int64, idType identity.Type, projects map[int64]string, groups map[int64]string, effectiveGroups map[int64]string, err error) {
+	var id *cache.Identity
+	err = d.db.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
+		id, err = cache.GetIdentityByAuthenticationMethodAndIdentifier(ctx, dbCluster.AuthMethod(callerProtocol), callerUsername)
+		if err != nil {
+			return err
+		}
+
+		idType, err = identity.New(string(id.Type))
+		if err != nil {
+			return err
+		}
+
+		if len(id.ProjectIDs) > 0 {
+			projectList, err := cache.GetProjectsByID(ctx, id.ProjectIDs...)
+			if err != nil {
+				return err
+			}
+
+			projects, _ = datastructures.SliceToMap(projectList, func(i int, e cache.Project) (int64, string, error) {
+				return e.ID, e.Name, nil
+			})
+		}
+
+		allGroupIds := id.GroupIDs
+		if len(callerIdentityProviderGroups) > 0 {
+			idpGroups, err := cache.GetIdentityProviderGroupsByNames(ctx, callerIdentityProviderGroups...)
+			if err != nil {
+				return err
+			}
+
+			for _, idpGroup := range idpGroups {
+				for _, authGroupID := range idpGroup.AuthGroupIDs {
+					if !slices.Contains(allGroupIds, authGroupID) {
+						allGroupIds = append(allGroupIds, authGroupID)
+					}
+				}
+			}
+		}
+
+		if len(allGroupIds) > 0 {
+			groupList, err := cache.GetAuthGroupsByID(ctx, allGroupIds...)
+			if err != nil {
+				return err
+			}
+
+			effectiveGroups = make(map[int64]string, len(groupList))
+			groups = make(map[int64]string, len(groupList))
+			for _, group := range groupList {
+				effectiveGroups[group.ID] = group.Name
+				if slices.Contains(id.GroupIDs, group.ID) {
+					groups[group.ID] = group.Name
+				}
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("Failed to get requestor details from database: %w", err)
+	}
+
+	return &id.ID, idType, projects, groups, effectiveGroups, nil
+}
+
 func (d *Daemon) init() error {
 	d.startStopLock.Lock()
 	defer d.startStopLock.Unlock()
@@ -1125,6 +1255,9 @@ func (d *Daemon) init() error {
 	if err != nil {
 		return err
 	}
+
+	// Set the requestor hook
+	request.RequestorDBHook = d.requestorDBHook
 
 	// Setup events
 	d.devLXDEvents = events.NewDevLXDServer(daemon.Debug, daemon.Verbose)
@@ -1392,7 +1525,7 @@ func (d *Daemon) init() error {
 	}
 
 	// Detect if clustered, but not yet upgraded to per-server client certificates.
-	if d.serverClustered && len(d.identityCache.GetByType(api.IdentityTypeCertificateServer)) < 1 {
+	if d.serverClustered && len(d.identityCache.GetServerCertificates()) < 1 {
 		// If the cluster has not yet upgraded to per-server client certificates (by running patch
 		// patchClusteringServerCertTrust) then temporarily use the network (cluster) certificate as client
 		// certificate, and cause us to trust it for use as client certificate from the other members.

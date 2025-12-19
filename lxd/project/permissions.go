@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -88,4 +89,44 @@ func FilterUsedBy(ctx context.Context, authorizer auth.Authorizer, entries []str
 	}
 
 	return usedBy
+}
+
+// FilterUsedBy2 filters a UsedBy list based on the entities that the requestor is able to view.
+func FilterUsedBy2(ctx context.Context, authorizer auth.Authorizer, entries []auth.Entity) ([]auth.Entity, error) {
+	// Get a map of URLs by entity type. If there are multiple entries of a particular entity type we can reduce the
+	// number of calls to the authorizer.
+	entriesByType := make(map[entity.Type][]auth.Entity)
+	for _, entry := range entries {
+		entriesByType[entry.EntityType()] = append(entriesByType[entry.EntityType()], entry)
+	}
+
+	// Filter the entries.
+	usedBy := make([]auth.Entity, 0, len(entries))
+	for entityType, entry := range entriesByType {
+		// If only one entry of this type, check directly.
+		if len(entry) == 1 {
+			err := authorizer.CheckPermissionByID(ctx, entry[0].EntityType(), entry[0].DatabaseID(), auth.EntitlementCanView)
+			if err != nil {
+				continue
+			}
+
+			usedBy = append(usedBy, entry[0])
+			continue
+		}
+
+		// Otherwise get a permission checker for the entity type.
+		canViewEntity, err := authorizer.GetIDPermissionChecker(ctx, entityType, auth.EntitlementCanView)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to get a permission checker: %w", err)
+		}
+
+		// Check each url and append.
+		for _, u := range entry {
+			if canViewEntity(u.DatabaseID()) {
+				usedBy = append(usedBy, u)
+			}
+		}
+	}
+
+	return usedBy, nil
 }

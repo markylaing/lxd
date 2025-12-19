@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/canonical/lxd/shared/datastructures"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/transformer"
@@ -49,6 +50,238 @@ type embeddedOpenFGA struct {
 	tlsAuthorizer *tls
 	server        openfgav1.OpenFGAServiceServer
 	identityCache *identity.Cache
+}
+
+func (e *embeddedOpenFGA) CheckPermissionByID(ctx context.Context, entityType entity.Type, entityID int64, entitlement auth.Entitlement) error {
+	requestor, err := request.GetRequestor(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !requestor.IsTrusted() {
+		return api.NewGenericStatusError(http.StatusForbidden)
+	}
+
+	if requestor.IsAdmin() {
+		return nil
+	}
+
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return err
+	}
+
+	if !idType.IsFineGrained() {
+		return e.tlsAuthorizer.CheckPermissionByID(ctx, entityType, entityID, entitlement)
+	}
+
+	userObject := auth.OpenFGAObject(entity.TypeIdentity, requestor.IdentityID())
+	entityObject := auth.OpenFGAObject(entityType, entityID)
+
+	// Construct an OpenFGA check request.
+	req := &openfgav1.CheckRequest{
+		StoreId: dummyDatastoreULID,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     userObject,
+			Relation: string(entitlement),
+			Object:   entityObject,
+		},
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				{
+					// Users can always view (but not edit) themselves.
+					User:     userObject,
+					Relation: string(auth.EntitlementCanView),
+					Object:   userObject,
+				},
+				{
+					// Users can always delete (but not edit) themselves.
+					User:     userObject,
+					Relation: string(auth.EntitlementCanDelete),
+					Object:   userObject,
+				},
+			},
+		},
+	}
+
+	// For each effective (direct or IdP mapped) group, append a contextual tuple to make the identity a member.
+	for _, groupID := range requestor.EffectiveGroupIDs() {
+		req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
+			User:     userObject,
+			Relation: "member",
+			Object:   auth.OpenFGAObject(entity.TypeAuthGroup, groupID),
+		})
+	}
+
+	ctx = auth.SetIDMode(ctx)
+	resp, err := e.server.Check(ctx, req)
+	if err != nil {
+		// If we have a not found error from the underlying OpenFGADatastore we should mask it to make requests consistent.
+		// (all not found errors returned before an access control decision is made are masked to prevent discovery).
+		if api.StatusErrorCheck(err, http.StatusNotFound) {
+			return api.NewGenericStatusError(http.StatusNotFound)
+		}
+
+		errLogCtx := logger.Ctx{"err": err}
+
+		// Attempt to extract the internal OpenFGA error for logging only, so that errors from the OpenFGA datastore implementation are logged (if any).
+		// (Otherwise we just get "rpc error (4000): Internal Server Error" or similar which isn't useful).
+		var openFGAInternalError openFGAErrors.InternalError
+		if errors.As(err, &openFGAInternalError) {
+			errLogCtx["err"] = openFGAInternalError.Unwrap()
+		}
+
+		// Add the callsite to the log context. This gets the file and line number where `[auth.Authorizer].CheckPermission` was called.
+		_, file, line, ok := runtime.Caller(2)
+		if ok {
+			errLogCtx["callsite"] = file + ":" + strconv.Itoa(line)
+		}
+
+		return fmt.Errorf("Failed to check OpenFGA relation: %w", err)
+	}
+
+	// If not allowed, decide if the user can view the resource.
+	if !resp.GetAllowed() {
+		err := auth.ValidateEntitlement(entityType, auth.EntitlementCanView)
+		doCheckCanView := err == nil
+
+		responseCode := http.StatusForbidden
+		if entitlement == auth.EntitlementCanView {
+			responseCode = http.StatusNotFound
+		} else if doCheckCanView {
+			// Otherwise, if `can_view` is a valid entitlement for the entity type, check if the identity can view the resource.
+			req.TupleKey.Relation = string(auth.EntitlementCanView)
+
+			resp, err := e.server.Check(ctx, req)
+			if err != nil {
+				// If we have a not found error from the underlying OpenFGADatastore we should mask it to make requests consistent.
+				// (all not found errors returned before an access control decision is made are masked to prevent discovery).
+				if api.StatusErrorCheck(err, http.StatusNotFound) {
+					return api.NewGenericStatusError(http.StatusNotFound)
+				}
+
+				// Attempt to extract the internal error. This allows bubbling errors up from the OpenFGA datastore implementation.
+				// (Otherwise we just get "rpc error (4000): Internal Server Error" or similar which isn't useful).
+				var openFGAInternalError openFGAErrors.InternalError
+				if errors.As(err, &openFGAInternalError) {
+					err = openFGAInternalError.Unwrap()
+				}
+
+				return fmt.Errorf("Failed to check OpenFGA relation: %w", err)
+			}
+
+			// If we can't view the resource, return a generic not found error.
+			if !resp.GetAllowed() {
+				responseCode = http.StatusNotFound
+			}
+		}
+
+		return api.NewGenericStatusError(responseCode)
+	}
+
+	return nil
+}
+
+func (e *embeddedOpenFGA) GetIDPermissionChecker(ctx context.Context, entityType entity.Type, entitlement auth.Entitlement) (auth.IDPermissionChecker, error) {
+	all := func(b bool) func(_ int64) bool {
+		return func(_ int64) bool {
+			return b
+		}
+	}
+
+	requestor, err := request.GetRequestor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !requestor.IsTrusted() {
+		return all(false), nil
+	}
+
+	if requestor.IsAdmin() {
+		return all(true), nil
+	}
+
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return nil, err
+	}
+
+	if !idType.IsFineGrained() {
+		return e.tlsAuthorizer.GetIDPermissionChecker(ctx, entityType, entitlement)
+	}
+
+	// Construct an OpenFGA list objects request.
+	userObject := auth.OpenFGAObject(entity.TypeIdentity, requestor.IdentityID())
+	req := &openfgav1.ListObjectsRequest{
+		StoreId:  dummyDatastoreULID,
+		Type:     entityType.String(),
+		Relation: string(entitlement),
+		User:     userObject,
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				{
+					// Users can always view (but not edit) themselves.
+					User:     userObject,
+					Relation: string(auth.EntitlementCanView),
+					Object:   userObject,
+				},
+				{
+					// Users can always delete (but not edit) themselves.
+					User:     userObject,
+					Relation: string(auth.EntitlementCanDelete),
+					Object:   userObject,
+				},
+			},
+		},
+	}
+
+	// For each effective (direct or IdP mapped) group, append a contextual tuple to make the identity a member.
+	for _, groupID := range requestor.EffectiveGroupIDs() {
+		req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
+			User:     userObject,
+			Relation: "member",
+			Object:   auth.OpenFGAObject(entity.TypeAuthGroup, groupID),
+		})
+	}
+
+	// Perform the request.
+	resp, err := e.server.ListObjects(auth.SetIDMode(ctx), req)
+	if err != nil {
+		errLogCtx := logger.Ctx{"err": err}
+
+		// Attempt to extract the internal OpenFGA error for logging only, so that errors from the OpenFGA datastore implementation are logged (if any).
+		// (Otherwise we just get "rpc error (4000): Internal Server Error" or similar which isn't useful).
+		var openFGAInternalError openFGAErrors.InternalError
+		if errors.As(err, &openFGAInternalError) {
+			errLogCtx["err"] = openFGAInternalError.Unwrap()
+		}
+
+		// Add the callsite to the log context. This gets the file and line number where `[auth.Authorizer].GetPermissionChecker` was called.
+		_, file, line, ok := runtime.Caller(2)
+		if ok {
+			errLogCtx["callsite"] = file + ":" + strconv.Itoa(line)
+		}
+
+		return nil, fmt.Errorf("Failed to list OpenFGA objects of type %q with entitlement %q for user %q: %w", entityType.String(), entitlement, requestor.CallerUsername(), err)
+	}
+
+	objects := resp.GetObjects()
+	entityIDs, err := datastructures.SliceToSlice(objects, func(i int, e string) (int64, error) {
+		idStr, ok := strings.CutPrefix(e, string(entityType)+":")
+		if !ok {
+			return -1, errors.New("List object request returned entities of wrong type")
+		}
+
+		return strconv.ParseInt(idStr, 10, 64)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return func(id int64) bool {
+		return slices.Contains(entityIDs, id)
+	}, nil
 }
 
 // The OpenFGA server requires a ULID to specify the store that we are querying against.
@@ -254,40 +487,18 @@ func (e *embeddedOpenFGA) checkPermission(ctx context.Context, entityURL *api.UR
 		return nil
 	}
 
-	id := requestor.CallerIdentity()
-	if id == nil {
-		return errors.New("No identity is set in the request details")
-	}
-
-	logCtx["username"] = id.Identifier
-	logCtx["protocol"] = id.AuthenticationMethod
+	logCtx["username"] = requestor.CallerUsername()
+	logCtx["protocol"] = requestor.CallerProtocol()
 	l := e.logger.AddContext(logCtx)
 
-	identityType, err := identity.New(id.IdentityType)
+	identityType, err := requestor.CallerIdentityType()
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get caller identity type: %w", err)
 	}
 
 	// If the identity type does not use fine-grained auth use the TLS driver instead.
 	if !identityType.IsFineGrained() {
 		return e.tlsAuthorizer.CheckPermission(ctx, entityURL, entitlement)
-	}
-
-	// Combine the users LXD groups with any mappings that have come from the IDP.
-	groups := id.Groups
-	for _, idpGroup := range requestor.CallerIdentityProviderGroups() {
-		lxdGroups, err := e.identityCache.GetIdentityProviderGroupMapping(idpGroup)
-		if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
-			return fmt.Errorf("Failed to get identity provider group mapping for group %q: %w", idpGroup, err)
-		} else if err != nil {
-			continue
-		}
-
-		for _, lxdGroup := range lxdGroups {
-			if !slices.Contains(groups, lxdGroup) {
-				groups = append(groups, lxdGroup)
-			}
-		}
 	}
 
 	if checkEffectiveProject {
@@ -306,7 +517,7 @@ func (e *embeddedOpenFGA) checkPermission(ctx context.Context, entityURL *api.UR
 		return fmt.Errorf("Failed to standardize entity URL: %w", err)
 	}
 
-	userObject := fmt.Sprintf("%s:%s", entity.TypeIdentity, entity.IdentityURL(id.AuthenticationMethod, id.Identifier).String())
+	userObject := fmt.Sprintf("%s:%s", entity.TypeIdentity, entity.IdentityURL(requestor.CallerProtocol(), requestor.CallerUsername()).String())
 	entityObject := fmt.Sprintf("%s:%s", entityType, entityURL.String())
 
 	// Construct an OpenFGA check request.
@@ -335,8 +546,8 @@ func (e *embeddedOpenFGA) checkPermission(ctx context.Context, entityURL *api.UR
 		},
 	}
 
-	// For each group, append a contextual tuple to make the identity a member.
-	for _, groupName := range groups {
+	// For each effective (direct or IdP mapped) group, append a contextual tuple to make the identity a member.
+	for _, groupName := range requestor.EffectiveGroupNames() {
 		req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
 			User:     userObject,
 			Relation: "member",
@@ -470,18 +681,13 @@ func (e *embeddedOpenFGA) getPermissionChecker(ctx context.Context, entitlement 
 		return allowFunc(true), nil
 	}
 
-	id := requestor.CallerIdentity()
-	if id == nil {
-		return nil, errors.New("No identity is set in the request details")
-	}
-
-	logCtx["username"] = id.Identifier
-	logCtx["protocol"] = id.AuthenticationMethod
+	logCtx["username"] = requestor.CallerUsername()
+	logCtx["protocol"] = requestor.CallerProtocol()
 	l := e.logger.AddContext(logCtx)
 
-	identityType, err := identity.New(id.IdentityType)
+	identityType, err := requestor.CallerIdentityType()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to get caller identity type: %w", err)
 	}
 
 	// If the identity type does not use fine-grained auth, use the TLS driver instead.
@@ -489,25 +695,8 @@ func (e *embeddedOpenFGA) getPermissionChecker(ctx context.Context, entitlement 
 		return e.tlsAuthorizer.GetPermissionChecker(ctx, entitlement, entityType)
 	}
 
-	// Combine the users LXD groups with any mappings that have come from the IDP.
-	groups := id.Groups
-	for _, idpGroup := range requestor.CallerIdentityProviderGroups() {
-		lxdGroups, err := e.identityCache.GetIdentityProviderGroupMapping(idpGroup)
-		if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
-			return nil, fmt.Errorf("Failed to get identity provider group mapping for group %q: %w", idpGroup, err)
-		} else if err != nil {
-			continue
-		}
-
-		for _, lxdGroup := range lxdGroups {
-			if !slices.Contains(groups, lxdGroup) {
-				groups = append(groups, lxdGroup)
-			}
-		}
-	}
-
 	// Construct an OpenFGA list objects request.
-	userObject := fmt.Sprintf("%s:%s", entity.TypeIdentity, entity.IdentityURL(id.AuthenticationMethod, id.Identifier).String())
+	userObject := fmt.Sprintf("%s:%s", entity.TypeIdentity, entity.IdentityURL(requestor.CallerProtocol(), requestor.CallerUsername()).String())
 	req := &openfgav1.ListObjectsRequest{
 		StoreId:  dummyDatastoreULID,
 		Type:     entityType.String(),
@@ -531,8 +720,8 @@ func (e *embeddedOpenFGA) getPermissionChecker(ctx context.Context, entitlement 
 		},
 	}
 
-	// For each group, append a contextual tuple to make the identity a member.
-	for _, groupName := range groups {
+	// For each effective (direct or IdP mapped) group, append a contextual tuple to make the identity a member.
+	for _, groupName := range requestor.EffectiveGroupNames() {
 		req.ContextualTuples.TupleKeys = append(req.ContextualTuples.TupleKeys, &openfgav1.TupleKey{
 			User:     userObject,
 			Relation: "member",
@@ -560,7 +749,7 @@ func (e *embeddedOpenFGA) getPermissionChecker(ctx context.Context, entitlement 
 		}
 
 		l.Error("Failed to list OpenFGA Objects", errLogCtx)
-		return nil, fmt.Errorf("Failed to list OpenFGA objects of type %q with entitlement %q for user %q: %w", entityType.String(), entitlement, id.Identifier, err)
+		return nil, fmt.Errorf("Failed to list OpenFGA objects of type %q with entitlement %q for user %q: %w", entityType.String(), entitlement, requestor.CallerUsername(), err)
 	}
 
 	objects := resp.GetObjects()

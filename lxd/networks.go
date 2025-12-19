@@ -51,7 +51,7 @@ var networksCmd = APIEndpoint{
 	MetricsType: entity.TypeNetwork,
 
 	Get:  APIEndpointAction{Handler: networksGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: networksPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateNetworks)},
+	Post: APIEndpointAction{Handler: networksPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.networks", auth.EntitlementCanCreateNetworks)},
 }
 
 var networkCmd = APIEndpoint{

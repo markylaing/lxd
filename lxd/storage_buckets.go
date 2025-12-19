@@ -30,7 +30,7 @@ var storagePoolBucketsCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolBucketsGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: storagePoolBucketsPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateStorageBuckets)},
+	Post: APIEndpointAction{Handler: storagePoolBucketsPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.storage.buckets", auth.EntitlementCanCreateStorageBuckets)},
 }
 
 var storagePoolBucketCmd = APIEndpoint{

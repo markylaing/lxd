@@ -5,14 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/canonical/lxd/lxd/identity"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
 )
+
+var RequestorDBHook func(ctx context.Context, callerUsername string, callerProtocol string, callerIdentityProviderGroups []string) (identityID *int64, idType identity.Type, projects map[int64]string, groups map[int64]string, effectiveGroups map[int64]string, err error)
 
 // RequestorArgs contains information that is gathered when the requestor is initially authenticated.
 type RequestorArgs struct {
@@ -47,11 +51,46 @@ type Requestor struct {
 	forwardedProtocol               string
 	forwardedIdentityProviderGroups []string
 	clientType                      ClientType
-	identity                        *identity.CacheEntry
+	identityID                      int64
 	identityType                    identity.Type
+	projects                        map[int64]string
+	groups                          map[int64]string
+	effectiveGroups                 map[int64]string
 }
 
-// IsClusterNotification returns true if this an API request coming from a
+func (r *Requestor) IdentityID() int64 {
+	if r.identityType == nil {
+		return -1
+	}
+
+	return r.identityID
+}
+
+func (r *Requestor) ProjectNames() []string {
+	return slices.Collect(maps.Values(r.projects))
+}
+
+func (r *Requestor) ProjectIDs() []int64 {
+	return slices.Collect(maps.Keys(r.projects))
+}
+
+func (r *Requestor) GroupNames() []string {
+	return slices.Collect(maps.Values(r.groups))
+}
+
+func (r *Requestor) GroupIDs() []int64 {
+	return slices.Collect(maps.Keys(r.groups))
+}
+
+func (r *Requestor) EffectiveGroupNames() []string {
+	return slices.Collect(maps.Values(r.effectiveGroups))
+}
+
+func (r *Requestor) EffectiveGroupIDs() []int64 {
+	return slices.Collect(maps.Keys(r.effectiveGroups))
+}
+
+// IsClusterNotification returns true if this an API request coming from a`
 // cluster node that is notifying us of some user-initiated API request that
 // needs some action to be taken on this node as well.
 func (r *Requestor) IsClusterNotification() bool {
@@ -65,7 +104,7 @@ func (r *Requestor) IsTrusted() bool {
 
 // IsAdmin returns true if the caller is an administrator and false otherwise.
 func (r *Requestor) IsAdmin() bool {
-	if slices.Contains([]string{ProtocolUnix, ProtocolPKI}, r.CallerProtocol()) {
+	if isAdminProtocol(r.CallerProtocol()) {
 		return true
 	}
 
@@ -144,14 +183,13 @@ func (r *Requestor) OperationRequestor() *api.OperationRequestor {
 	}
 }
 
-// CallerIdentity returns the identity.CacheEntry for the caller. It may be nil (e.g. if the protocol is ProtocolUnix).
-func (r *Requestor) CallerIdentity() *identity.CacheEntry {
-	return r.identity
-}
-
 // CallerIdentityType returns the identity.Type corresponding to the CallerIdentity. It may be nil (e.g. if the protocol is ProtocolUnix).
-func (r *Requestor) CallerIdentityType() identity.Type {
-	return r.identityType
+func (r *Requestor) CallerIdentityType() (identity.Type, error) {
+	if r.identityType == nil {
+		return nil, errors.New("Identity type not present in requestor details")
+	}
+
+	return r.identityType, nil
 }
 
 // IsForwarded returns true if the request was forwarded from another cluster member and false otherwise.
@@ -228,67 +266,13 @@ func (r *Requestor) setForwardingDetails(req *http.Request) error {
 	return nil
 }
 
-// setIdentity validates and sets the [identity.CacheEntry] in the Requestor.
-// It must only be called when Requestor.trusted is true, and after setForwardingDetails has been called.
-func (r *Requestor) setIdentity(cache *identity.Cache) error {
-	callerProtocol := r.CallerProtocol()
-	callerUsername := r.CallerUsername()
-
-	// No identity cache entry for ProtocolUnix
-	if callerProtocol == ProtocolUnix {
-		return nil
-	}
-
-	// Validate identity is not present if using PKI.
-	if callerProtocol == ProtocolPKI {
-		_, err := cache.Get(api.AuthenticationMethodTLS, callerUsername)
-		if err == nil {
-			// If the protocol is PKI but a matching identity is found in the cache, TLS authentication has not fulfilled
-			// its contract of only setting this protocol when `core.trust_ca_certifates` is true and the identity is not
-			// present in the cache. It is also possible that the identity was not present on another cluster member, but
-			// is present on this one.
-			return errors.New("Caller authenticated as a trusted CA certificate but an identity cache entry was found")
-		}
-
-		return nil
-	}
-
-	method := callerProtocol
-	switch callerProtocol {
-	case ProtocolCluster:
-		// If the protocol was cluster, the authentication method is TLS (e.g. mTLS between cluster members).
-		method = api.AuthenticationMethodTLS
-	case ProtocolDevLXD:
-		// For a trusted devlxd request, the only authentication method that can have been used is a bearer token.
-		method = api.AuthenticationMethodBearer
-	}
-
-	// Expect the method to a remote API method at this point.
-	err := identity.ValidateAuthenticationMethod(method)
-	if err != nil {
-		return fmt.Errorf("Received unexpected caller protocol %q: %w", callerProtocol, err)
-	}
-
-	// Get the identity.
-	id, err := cache.Get(method, callerUsername)
-	if err != nil {
-		return fmt.Errorf("Failed to get caller identity: %w", err)
-	}
-
-	idType, err := identity.New(id.IdentityType)
-	if err != nil {
-		return fmt.Errorf("Invalid identity type %q found in identity cache", id.IdentityType)
-	}
-
-	r.identity = id
-	r.identityType = idType
-
-	return nil
-}
-
 // SetRequestor validates the given RequestorArgs against the request, then populates the additional fields
 // that requestor contains and sets a requestor in the context.
-func SetRequestor(req *http.Request, identityCache *identity.Cache, args RequestorArgs) error {
+func SetRequestor(req *http.Request, args RequestorArgs) error {
+	if RequestorDBHook == nil {
+		return errors.New("The requestor database hook is not set")
+	}
+
 	clientType := userAgentClientType(req.Header.Get("User-Agent"))
 
 	// Cluster notification with wrong certificate.
@@ -343,13 +327,29 @@ func SetRequestor(req *http.Request, identityCache *identity.Cache, args Request
 		return errors.New("Caller is trusted but no username was set")
 	}
 
-	err = r.setIdentity(identityCache)
-	if err != nil {
-		return err
+	if !isAdminProtocol(callerProtocol) {
+		identityID, idType, projects, groups, effectiveGroups, err := RequestorDBHook(req.Context(), callerUsername, callerProtocol, r.CallerIdentityProviderGroups())
+		if err != nil {
+			return err
+		}
+
+		r.identityID = *identityID
+		r.identityType = idType
+		r.projects = projects
+		r.groups = groups
+		r.effectiveGroups = effectiveGroups
+
+		if slices.Contains([]string{api.IdentityTypeCertificateMetricsRestricted, api.IdentityTypeCertificateMetricsUnrestricted}, idType.Name()) && !strings.HasPrefix(req.URL.Path, "/1.0/metrics") {
+			return api.NewGenericStatusError(http.StatusForbidden)
+		}
 	}
 
 	SetContextValue(req, ctxRequestor, r)
 	return nil
+}
+
+func isAdminProtocol(protocol string) bool {
+	return slices.Contains([]string{ProtocolUnix, ProtocolCluster, ProtocolPKI}, protocol)
 }
 
 // GetRequestor gets a Requestor from the request context.

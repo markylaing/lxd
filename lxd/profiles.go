@@ -42,7 +42,7 @@ var profilesCmd = APIEndpoint{
 	MetricsType: entity.TypeProfile,
 
 	Get:  APIEndpointAction{Handler: profilesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateProfiles)},
+	Post: APIEndpointAction{Handler: profilesPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.profiles", auth.EntitlementCanCreateProfiles)},
 }
 
 var profileCmd = APIEndpoint{

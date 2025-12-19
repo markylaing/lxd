@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -192,13 +193,16 @@ func certificatesGet(d *Daemon, r *http.Request) response.Response {
 		return response.SyncResponse(true, certResponses)
 	}
 
+	allCerts := d.identityCache.GetClientCertificates()
+	maps.Insert(allCerts, maps.All(d.identityCache.GetServerCertificates()))
+
 	body := []string{}
-	for _, identity := range d.identityCache.GetByAuthenticationMethod(api.AuthenticationMethodTLS) {
-		if !userHasPermission(entity.CertificateURL(identity.Identifier)) {
+	for fingerprint := range allCerts {
+		if !userHasPermission(entity.CertificateURL(fingerprint)) {
 			continue
 		}
 
-		certificateURL := api.NewURL().Path(version.APIVersion, "certificates", identity.Identifier).String()
+		certificateURL := api.NewURL().Path(version.APIVersion, "certificates", fingerprint).String()
 		body = append(body, certificateURL)
 	}
 

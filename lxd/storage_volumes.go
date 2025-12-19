@@ -67,7 +67,7 @@ var storagePoolVolumesCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateStorageVolumes)},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.storage.volumes", auth.EntitlementCanCreateStorageVolumes)},
 }
 
 var storagePoolVolumesTypeCmd = APIEndpoint{
@@ -75,7 +75,7 @@ var storagePoolVolumesTypeCmd = APIEndpoint{
 	MetricsType: entity.TypeStoragePool,
 
 	Get:  APIEndpointAction{Handler: storagePoolVolumesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateStorageVolumes), ContentTypes: []string{"application/json", "application/octet-stream"}},
+	Post: APIEndpointAction{Handler: storagePoolVolumesPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.storage.volumes", auth.EntitlementCanCreateStorageVolumes), ContentTypes: []string{"application/json", "application/octet-stream"}},
 }
 
 var storagePoolVolumeTypeCmd = APIEndpoint{

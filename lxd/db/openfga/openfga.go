@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/canonical/lxd/lxd/db/cache"
+	"github.com/canonical/lxd/shared/datastructures"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 
@@ -82,6 +84,14 @@ type RequestCache struct {
 //   - If we change our design to use entity IDs directly, this method will need to change so that we can return the correct project ID.
 //     (Currently we don't need to as the project name is already in the URL).
 func (o *openfgaStore) Read(ctx context.Context, s string, key storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
+	if auth.IsIDMode(ctx) {
+		return o.readID(ctx, s, key, options)
+	}
+
+	return o.readURL(ctx, s, key, options)
+}
+
+func (o *openfgaStore) readURL(ctx context.Context, s string, key storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	obj := key.Object
 	relation := key.Relation
 	user := key.User
@@ -192,6 +202,58 @@ func (o *openfgaStore) Read(ctx context.Context, s string, key storage.ReadFilte
 	default:
 		// Return an error if we get an unexpected relation.
 		return nil, fmt.Errorf("Relation %q not supported", relation)
+	}
+
+	return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tupleKey}}), nil
+}
+
+func (o *openfgaStore) readID(ctx context.Context, s string, key storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
+	obj := key.Object
+	relation := key.Relation
+	user := key.User
+
+	hasObj := obj != ""
+	hasRelation := relation != ""
+	hasUser := user != ""
+
+	// We always expect the `Object` field to be present.
+	if !hasObj {
+		return nil, errors.New("Read: Can only list by object")
+	}
+
+	// Users are what we are going to enumerate.
+	if hasUser {
+		return nil, errors.New("Read: Listing by user not supported")
+	}
+
+	// Expect the relation to be present.
+	if !hasRelation {
+		return nil, errors.New("Read: Listing all objects without a relation not supported")
+	}
+
+	// Validate the object. We expect the URL to be present.
+	entityType, entityID, err := auth.ParseOpenFGAObject(obj)
+	if err != nil {
+		return nil, fmt.Errorf("Read: Failed to parse object: %w", err)
+	}
+
+	// Our parent-child relations are always named as the entity type of the parent.
+	relationEntityType := entity.Type(relation)
+	entity, err := cache.GetEntityByID(ctx, entityType, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("Read: Failed to get entity by ID: %w", err)
+	}
+
+	relationEntity, err := auth.GetParentEntityOfType(entity, relationEntityType)
+	if err != nil {
+		return nil, fmt.Errorf("Read: Failed to get parent entity type: %w", err)
+	}
+
+	// We're returning a single relation between a parent and child. Set up the tuple key with the object and relation.
+	tupleKey := &openfgav1.TupleKey{
+		Object:   obj,
+		Relation: relation,
+		User:     auth.OpenFGAObject(relationEntity.EntityType(), relationEntity.DatabaseID()),
 	}
 
 	return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tupleKey}}), nil
@@ -323,6 +385,14 @@ func (o *openfgaStore) ensureCacheLoaded(ctx context.Context, cache *RequestCach
 //     that is defined for `server` `can_view`, which allows all identities access to `GET /1.0` and `GET /1.0/storage`.
 //     We check for this case before making any DB queries.
 func (o *openfgaStore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	if auth.IsIDMode(ctx) {
+		return o.readUsersetTuplesID(ctx, store, filter, options)
+	}
+
+	return o.readUsersetTuplesURL(ctx, store, filter, options)
+}
+
+func (o *openfgaStore) readUsersetTuplesURL(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 	// Expect both an object and a relation.
 	if filter.Object == "" || filter.Relation == "" {
 		return nil, errors.New("ReadUsersetTuples: Filter must include both an object and a relation")
@@ -408,6 +478,32 @@ func (o *openfgaStore) ReadUsersetTuples(ctx context.Context, store string, filt
 	return storage.NewStaticTupleIterator(usersetTuples(filter.Object, filter.Relation, entityTypeEntitlementPermissions[entityID])), nil
 }
 
+func (o *openfgaStore) readUsersetTuplesID(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+	entityType, entityID, err := auth.ParseOpenFGAObject(filter.Object)
+	if err != nil {
+		return nil, fmt.Errorf("ReadUsersetTuples: Invalid object filter %q: %w", filter.Object, err)
+	}
+
+	permissions, err := cache.GetAllPermissions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tuples, _ := datastructures.SliceToSliceFilter(permissions, func(i int, e cache.Permission) (bool, error) {
+		return entity.Type(e.EntityType) == entityType && e.EntityID == entityID && string(e.Entitlement) == filter.Relation, nil
+	}, func(i int, e cache.Permission) (*openfgav1.Tuple, error) {
+		return &openfgav1.Tuple{
+			Key: &openfgav1.TupleKey{
+				User:     auth.OpenFGAObject(entity.TypeAuthGroup, e.AuthGroupID) + "#member",
+				Relation: filter.Relation,
+				Object:   filter.Object,
+			},
+		}, nil
+	})
+
+	return storage.NewStaticTupleIterator(tuples), nil
+}
+
 // usersetTuples returns a slice of Tuple objects that relate the members of the given groups to an entity via an entitlement.
 func usersetTuples(object string, relation string, groupNames []string) []*openfgav1.Tuple {
 	tuples := make([]*openfgav1.Tuple, 0, len(groupNames))
@@ -482,6 +578,14 @@ WHERE auth_groups_permissions.entitlement = ? AND auth_groups_permissions.entity
 //   - In the third case, we need to get all permissions with the given entity type and entitlement that are associated with the given group.
 //   - For the fourth case we return nil, since we expect direct entitlements for identities to be passed in contextually.
 func (o *openfgaStore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	if auth.IsIDMode(ctx) {
+		return o.readStartingWithUserID(ctx, store, filter, options)
+	}
+
+	return o.readStartingWithUserURL(ctx, store, filter, options)
+}
+
+func (o *openfgaStore) readStartingWithUserURL(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 	// Example expected input, case 1:
 	// filter.ObjectType = "certificate"
 	// filter.Relation = "server"
@@ -721,6 +825,92 @@ func (o *openfgaStore) ReadStartingWithUser(ctx context.Context, store string, f
 	}
 
 	return storage.NewStaticTupleIterator(readStartingWithUserTuples(entityType, entityURLsWithPermissions, entitlement, groupName)), nil
+}
+
+func (o *openfgaStore) readStartingWithUserID(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	if filter.ObjectType == "" {
+		return nil, api.StatusErrorf(http.StatusBadRequest, "ReadStartingWithUser: Must provide object type")
+	}
+
+	// Expect the relation to be present.
+	if filter.Relation == "" {
+		return nil, api.StatusErrorf(http.StatusBadRequest, "ReadStartingWithUser: Must provide relation")
+	}
+
+	entityType := entity.Type(filter.ObjectType)
+	err := entityType.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("ReadUsersetTuples: Invalid object filter %q: %w", entityType, err)
+	}
+
+	// Expect that there will be exactly one user filter.
+	if len(filter.UserFilter) != 1 {
+		return nil, errors.New("ReadStartingWithUser: Unexpected user filter list length")
+	}
+
+	userEntityType, userEntityID, err := auth.ParseOpenFGAObject(filter.UserFilter[0].GetObject())
+	if err != nil {
+		return nil, fmt.Errorf("ReadStartingWithUser: Failed parsing user filter: %w", err)
+	}
+
+	// Our parent-child relations are always named as the entity type of the parent.
+	relationEntityType := entity.Type(filter.Relation)
+
+	// If the relation is "project" or "server", we are listing all resources under the project/server.
+	if slices.Contains([]entity.Type{entity.TypeProject, entity.TypeServer, entity.TypeInstance, entity.TypeStorageVolume}, relationEntityType) {
+		if filter.Relation != string(userEntityType) {
+			// Expect that the user entity type is expected for the relation.
+			return nil, fmt.Errorf("ReadStartingWithUser: Relation %q is not valid for entities of type %q", filter.Relation, userEntityType)
+		}
+
+		children, err := cache.GetChildEntities(ctx, userEntityType, userEntityID, entityType)
+		if err != nil {
+			return nil, err
+		}
+
+		tuples, _ := datastructures.SliceToSlice(children, func(i int, e auth.Entity) (*openfgav1.Tuple, error) {
+			return &openfgav1.Tuple{
+				Key: &openfgav1.TupleKey{
+					User:     filter.UserFilter[0].GetObject(),
+					Relation: filter.Relation,
+					Object:   auth.OpenFGAObject(entityType, e.DatabaseID()),
+				},
+			}, nil
+		})
+
+		return storage.NewStaticTupleIterator(tuples), nil
+	}
+
+	// Return an empty iterator (nil) when the user entity type is "identity", as we expect these tuples to be passed in
+	// contextually. Note: We will likely need to update this if/when we add service accounts.
+	if userEntityType == entity.TypeIdentity {
+		return nil, nil
+	}
+
+	// Expect the user entity type to be "group", no other cases are handled.
+	if userEntityType != entity.TypeAuthGroup {
+		return nil, fmt.Errorf("ReadStartingWithUser: Unexpected user filter entity type %q", userEntityType)
+	}
+
+	permissions, err := cache.GetAllPermissions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tuples, _ := datastructures.SliceToSliceFilter(permissions, func(i int, e cache.Permission) (bool, error) {
+		return e.AuthGroupID == userEntityID && entity.Type(e.EntityType) == entityType && e.Entitlement == auth.Entitlement(filter.Relation), nil
+	}, func(i int, e cache.Permission) (*openfgav1.Tuple, error) {
+		return &openfgav1.Tuple{
+			Key: &openfgav1.TupleKey{
+				User:      filter.UserFilter[0].GetObject() + "#member",
+				Relation:  filter.Relation,
+				Object:    auth.OpenFGAObject(entityType, e.EntityID),
+				Condition: nil,
+			},
+		}, nil
+	})
+
+	return storage.NewStaticTupleIterator(tuples), nil
 }
 
 // readStartingWithUserTuples returns a slice of Tuple objects that relate the members of a given group to a list of entities of a given type via an entitlement.

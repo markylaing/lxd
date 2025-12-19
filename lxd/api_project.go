@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/canonical/lxd/lxd/db/cache"
+	"github.com/canonical/lxd/shared/datastructures"
 	"github.com/gorilla/mux"
 
 	"github.com/canonical/lxd/client"
@@ -155,76 +157,153 @@ func projectsGet(d *Daemon, r *http.Request) response.Response {
 		return response.SmartError(err)
 	}
 
-	userHasPermission, err := s.Authorizer.GetPermissionChecker(r.Context(), auth.EntitlementCanView, entity.TypeProject)
+	userHasPermission, err := s.Authorizer.GetIDPermissionChecker(r.Context(), entity.TypeProject, auth.EntitlementCanView)
 	if err != nil {
 		return response.InternalError(err)
 	}
 
-	var apiProjects []*api.Project
-	var projectURLs []string
+	if !recursion {
+		projects, err := cache.GetAllProjects(r.Context())
+		if err != nil {
+			return response.SmartError(err)
+		}
+
+		urls, _ := datastructures.SliceToSliceFilter(projects, func(i int, e cache.Project) (bool, error) {
+			return userHasPermission(e.ID), nil
+		}, func(i int, e cache.Project) (string, error) {
+			return e.URL().String(), nil
+		})
+
+		return response.SyncResponse(true, urls)
+	}
+
+	var projects []cache.ProjectFull
+	var usedBy map[string][]string
 	err = s.DB.Cluster.Transaction(r.Context(), func(ctx context.Context, tx *db.ClusterTx) error {
-		allProjects, err := dbCluster.GetProjects(ctx, tx.Tx())
+		projects, err = cache.GetAllProjectsFull(ctx)
 		if err != nil {
 			return err
 		}
 
-		projects := make([]dbCluster.Project, 0, len(allProjects))
-		for _, project := range allProjects {
-			if userHasPermission(entity.ProjectURL(project.Name)) {
-				projects = append(projects, project)
-			}
-		}
-
-		if recursion {
-			apiProjects = make([]*api.Project, 0, len(projects))
-			for _, project := range projects {
-				apiProject, err := project.ToAPI(ctx, tx.Tx())
-				if err != nil {
-					return err
-				}
-
-				apiProject.UsedBy, err = projectUsedBy(ctx, tx, &project)
-				if err != nil {
-					return err
-				}
-
-				apiProjects = append(apiProjects, apiProject)
-			}
-		} else {
-			projectURLs = make([]string, 0, len(projects))
-			for _, project := range projects {
-				projectURLs = append(projectURLs, entity.ProjectURL(project.Name).String())
-			}
-		}
-
-		return nil
+		usedBy, err = projectsUsedBy(ctx, s.Authorizer, tx)
+		return err
 	})
 	if err != nil {
 		return response.SmartError(err)
 	}
 
-	if !recursion {
-		return response.SyncResponse(true, projectURLs)
-	}
-
-	for _, apiProject := range apiProjects {
-		apiProject.UsedBy = projecthelpers.FilterUsedBy(r.Context(), s.Authorizer, apiProject.UsedBy)
-	}
+	idToProject := make(map[int64]auth.EntitlementReporter)
+	result, _ := datastructures.SliceToSliceFilter(projects, func(i int, e cache.ProjectFull) (bool, error) {
+		return userHasPermission(e.ID), nil
+	}, func(i int, e cache.ProjectFull) (*api.Project, error) {
+		p := e.ToAPI()
+		p.UsedBy = usedBy[e.Name]
+		idToProject[e.ID] = &p
+		return &p, nil
+	})
 
 	if len(withEntitlements) > 0 {
-		urlToProject := make(map[*api.URL]auth.EntitlementReporter, len(apiProjects))
-		for _, p := range apiProjects {
-			u := entity.ProjectURL(p.Name)
-			urlToProject[u] = p
-		}
-
-		err = reportEntitlements(r.Context(), s.Authorizer, entity.TypeProject, withEntitlements, urlToProject)
+		err = reportEntitlementsByID(r.Context(), s.Authorizer, entity.TypeProject, withEntitlements, idToProject)
 		if err != nil {
 			return response.SmartError(err)
 		}
 	}
 
-	return response.SyncResponse(true, apiProjects)
+	return response.SyncResponse(true, result)
+}
+
+// projectsUsedBy returns a map of project name to URLs of all instances, images, profiles,
+// storage volumes, storage buckets, networks, acls, and placement groups. The map is filtered by what the caller is able to view.
+func projectsUsedBy(ctx context.Context, authorizer auth.Authorizer, tx *db.ClusterTx) (map[string][]string, error) {
+	var entities []auth.Entity
+	instances, err := cache.GetAllInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range instances {
+		entities = append(entities, e)
+	}
+
+	profiles, err := cache.GetAllProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range profiles {
+		entities = append(entities, e)
+	}
+
+	images, err := cache.GetAllImages(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range images {
+		entities = append(entities, e)
+	}
+
+	storageVolumes, err := cache.GetAllStorageVolumes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range storageVolumes {
+		entities = append(entities, e)
+	}
+
+	networks, err := cache.GetAllNetworks(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range networks {
+		entities = append(entities, e)
+	}
+
+	networkACLs, err := cache.GetAllNetworkACLs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range networkACLs {
+		entities = append(entities, e)
+	}
+
+	storageBuckets, err := cache.GetAllStorageBuckets(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range storageBuckets {
+		entities = append(entities, e)
+	}
+
+	placementGroups, err := cache.GetAllPlacementGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range placementGroups {
+		entities = append(entities, e)
+	}
+
+	entities, err = projecthelpers.FilterUsedBy2(ctx, authorizer, entities)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to filter project used-by list: %w", err)
+	}
+
+	usedBy := make(map[string][]string)
+	for _, e := range entities {
+		project := e.URL().Query().Get("project")
+		if project == "" {
+			project = api.ProjectDefaultName
+		}
+
+		usedBy[project] = append(usedBy[project], e.URL().String())
+	}
+
+	return usedBy, nil
 }
 
 // projectUsedBy returns a list of URLs for all instances, images, profiles,
@@ -821,9 +900,9 @@ func projectChange(ctx context.Context, s *state.State, project *api.Project, re
 					return err
 				}
 			} else {
-				// Delete the project-specific default profile.
+				// Delete the project-specific default profile if it exists.
 				err = dbCluster.DeleteProfile(ctx, tx.Tx(), project.Name, api.ProjectDefaultName)
-				if err != nil {
+				if err != nil && !api.StatusErrorCheck(err, http.StatusNotFound) {
 					return fmt.Errorf("Delete project default profile: %w", err)
 				}
 			}

@@ -43,9 +43,8 @@ func devLXDInstanceGetHandler(d *Daemon, r *http.Request) response.Response {
 		return response.DevLXDErrorResponse(api.NewGenericStatusError(http.StatusBadRequest))
 	}
 
-	// Get identity from the request context.
-	identity, err := request.GetCallerIdentityFromContext(r.Context())
-	if identity == nil {
+	requestor, err := request.GetRequestor(r.Context())
+	if err != nil {
 		return response.DevLXDErrorResponse(err)
 	}
 
@@ -65,7 +64,7 @@ func devLXDInstanceGetHandler(d *Daemon, r *http.Request) response.Response {
 	}
 
 	// Get owned devices.
-	ownedDevices := getDevLXDOwnedDevices(targetInst.Devices, targetInst.Config, identity.Identifier)
+	ownedDevices := getDevLXDOwnedDevices(targetInst.Devices, targetInst.Config, requestor.CallerUsername())
 
 	// Filter devices that are not accessible to devLXD.
 	deviceAccessChecker := newDevLXDDeviceAccessValidator(inst)
@@ -103,9 +102,8 @@ func devLXDInstancePatchHandler(d *Daemon, r *http.Request) response.Response {
 		return response.DevLXDErrorResponse(api.NewGenericStatusError(http.StatusBadRequest))
 	}
 
-	// Get identity from the request context.
-	identity, err := request.GetCallerIdentityFromContext(r.Context())
-	if identity == nil {
+	requestor, err := request.GetRequestor(r.Context())
+	if err != nil {
 		return response.DevLXDErrorResponse(err)
 	}
 
@@ -140,7 +138,7 @@ func devLXDInstancePatchHandler(d *Daemon, r *http.Request) response.Response {
 
 	// Evaluate instance device changes and derive instance configuration with appropriate device ownership.
 	deviceChecker := newDevLXDDeviceAccessValidator(inst)
-	devices, config, err := generateDevLXDInstanceDevices(targetInst, reqInst, identity.Identifier, deviceChecker)
+	devices, config, err := generateDevLXDInstanceDevices(targetInst, reqInst, requestor.CallerUsername(), deviceChecker)
 	if err != nil {
 		return response.DevLXDErrorResponse(err)
 	}

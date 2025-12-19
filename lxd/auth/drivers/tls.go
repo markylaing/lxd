@@ -10,9 +10,12 @@ import (
 	"slices"
 
 	"github.com/canonical/lxd/lxd/auth"
+	"github.com/canonical/lxd/lxd/db/cache"
 	"github.com/canonical/lxd/lxd/identity"
 	"github.com/canonical/lxd/lxd/request"
+	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
+	"github.com/canonical/lxd/shared/datastructures"
 	"github.com/canonical/lxd/shared/entity"
 	"github.com/canonical/lxd/shared/logger"
 )
@@ -28,6 +31,124 @@ func init() {
 
 type tls struct {
 	commonAuthorizer
+}
+
+func (t *tls) CheckPermissionByID(ctx context.Context, entityType entity.Type, entityID int64, entitlement auth.Entitlement) error {
+	requestor, err := request.GetRequestor(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !requestor.IsTrusted() {
+		return api.NewGenericStatusError(http.StatusForbidden)
+	}
+
+	if requestor.IsAdmin() {
+		return nil
+	}
+
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return err
+	}
+
+	if idType.IsFineGrained() {
+		return errors.New("Not implemented for fine-grained identities")
+	}
+
+	e, err := cache.GetEntityByID(ctx, entityType, entityID)
+	if err != nil {
+		return err
+	}
+
+	projectSpecific, _ := entityType.RequiresProject()
+	if !projectSpecific {
+		if t.allowProjectUnspecificEntityTypeByID(ctx, requestor, e, entitlement) {
+			return nil
+		}
+
+		return api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
+	}
+
+	projectEntity, err := auth.GetParentEntityOfType(e, entity.TypeProject)
+	if err != nil {
+		return fmt.Errorf("Failed getting parent project: %w", err)
+	}
+
+	if !slices.Contains(requestor.ProjectIDs(), projectEntity.DatabaseID()) {
+		if projectEntity.DatabaseID() == 1 && slices.Contains([]entity.Type{entity.TypeImage, entity.TypeNetwork, entity.TypeNetworkZone, entity.TypeProfile, entity.TypeStorageVolume, entity.TypeStorageBucket}, entityType) {
+			projects, err := cache.GetProjectsFullByID(ctx, requestor.ProjectIDs()...)
+			if err != nil {
+				return nil
+			}
+
+			projects, _ = datastructures.SliceFilter(projects, func(i int, p cache.ProjectFull) (bool, error) {
+				switch entityType {
+				case entity.TypeImage, entity.TypeImageAlias:
+					return !shared.IsTrue(p.Config["features.images"]), nil
+				case entity.TypeNetwork, entity.TypeNetworkACL:
+					return !shared.IsTrue(p.Config["features.networks"]), nil
+				case entity.TypeNetworkZone:
+					return !shared.IsTrue(p.Config["features.networks.zones"]), nil
+				case entity.TypeProfile:
+					return !shared.IsTrue(p.Config["features.profiles"]), nil
+				case entity.TypeStorageVolume:
+					return !shared.IsTrue(p.Config["features.storage.volumes"]), nil
+				case entity.TypeStorageBucket:
+					return !shared.IsTrue(p.Config["features.storage.buckets"]), nil
+				}
+
+				return false, nil
+			})
+
+			// If any of our restricted projects does not have the feature associated with the entitlement, then
+			// we allow the entitlement in the default project.
+			if len(projects) > 0 {
+				return nil
+			}
+
+			return api.StatusErrorf(http.StatusForbidden, "Certificate is restricted")
+		}
+
+		return api.NewStatusError(http.StatusForbidden, "User does not have permission for this project")
+	}
+
+	return nil
+}
+
+func (t *tls) GetIDPermissionChecker(ctx context.Context, entityType entity.Type, entitlement auth.Entitlement) (auth.IDPermissionChecker, error) {
+	all := func(b bool) func(_ int64) bool {
+		return func(_ int64) bool {
+			return b
+		}
+	}
+
+	requestor, err := request.GetRequestor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !requestor.IsTrusted() {
+		return all(false), nil
+	}
+
+	if requestor.IsAdmin() {
+		return all(true), nil
+	}
+
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return nil, err
+	}
+
+	if idType.IsFineGrained() {
+		return nil, errors.New("Not implemented for fine-grained identities")
+	}
+
+	return func(id int64) bool {
+		err := t.CheckPermissionByID(ctx, entityType, id, entitlement)
+		return err == nil
+	}, nil
 }
 
 func (t *tls) load(ctx context.Context, identityCache *identity.Cache, opts Opts) error {
@@ -66,12 +187,12 @@ func (t *tls) CheckPermission(ctx context.Context, entityURL *api.URL, entitleme
 		return nil
 	}
 
-	id := requestor.CallerIdentity()
-	if id == nil {
-		return errors.New("No identity is set in the request details")
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return fmt.Errorf("Failed to get caller identity type: %w", err)
 	}
 
-	if id.IdentityType == api.IdentityTypeCertificateMetricsUnrestricted && entitlement == auth.EntitlementCanViewMetrics {
+	if idType.Name() == api.IdentityTypeCertificateMetricsUnrestricted && entitlement == auth.EntitlementCanViewMetrics {
 		return nil
 	}
 
@@ -82,7 +203,7 @@ func (t *tls) CheckPermission(ctx context.Context, entityURL *api.URL, entitleme
 
 	// Check non- project-specific entity types.
 	if !projectSpecific {
-		if t.allowProjectUnspecificEntityType(entitlement, entityType, id, projectName, pathArguments) {
+		if t.allowProjectUnspecificEntityType(entitlement, entityType, requestor, projectName, pathArguments) {
 			return nil
 		}
 
@@ -90,7 +211,7 @@ func (t *tls) CheckPermission(ctx context.Context, entityURL *api.URL, entitleme
 	}
 
 	// Check project level permissions against the certificates project list.
-	if !slices.Contains(id.Projects, projectName) {
+	if !slices.Contains(requestor.ProjectNames(), projectName) {
 		return api.StatusErrorf(http.StatusForbidden, "User does not have permission for project %q", projectName)
 	}
 
@@ -131,12 +252,12 @@ func (t *tls) GetPermissionChecker(ctx context.Context, entitlement auth.Entitle
 		return allowFunc(true), nil
 	}
 
-	id := requestor.CallerIdentity()
-	if id == nil {
-		return nil, errors.New("No identity is set in the request details")
+	idType, err := requestor.CallerIdentityType()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get caller identity type: %w", err)
 	}
 
-	if id.IdentityType == api.IdentityTypeCertificateMetricsUnrestricted && entitlement == auth.EntitlementCanViewMetrics {
+	if idType.Name() == api.IdentityTypeCertificateMetricsUnrestricted && entitlement == auth.EntitlementCanViewMetrics {
 		return allowFunc(true), nil
 	}
 
@@ -161,11 +282,11 @@ func (t *tls) GetPermissionChecker(ctx context.Context, entitlement auth.Entitle
 
 		// Check non- project-specific entity types.
 		if !projectSpecific {
-			return t.allowProjectUnspecificEntityType(entitlement, entityType, id, project, pathArguments)
+			return t.allowProjectUnspecificEntityType(entitlement, entityType, requestor, project, pathArguments)
 		}
 
 		// Otherwise, check if the project is in the list of allowed projects for the entity.
-		return slices.Contains(id.Projects, project)
+		return slices.Contains(requestor.ProjectNames(), project)
 	}, nil
 }
 
@@ -175,7 +296,7 @@ func (t *tls) GetPermissionCheckerWithoutEffectiveProject(ctx context.Context, e
 	return t.GetPermissionChecker(ctx, entitlement, entityType)
 }
 
-func (t *tls) allowProjectUnspecificEntityType(entitlement auth.Entitlement, entityType entity.Type, id *identity.CacheEntry, projectName string, pathArguments []string) bool {
+func (t *tls) allowProjectUnspecificEntityType(entitlement auth.Entitlement, entityType entity.Type, requestor *request.Requestor, projectName string, pathArguments []string) bool {
 	switch entityType {
 	case entity.TypeServer:
 		// Restricted TLS certificates have the following entitlements on server.
@@ -187,17 +308,99 @@ func (t *tls) allowProjectUnspecificEntityType(entitlement auth.Entitlement, ent
 	case entity.TypeIdentity:
 		// If the entity URL refers to the identity that made the request, then the second path argument of the URL is
 		// the identifier of the identity. This line allows the caller to view their own identity and no one else's.
-		return entitlement == auth.EntitlementCanView && len(pathArguments) > 1 && pathArguments[1] == id.Identifier
+		return entitlement == auth.EntitlementCanView && len(pathArguments) > 1 && pathArguments[1] == requestor.CallerUsername()
 	case entity.TypeCertificate:
 		// If the certificate URL refers to the identity that made the request, then the first path argument of the URL is
 		// the identifier of the identity (their fingerprint). This line allows the caller to view their own certificate and no one else's.
-		return entitlement == auth.EntitlementCanView && len(pathArguments) > 0 && pathArguments[0] == id.Identifier
+		return entitlement == auth.EntitlementCanView && len(pathArguments) > 0 && pathArguments[0] == requestor.CallerUsername()
 	case entity.TypeProject:
 		// If the project is in the list of projects that the identity is restricted to, then they have the following
 		// entitlements.
-		return slices.Contains(id.Projects, projectName) && slices.Contains([]auth.Entitlement{auth.EntitlementCanView, auth.EntitlementCanCreateImages, auth.EntitlementCanCreateImageAliases, auth.EntitlementCanCreateInstances, auth.EntitlementCanCreateNetworks, auth.EntitlementCanCreateNetworkACLs, auth.EntitlementCanCreateNetworkZones, auth.EntitlementCanCreateProfiles, auth.EntitlementCanCreateStorageVolumes, auth.EntitlementCanCreateStorageBuckets, auth.EntitlementCanViewEvents, auth.EntitlementCanViewOperations, auth.EntitlementCanViewMetrics}, entitlement)
+		return slices.Contains(requestor.ProjectNames(), projectName) && slices.Contains([]auth.Entitlement{auth.EntitlementCanView, auth.EntitlementCanCreateImages, auth.EntitlementCanCreateImageAliases, auth.EntitlementCanCreateInstances, auth.EntitlementCanCreateNetworks, auth.EntitlementCanCreateNetworkACLs, auth.EntitlementCanCreateNetworkZones, auth.EntitlementCanCreateProfiles, auth.EntitlementCanCreateStorageVolumes, auth.EntitlementCanCreateStorageBuckets, auth.EntitlementCanViewEvents, auth.EntitlementCanViewOperations, auth.EntitlementCanViewMetrics}, entitlement)
 
 	default:
 		return false
 	}
+}
+
+func (t *tls) allowProjectUnspecificEntityTypeByID(ctx context.Context, requestor *request.Requestor, authEntity auth.Entity, entitlement auth.Entitlement) bool {
+	switch authEntity.EntityType() {
+	case entity.TypeServer:
+		// Restricted TLS certificates have the following entitlements on server.
+		//
+		// Note: We have to keep EntitlementCanViewMetrics here for backwards compatibility with older versions of LXD.
+		// Historically when viewing the metrics endpoint for a specific project with a restricted certificate also the
+		// internal server metrics get returned.
+		return slices.Contains([]auth.Entitlement{auth.EntitlementCanViewResources, auth.EntitlementCanViewMetrics, auth.EntitlementCanViewUnmanagedNetworks}, entitlement)
+	case entity.TypeIdentity:
+		// If the entity URL refers to the identity that made the request, then the second path argument of the URL is
+		// the identifier of the identity. This line allows the caller to view their own identity and no one else's.
+		return entitlement == auth.EntitlementCanView && authEntity.DatabaseID() == requestor.IdentityID()
+	case entity.TypeCertificate:
+		// If the certificate URL refers to the identity that made the request, then the first path argument of the URL is
+		// the identifier of the identity (their fingerprint). This line allows the caller to view their own certificate and no one else's.
+		return entitlement == auth.EntitlementCanView && authEntity.DatabaseID() == requestor.IdentityID()
+	case entity.TypeProject:
+		if slices.Contains(requestor.ProjectIDs(), authEntity.DatabaseID()) {
+			// If the project is in the list of projects that the identity is restricted to, then they have the following
+			// entitlements.
+			return slices.Contains([]auth.Entitlement{
+				auth.EntitlementCanView,
+				auth.EntitlementCanCreateImages,
+				auth.EntitlementCanCreateImageAliases,
+				auth.EntitlementCanCreateInstances,
+				auth.EntitlementCanCreateNetworks,
+				auth.EntitlementCanCreateNetworkACLs,
+				auth.EntitlementCanCreateNetworkZones,
+				auth.EntitlementCanCreateProfiles,
+				auth.EntitlementCanCreateStorageVolumes,
+				auth.EntitlementCanCreateStorageBuckets,
+				auth.EntitlementCanViewEvents,
+				auth.EntitlementCanViewOperations,
+				auth.EntitlementCanViewMetrics,
+			}, entitlement)
+		}
+
+		// If the project is not in the list of projects that the identity is restricted to, it may be that it is the default project and one of the restricted projects does not have a feature enabled.
+		if authEntity.DatabaseID() == 1 && slices.Contains([]auth.Entitlement{
+			auth.EntitlementCanCreateImages,
+			auth.EntitlementCanCreateImageAliases,
+			auth.EntitlementCanCreateNetworks,
+			auth.EntitlementCanCreateNetworkACLs,
+			auth.EntitlementCanCreateNetworkZones,
+			auth.EntitlementCanCreateProfiles,
+			auth.EntitlementCanCreateStorageVolumes,
+			auth.EntitlementCanCreateStorageBuckets,
+		}, entitlement) {
+			projects, err := cache.GetProjectsFullByID(ctx, requestor.ProjectIDs()...)
+			if err != nil {
+				return false
+			}
+
+			projects, _ = datastructures.SliceFilter(projects, func(i int, p cache.ProjectFull) (bool, error) {
+				switch entitlement {
+				case auth.EntitlementCanCreateImages, auth.EntitlementCanCreateImageAliases:
+					return !shared.IsTrue(p.Config["features.images"]), nil
+				case auth.EntitlementCanCreateNetworks, auth.EntitlementCanCreateNetworkACLs:
+					return !shared.IsTrue(p.Config["features.networks"]), nil
+				case auth.EntitlementCanCreateNetworkZones:
+					return !shared.IsTrue(p.Config["features.networks.zones"]), nil
+				case auth.EntitlementCanCreateProfiles:
+					return !shared.IsTrue(p.Config["features.profiles"]), nil
+				case auth.EntitlementCanCreateStorageVolumes:
+					return !shared.IsTrue(p.Config["features.storage.volumes"]), nil
+				case auth.EntitlementCanCreateStorageBuckets:
+					return !shared.IsTrue(p.Config["features.storage.buckets"]), nil
+				}
+
+				return false, nil
+			})
+
+			// If any of our restricted projects does not have the feature associated with the entitlement, then
+			// we allow the entitlement in the default project.
+			return len(projects) > 0
+		}
+	}
+
+	return false
 }

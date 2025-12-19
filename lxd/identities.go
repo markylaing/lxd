@@ -2104,50 +2104,12 @@ func updateIdentityCache(d *Daemon) {
 	logger.Debug("Refreshing identity cache")
 
 	var identities []dbCluster.Identity
-	projects := make(map[int][]string)
-	groups := make(map[int][]string)
-	idpGroupMapping := make(map[string][]string)
 	bearerIdentitySecrets := make(map[int]dbCluster.AuthSecretValue)
 	var err error
 	err = s.DB.Cluster.Transaction(d.shutdownCtx, func(ctx context.Context, tx *db.ClusterTx) error {
 		identities, err = dbCluster.GetIdentitys(ctx, tx.Tx())
 		if err != nil {
 			return err
-		}
-
-		for _, identity := range identities {
-			identityProjects, err := dbCluster.GetIdentityProjects(ctx, tx.Tx(), identity.ID)
-			if err != nil {
-				return err
-			}
-
-			for _, p := range identityProjects {
-				projects[identity.ID] = append(projects[identity.ID], p.Name)
-			}
-
-			identityGroups, err := dbCluster.GetAuthGroupsByIdentityID(ctx, tx.Tx(), identity.ID)
-			if err != nil {
-				return err
-			}
-
-			for _, g := range identityGroups {
-				groups[identity.ID] = append(groups[identity.ID], g.Name)
-			}
-		}
-
-		idpGroups, err := dbCluster.GetIdentityProviderGroups(ctx, tx.Tx())
-		if err != nil {
-			return err
-		}
-
-		for _, idpGroup := range idpGroups {
-			// Internal method does not need a permission checker.
-			apiIDPGroup, err := idpGroup.ToAPI(ctx, tx.Tx(), func(_ *api.URL) bool { return true })
-			if err != nil {
-				return err
-			}
-
-			idpGroupMapping[apiIDPGroup.Name] = apiIDPGroup.Groups
 		}
 
 		bearerIdentitySecrets, err = dbCluster.GetAllBearerIdentitySigningKeys(ctx, tx.Tx())
@@ -2162,7 +2124,9 @@ func updateIdentityCache(d *Daemon) {
 		return
 	}
 
-	identityCacheEntries := make([]identity.CacheEntry, 0, len(identities))
+	clientCertificates := make(map[string]*x509.Certificate)
+	serverCertificates := make(map[string]*x509.Certificate)
+	secrets := make(map[string][]byte)
 	var localServerCerts []dbCluster.Certificate
 	for _, id := range identities {
 		identityType, err := identity.New(string(id.Type))
@@ -2175,43 +2139,33 @@ func updateIdentityCache(d *Daemon) {
 			continue
 		}
 
-		cacheEntry := identity.CacheEntry{
-			Identifier:           id.Identifier,
-			Name:                 id.Name,
-			AuthenticationMethod: string(id.AuthMethod),
-			IdentityType:         string(id.Type),
-			Projects:             projects[id.ID],
-			Groups:               groups[id.ID],
-		}
-
-		if cacheEntry.AuthenticationMethod == api.AuthenticationMethodTLS {
+		if identityType.AuthenticationMethod() == api.AuthenticationMethodTLS {
 			cert, err := id.X509()
 			if err != nil {
 				logger.Warn("Failed to extract x509 certificate from TLS identity metadata", logger.Ctx{"err": err})
 				continue
 			}
 
-			cacheEntry.Certificate = cert
-		} else if cacheEntry.AuthenticationMethod == api.AuthenticationMethodBearer {
+			if id.Type == api.IdentityTypeCertificateServer {
+				dbCert, err := id.ToCertificate()
+				if err != nil {
+					logger.Warn("Failed to convert TLS identity to server certificate", logger.Ctx{"err": err})
+					continue
+				}
+
+				localServerCerts = append(localServerCerts, *dbCert)
+				serverCertificates[id.Identifier] = cert
+			} else {
+				clientCertificates[id.Identifier] = cert
+			}
+		} else if identityType.AuthenticationMethod() == api.AuthenticationMethodBearer {
 			secret, ok := bearerIdentitySecrets[id.ID]
 			if !ok {
 				// No need to add bearer identities with no secret to the cache, they cannot authenticate.
 				continue
 			}
 
-			cacheEntry.Secret = secret
-		}
-
-		identityCacheEntries = append(identityCacheEntries, cacheEntry)
-
-		// Add server certs to list of certificates to store in local database to allow cluster restart.
-		if id.Type == api.IdentityTypeCertificateServer {
-			cert, err := id.ToCertificate()
-			if err != nil {
-				logger.Warn("Failed to convert TLS identity to server certificate", logger.Ctx{"err": err})
-			}
-
-			localServerCerts = append(localServerCerts, *cert)
+			secrets[id.Identifier] = secret
 		}
 	}
 
@@ -2225,7 +2179,7 @@ func updateIdentityCache(d *Daemon) {
 		// continue functioning, and hopefully the write will succeed on next update.
 	}
 
-	err = d.identityCache.ReplaceAll(identityCacheEntries, idpGroupMapping)
+	err = d.identityCache.ReplaceAll(serverCertificates, clientCertificates, secrets)
 	if err != nil {
 		logger.Warn("Failed to update identity cache", logger.Ctx{"err": err})
 	}
@@ -2247,7 +2201,7 @@ func updateIdentityCacheFromLocal(d *Daemon) error {
 	}
 
 	// identityCacheEntries needs to be pre-allocated.
-	identityCacheEntries := make([]identity.CacheEntry, 0, len(localServerCerts))
+	serverCerts := make(map[string]*x509.Certificate, len(localServerCerts))
 	for _, dbCert := range localServerCerts {
 		certBlock, _ := pem.Decode([]byte(dbCert.Certificate))
 		if certBlock == nil {
@@ -2261,21 +2215,10 @@ func updateIdentityCacheFromLocal(d *Daemon) error {
 			continue
 		}
 
-		id, err := dbCert.ToIdentity()
-		if err != nil {
-			logger.Warn("Failed to convert node certificate into identity entry", logger.Ctx{"err": err})
-			continue
-		}
-
-		identityCacheEntries = append(identityCacheEntries, identity.CacheEntry{
-			Identifier:           id.Identifier,
-			AuthenticationMethod: string(id.AuthMethod),
-			IdentityType:         string(id.Type),
-			Certificate:          cert,
-		})
+		serverCerts[dbCert.Fingerprint] = cert
 	}
 
-	err = d.identityCache.ReplaceAll(identityCacheEntries, nil)
+	err = d.identityCache.ReplaceAll(serverCerts, nil, nil)
 	if err != nil {
 		return fmt.Errorf("Failed to update identity cache from local trust store: %w", err)
 	}

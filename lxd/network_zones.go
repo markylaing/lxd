@@ -29,7 +29,7 @@ var networkZonesCmd = APIEndpoint{
 	MetricsType: entity.TypeNetwork,
 
 	Get:  APIEndpointAction{Handler: networkZonesGet, AccessHandler: allowProjectResourceList(false)},
-	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: allowPermission(entity.TypeProject, auth.EntitlementCanCreateNetworkZones)},
+	Post: APIEndpointAction{Handler: networkZonesPost, AccessHandler: allowProjectPermissionWithFeatureFlag("features.networks.zones", auth.EntitlementCanCreateNetworkZones)},
 }
 
 var networkZoneCmd = APIEndpoint{

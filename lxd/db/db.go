@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"github.com/canonical/go-dqlite/v3/driver"
-
 	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/node"
 	"github.com/canonical/lxd/lxd/db/query"
+	"github.com/canonical/lxd/lxd/request"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/lxd/shared/logger"
@@ -325,6 +325,10 @@ func (c *Cluster) GetNodeID() int64 {
 	return c.nodeID
 }
 
+const (
+	ctxClusterTx request.CtxKey = "cluster_tx"
+)
+
 // Transaction creates a new ClusterTx object and transactionally executes the
 // cluster database interactions invoked by the given function. If the function
 // returns no error, all database changes are committed to the cluster database
@@ -333,6 +337,11 @@ func (c *Cluster) GetNodeID() int64 {
 // If EnterExclusive has been called before, calling Transaction will block
 // until ExitExclusive has been called as well to release the lock.
 func (c *Cluster) Transaction(ctx context.Context, f func(context.Context, *ClusterTx) error) error {
+	tx, err := request.GetContextValue[*ClusterTx](ctx, ctxClusterTx)
+	if err == nil {
+		return f(ctx, tx)
+	}
+
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.transaction(ctx, f)
@@ -385,6 +394,8 @@ func (c *Cluster) transaction(ctx context.Context, f func(context.Context, *Clus
 	return query.Retry(ctx, func(ctx context.Context) error {
 		txFunc := func(ctx context.Context, tx *sql.Tx) error {
 			clusterTx.tx = tx
+
+			ctx = context.WithValue(ctx, ctxClusterTx, clusterTx)
 			return f(ctx, clusterTx)
 		}
 
