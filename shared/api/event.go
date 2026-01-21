@@ -12,6 +12,7 @@ const (
 	EventTypeLogging   = "logging"
 	EventTypeOperation = "operation"
 	EventTypeOVN       = "ovn"
+	EventTypeSecurity  = "security"
 )
 
 // Event represents an event entry (over websocket)
@@ -153,6 +154,28 @@ type EventLifecycle struct {
 	// API extension: event_lifecycle_name_and_project
 	Name    string `yaml:"name,omitempty" json:"name,omitempty"`
 	Project string `yaml:"project,omitempty" json:"project,omitempty"`
+}
+
+type EventSecurity struct {
+	Datetime                 time.Time `json:"datetime"`
+	AppID                    string    `json:"appid"`
+	Type                     string    `json:"type"`
+	Event                    string    `json:"event"`
+	Level                    string    `json:"level"`
+	Description              string    `json:"description"`
+	UserAgent                string    `json:"useragent"`
+	SourceIP                 string    `json:"source_ip"`
+	HostIP                   string    `json:"host_ip"`
+	Hostname                 string    `json:"hostname"`
+	Protocol                 string    `json:"protocol"`
+	Port                     string    `json:"port"`
+	RequestURI               string    `json:"request_uri"`
+	RequestMethod            string    `json:"request_method"`
+	UserID                   string    `json:"user_id"`
+	UserAuthenticationMethod string    `json:"user_authentication_method"`
+	SessionID                string    `json:"session_id"`
+	ClusterIdentifier        string    `json:"cluster_identifier"`
+	ClusterMemberName        string    `json:"cluster_member_name"`
 }
 
 // EventLifecycleRequestor represents the initial requestor for an event

@@ -22,8 +22,8 @@ import (
 	"github.com/canonical/lxd/shared/ws"
 )
 
-var eventTypes = []string{api.EventTypeLogging, api.EventTypeOperation, api.EventTypeLifecycle, api.EventTypeOVN}
-var privilegedEventTypes = []string{api.EventTypeLogging, api.EventTypeOVN}
+var eventTypes = []string{api.EventTypeLogging, api.EventTypeOperation, api.EventTypeLifecycle, api.EventTypeOVN, api.EventTypeSecurity}
+var privilegedEventTypes = []string{api.EventTypeLogging, api.EventTypeOVN, api.EventTypeSecurity}
 
 var eventsCmd = APIEndpoint{
 	Path:        "events",

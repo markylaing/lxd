@@ -187,7 +187,7 @@ func TestCheckClusterTargetRestriction_RestrictedTrue(t *testing.T) {
 		Protocol: api.AuthenticationMethodTLS,
 	}
 
-	err = request.SetRequestor(req, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
+	_, err = request.SetRequestor(req, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
 		return identity.CertificateClientRestricted{}, nil, nil, []string{dbProject.Name}, nil
 	}, details)
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestCheckClusterTargetRestriction_RestrictedTrueWithOverride(t *testing.T) 
 
 	require.NoError(t, err)
 
-	err = request.SetRequestor(req, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
+	_, err = request.SetRequestor(req, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
 		return identity.CertificateClientUnrestricted{}, nil, nil, nil, nil
 	}, details)
 	require.NoError(t, err)

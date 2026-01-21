@@ -26,6 +26,16 @@ func (h Handler) Fire(entry *logrus.Entry) error {
 		return nil
 	}
 
+	if entry.Data != nil {
+		v, ok := entry.Data["owasp_event"]
+		if ok {
+			loggedEvent, ok := v.(LoggedSecurityEvent)
+			if ok {
+				return LoggingServer.Send("", api.EventTypeSecurity, loggedEvent.EventSecurity)
+			}
+		}
+	}
+
 	return LoggingServer.Send("", api.EventTypeLogging, api.EventLogging{
 		Message: entry.Message,
 		Level:   entry.Level.String(),

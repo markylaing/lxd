@@ -813,7 +813,7 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 		}
 
 		// Authentication
-		requestor, err := d.Authenticate(w, r)
+		requestorArgs, err := d.Authenticate(w, r)
 		if err != nil {
 			var authError oidc.AuthError
 			if errors.As(err, &authError) {
@@ -833,31 +833,33 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 		}
 
 		// Initialise the request info.
-		err = request.SetRequestor(r, d.requestorHook, *requestor)
+		requestor, err := request.SetRequestor(r, d.requestorHook, *requestorArgs)
 		if err != nil {
 			_ = response.SmartError(err).Render(w, r)
 			return
 		}
 
+		events.PrepareSecurityEventContext(r, d.serverName, d.endpoints.NetworkAddress(), d.globalConfig.ClusterUUID(), requestor)
+
 		// Reject internal queries to remote, non-cluster, clients
-		if version == "internal" && !slices.Contains([]string{request.ProtocolUnix, request.ProtocolCluster}, requestor.Protocol) {
+		if version == "internal" && !slices.Contains([]string{request.ProtocolUnix, request.ProtocolCluster}, requestor.CallerProtocol()) {
 			// Except for the initial cluster accept request (done over trusted TLS)
-			if !requestor.Trusted || c.Path != "cluster/accept" || requestor.Protocol != api.AuthenticationMethodTLS {
+			if !requestor.IsTrusted() || c.Path != "cluster/accept" || requestor.CallerProtocol() != api.AuthenticationMethodTLS {
 				logger.Warn("Rejecting remote internal API request", logger.Ctx{"ip": r.RemoteAddr})
 				_ = response.Forbidden(nil).Render(w, r)
 				return
 			}
 		}
 
-		logCtx := logger.Ctx{"method": r.Method, "url": r.URL.RequestURI(), "ip": r.RemoteAddr, "protocol": requestor.Protocol}
-		if requestor.Protocol == request.ProtocolCluster {
-			logCtx["fingerprint"] = requestor.Username
+		logCtx := logger.Ctx{"method": r.Method, "url": r.URL.RequestURI(), "ip": r.RemoteAddr, "protocol": requestor.CallerProtocol()}
+		if requestor.CallerProtocol() == request.ProtocolCluster {
+			logCtx["fingerprint"] = requestor.CallerUsername()
 		} else {
-			logCtx["username"] = requestor.Username
+			logCtx["username"] = requestor.CallerUsername()
 		}
 
 		untrustedOk := (r.Method == "GET" && c.Get.AllowUntrusted) || (r.Method == "POST" && c.Post.AllowUntrusted)
-		if requestor.Trusted {
+		if requestor.IsTrusted() {
 			logger.Debug("Handling API request", logCtx)
 		} else if untrustedOk && r.Header.Get("X-LXD-authenticated") == "" {
 			logger.Debug("Allowing untrusted "+r.Method, logger.Ctx{"url": r.URL.RequestURI(), "ip": r.RemoteAddr})
@@ -867,6 +869,7 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			}
 
 			logger.Warn("Rejecting request from untrusted client", logger.Ctx{"ip": r.RemoteAddr})
+			events.FireSecurityEvent(r.Context(), events.AuthNLoginFail{})
 			_ = response.Forbidden(nil).Render(w, r)
 			return
 		}
@@ -952,7 +955,8 @@ func (d *Daemon) createCmd(restAPI *mux.Router, version string, c APIEndpoint) {
 			}
 
 			// If the request is not trusted, only call the handler if the action allows it.
-			if !requestor.Trusted && !action.AllowUntrusted {
+			if !requestor.IsTrusted() && !action.AllowUntrusted {
+				events.FireSecurityEvent(r.Context(), events.AuthNLoginFail{})
 				return response.Forbidden(errors.New("You must be authenticated"))
 			}
 

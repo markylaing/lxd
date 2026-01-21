@@ -55,6 +55,11 @@ type Requestor struct {
 	mappedAuthGroups                []string
 	projects                        []string
 	identityType                    identity.Type
+	sessionID                       string
+}
+
+func (r *Requestor) OIDCSessionID() string {
+	return r.sessionID
 }
 
 // IsClusterNotification returns true if this an API request coming from a
@@ -295,13 +300,13 @@ func (r *Requestor) setIdentity(ctx context.Context, hook RequestorHook) error {
 
 // SetRequestor validates the given RequestorArgs against the request, then populates the additional fields
 // that requestor contains and sets a requestor in the context.
-func SetRequestor(req *http.Request, hook RequestorHook, args RequestorArgs) error {
+func SetRequestor(req *http.Request, hook RequestorHook, args RequestorArgs) (*Requestor, error) {
 	clientType := userAgentClientType(req.Header.Get("User-Agent"))
 
 	// Cluster notification with wrong certificate.
 	if clientType != ClientTypeNormal && !slices.Contains([]string{ProtocolCluster, ProtocolUnix}, args.Protocol) {
 		// XXX: We allow ProtocolUnix because initDataNodeApply() in lxd/init.go uses a local client to join a cluster. initDataNodeApply() is used by 'lxd init' and PUT /1.0/cluster.
-		return errors.New("Cluster notification isn't using trusted server certificate")
+		return nil, errors.New("Cluster notification isn't using trusted server certificate")
 	}
 
 	r := &Requestor{
@@ -315,7 +320,7 @@ func SetRequestor(req *http.Request, hook RequestorHook, args RequestorArgs) err
 
 	err := r.setForwardingDetails(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	callerUsername := r.CallerUsername()
@@ -325,38 +330,38 @@ func SetRequestor(req *http.Request, hook RequestorHook, args RequestorArgs) err
 	if !r.trusted {
 		// If the caller is not trusted, there should not be a username.
 		if callerUsername != "" {
-			return errors.New("Caller is not trusted but a username was set")
+			return nil, errors.New("Caller is not trusted but a username was set")
 		}
 
 		// The only allowed protocols for the untrusted case are ProtocolDevLXD, or empty.
 		// The protocol is empty when calls made to the main API are untrusted.
 		if !slices.Contains([]string{ProtocolDevLXD, ""}, callerProtocol) {
-			return errors.New("Unsupported protocol set for untrusted request")
+			return nil, errors.New("Unsupported protocol set for untrusted request")
 		}
 
 		SetContextValue(req, ctxRequestor, r)
-		return nil
+		return r, nil
 	}
 
 	// Trusted
 
 	// There must be a protocol.
 	if callerProtocol == "" {
-		return errors.New("Caller is trusted but no protocol was set")
+		return nil, errors.New("Caller is trusted but no protocol was set")
 	}
 
 	// There must be a username.
 	if callerUsername == "" {
-		return errors.New("Caller is trusted but no username was set")
+		return nil, errors.New("Caller is trusted but no username was set")
 	}
 
 	err = r.setIdentity(req.Context(), hook)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	SetContextValue(req, ctxRequestor, r)
-	return nil
+	return r, nil
 }
 
 // GetRequestor gets a Requestor from the request context.

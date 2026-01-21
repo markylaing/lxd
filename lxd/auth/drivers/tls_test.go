@@ -46,7 +46,7 @@ func (s *tlsSuite) setupCtx(details request.RequestorArgs) context.Context {
 		RemoteAddr: "127.0.0.1:53423",
 	}
 
-	err := request.SetRequestor(r, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
+	_, err := request.SetRequestor(r, func(ctx context.Context, authenticationMethod string, identifier string, idpGroups []string) (idType identity.Type, authGroups []string, effectiveAuthGroups []string, projects []string, err error) {
 		switch identifier {
 		case "foo-restricted":
 			return identity.CertificateClientRestricted{}, nil, nil, []string{"foo"}, nil

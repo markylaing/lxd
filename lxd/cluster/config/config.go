@@ -681,7 +681,7 @@ var ConfigSchema = config.Schema{
 		//  scope: global
 		//  defaultdesc: `lifecycle,logging`
 		//  shortdesc: Events to send to the Loki server
-		"loki.types": {Validator: validate.Optional(validate.IsListOf(validate.IsOneOf("lifecycle", "logging", "ovn"))), Default: "lifecycle,logging"},
+		"loki.types": {Validator: validate.Optional(validate.IsListOf(validate.IsOneOf("lifecycle", "logging", "ovn", "security"))), Default: "lifecycle,logging"},
 
 		// lxdmeta:generate(entities=server; group=miscellaneous; key=maas.api.key)
 		//

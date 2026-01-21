@@ -399,6 +399,16 @@ func (c *Client) HandleEvent(event api.Event) {
 		message.WriteString(logEvent.Message)
 
 		entry.Line = message.String()
+	case api.EventTypeSecurity:
+		var securityEvent map[string]string
+
+		err := json.Unmarshal(event.Metadata, &securityEvent)
+		if err != nil {
+			return
+		}
+
+		maps.Copy(securityEvent, entry.labels)
+		entry.Line = securityEvent["event"]
 	}
 
 	c.entries <- entry
