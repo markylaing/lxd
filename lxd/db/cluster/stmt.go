@@ -1,5 +1,7 @@
 //go:build linux && cgo && !agent
 
+//go:generate simplegen . generated.go
+
 package cluster
 
 import (
