@@ -15,8 +15,8 @@ import (
 	"github.com/canonical/lxd/shared/api"
 )
 
-// Certificate is here to pass the certificates content from the database around.
-type Certificate struct {
+// CertificateLegacy is here to pass the certificates content from the database around.
+type CertificateLegacy struct {
 	ID          int64
 	Fingerprint string `db:"primary=yes"`
 	Type        certificate.Type
@@ -26,7 +26,7 @@ type Certificate struct {
 }
 
 // ToAPIType returns the API equivalent type.
-func (cert *Certificate) ToAPIType() string {
+func (cert *CertificateLegacy) ToAPIType() string {
 	switch cert.Type {
 	case certificate.TypeClient:
 		return api.CertificateTypeClient
@@ -40,7 +40,7 @@ func (cert *Certificate) ToAPIType() string {
 }
 
 // ToIdentityType returns a suitable IdentityType for the certificate.
-func (cert *Certificate) ToIdentityType() (IdentityType, error) {
+func (cert *CertificateLegacy) ToIdentityType() (IdentityType, error) {
 	switch cert.Type {
 	case certificate.TypeClient:
 		if cert.Restricted {
@@ -61,9 +61,9 @@ func (cert *Certificate) ToIdentityType() (IdentityType, error) {
 	return "", fmt.Errorf("Unknown certificate type %d", cert.Type)
 }
 
-// ToAPI converts the database Certificate struct to an api.Certificate
+// ToAPI converts the database CertificateLegacy struct to an api.Certificate
 // entry filling fields from the database as necessary.
-func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificate, error) {
+func (cert *CertificateLegacy) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificate, error) {
 	resp := api.Certificate{}
 	resp.Fingerprint = cert.Fingerprint
 	resp.Certificate = cert.Certificate
@@ -71,7 +71,7 @@ func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificat
 	resp.Restricted = cert.Restricted
 	resp.Type = cert.ToAPIType()
 
-	projects, err := GetCertificateProjects(ctx, tx, cert.ID)
+	projects, err := GetCertificateLegacyProjects(ctx, tx, cert.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +84,9 @@ func (cert *Certificate) ToAPI(ctx context.Context, tx *sql.Tx) (*api.Certificat
 	return &resp, nil
 }
 
-// GetCertificateProjects returns a slice of [Project] that the [Certificate] with the given ID is related to.
+// GetCertificateLegacyProjects returns a slice of [Project] that the [CertificateLegacy] with the given ID is related to.
 // This is only valid for restricted legacy certificates.
-func GetCertificateProjects(ctx context.Context, tx *sql.Tx, certificateID int64) ([]Project, error) {
+func GetCertificateLegacyProjects(ctx context.Context, tx *sql.Tx, certificateID int64) ([]Project, error) {
 	q := `
 SELECT projects.id, projects.description, projects.name FROM projects 
     JOIN identities_projects ON projects.id = identities_projects.project_id 
@@ -96,8 +96,8 @@ SELECT projects.id, projects.description, projects.name FROM projects
 	return getProjectsRaw(ctx, tx, q, certificateID)
 }
 
-// ToIdentity converts a Certificate to an Identity.
-func (cert Certificate) ToIdentity() (*Identity, error) {
+// ToIdentity converts a CertificateLegacy to an Identity.
+func (cert CertificateLegacy) ToIdentity() (*Identity, error) {
 	identityType, err := cert.ToIdentityType()
 	if err != nil {
 		return nil, fmt.Errorf("Failed converting certificate to identity: %w", err)
@@ -120,17 +120,17 @@ func (cert Certificate) ToIdentity() (*Identity, error) {
 	return identity, nil
 }
 
-var getCertificateIdentitiesClause = `
+var getCertificateLegacyIdentitiesClause = `
 	WHERE auth_method = ` + strconv.Itoa(int(authMethodTLS)) + `
 	AND type in ` + query.IntParams(certIdentityTypes()...)
 
-// GetCertificateByFingerprintPrefix gets a Certificate from the database.
+// GetCertificateLegacyByFingerprintPrefix gets a CertificateLegacy from the database.
 // The argument fingerprint will be queried with a LIKE query, means you can
 // pass a shortform and will get the full fingerprint.
 // There can never be more than one certificate with a given fingerprint, as it is
 // enforced by a UNIQUE constraint in the schema.
-func GetCertificateByFingerprintPrefix(ctx context.Context, tx *sql.Tx, fingerprintPrefix string) (*Certificate, error) {
-	id, err := query.SelectOne[Identity](ctx, tx, getCertificateIdentitiesClause+" AND identities.identifier LIKE ?", fingerprintPrefix+"%")
+func GetCertificateLegacyByFingerprintPrefix(ctx context.Context, tx *sql.Tx, fingerprintPrefix string) (*CertificateLegacy, error) {
+	id, err := query.SelectOne[Identity](ctx, tx, getCertificateLegacyIdentitiesClause+" AND identities.identifier LIKE ?", fingerprintPrefix+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -138,17 +138,17 @@ func GetCertificateByFingerprintPrefix(ctx context.Context, tx *sql.Tx, fingerpr
 	return id.ToCertificate()
 }
 
-// CreateCertificateWithProjects stores a Certificate object in the db, and associates it to a list of project names.
-// It will ignore the ID field from the Certificate.
-func CreateCertificateWithProjects(ctx context.Context, tx *sql.Tx, cert Certificate, projectNames []string) (int64, error) {
+// CreateCertificateLegacyWithProjects stores a CertificateLegacy object in the db, and associates it to a list of project names.
+// It will ignore the ID field from the CertificateLegacy.
+func CreateCertificateLegacyWithProjects(ctx context.Context, tx *sql.Tx, cert CertificateLegacy, projectNames []string) (int64, error) {
 	var id int64
 	var err error
-	id, err = CreateCertificate(ctx, tx, cert)
+	id, err = CreateCertificateLegacy(ctx, tx, cert)
 	if err != nil {
 		return -1, err
 	}
 
-	err = UpdateCertificateProjects(ctx, tx, id, projectNames)
+	err = UpdateCertificateLegacyProjects(ctx, tx, id, projectNames)
 	if err != nil {
 		return -1, err
 	}
@@ -156,8 +156,8 @@ func CreateCertificateWithProjects(ctx context.Context, tx *sql.Tx, cert Certifi
 	return id, err
 }
 
-// UpdateCertificateProjects deletes and replaces any certificate to project associations.
-func UpdateCertificateProjects(ctx context.Context, tx *sql.Tx, certificateID int64, projectNames []string) error {
+// UpdateCertificateLegacyProjects deletes and replaces any certificate to project associations.
+func UpdateCertificateLegacyProjects(ctx context.Context, tx *sql.Tx, certificateID int64, projectNames []string) error {
 	_, err := tx.ExecContext(ctx, "DELETE FROM identities_projects WHERE identity_id = ?", certificateID)
 	if err != nil {
 		return fmt.Errorf("Failed deleting existing certificate project relationships: %w", err)
@@ -191,14 +191,14 @@ func UpdateCertificateProjects(ctx context.Context, tx *sql.Tx, certificateID in
 	return nil
 }
 
-// GetCertificates returns all available certificates.
-func GetCertificates(ctx context.Context, tx *sql.Tx) ([]Certificate, error) {
-	certificateIdentities, err := query.Select[Identity](ctx, tx, getCertificateIdentitiesClause)
+// GetCertificatesLegacy returns all available certificates.
+func GetCertificatesLegacy(ctx context.Context, tx *sql.Tx) ([]CertificateLegacy, error) {
+	certificateIdentities, err := query.Select[Identity](ctx, tx, getCertificateLegacyIdentitiesClause)
 	if err != nil {
 		return nil, err
 	}
 
-	certificates := make([]Certificate, 0, len(certificateIdentities))
+	certificates := make([]CertificateLegacy, 0, len(certificateIdentities))
 	for _, certificateIdentity := range certificateIdentities {
 		cert, err := certificateIdentity.ToCertificate()
 		if err != nil {
@@ -211,9 +211,9 @@ func GetCertificates(ctx context.Context, tx *sql.Tx) ([]Certificate, error) {
 	return certificates, nil
 }
 
-// GetCertificate returns the certificate with the given fingerprint.
-func GetCertificate(ctx context.Context, tx *sql.Tx, fingerprint string) (*Certificate, error) {
-	id, err := query.SelectOne[Identity](ctx, tx, getCertificateIdentitiesClause+" AND identities.identifier = ?", fingerprint)
+// GetCertificateLegacy returns the certificate with the given fingerprint.
+func GetCertificateLegacy(ctx context.Context, tx *sql.Tx, fingerprint string) (*CertificateLegacy, error) {
+	id, err := query.SelectOne[Identity](ctx, tx, getCertificateLegacyIdentitiesClause+" AND identities.identifier = ?", fingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -221,9 +221,9 @@ func GetCertificate(ctx context.Context, tx *sql.Tx, fingerprint string) (*Certi
 	return id.ToCertificate()
 }
 
-// GetCertificateID returns the ID of the certificate with the given fingerprint.
-func GetCertificateID(ctx context.Context, tx *sql.Tx, fingerprint string) (int64, error) {
-	cert, err := GetCertificate(ctx, tx, fingerprint)
+// GetCertificateLegacyID returns the ID of the certificate with the given fingerprint.
+func GetCertificateLegacyID(ctx context.Context, tx *sql.Tx, fingerprint string) (int64, error) {
+	cert, err := GetCertificateLegacy(ctx, tx, fingerprint)
 	if err != nil {
 		return 0, err
 	}
@@ -231,8 +231,8 @@ func GetCertificateID(ctx context.Context, tx *sql.Tx, fingerprint string) (int6
 	return cert.ID, nil
 }
 
-// CreateCertificate adds a new certificate to the database.
-func CreateCertificate(ctx context.Context, tx *sql.Tx, object Certificate) (int64, error) {
+// CreateCertificateLegacy adds a new certificate to the database.
+func CreateCertificateLegacy(ctx context.Context, tx *sql.Tx, object CertificateLegacy) (int64, error) {
 	identity, err := object.ToIdentity()
 	if err != nil {
 		return 0, err
@@ -241,13 +241,13 @@ func CreateCertificate(ctx context.Context, tx *sql.Tx, object Certificate) (int
 	return query.Create(ctx, tx, *identity)
 }
 
-// DeleteCertificate deletes the certificate matching the given key parameters.
-func DeleteCertificate(ctx context.Context, tx *sql.Tx, fingerprint string) error {
+// DeleteCertificateLegacy deletes the certificate matching the given key parameters.
+func DeleteCertificateLegacy(ctx context.Context, tx *sql.Tx, fingerprint string) error {
 	return DeleteIdentityByAuthenticationMethodAndIdentifier(ctx, tx, api.AuthenticationMethodTLS, fingerprint)
 }
 
-// UpdateCertificate updates the certificate matching the given key parameters.
-func UpdateCertificate(ctx context.Context, tx *sql.Tx, object Certificate) error {
+// UpdateCertificateLegacy updates the certificate matching the given key parameters.
+func UpdateCertificateLegacy(ctx context.Context, tx *sql.Tx, object CertificateLegacy) error {
 	identity, err := object.ToIdentity()
 	if err != nil {
 		return err
