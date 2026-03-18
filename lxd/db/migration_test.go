@@ -5,6 +5,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/canonical/lxd/lxd/db"
 	"github.com/canonical/lxd/lxd/db/cluster"
 	"github.com/canonical/lxd/lxd/db/query"
+	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
 )
 
@@ -63,6 +65,12 @@ func TestImportPreClusteringData(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
+	testCertPair := shared.TestingKeyPair()
+	testCert, err := testCertPair.PublicKeyX509()
+	require.NoError(t, err)
+	testCertString := string(pem.EncodeToMemory(&pem.Block{Bytes: testCert.Raw, Type: "CERTIFICATE"}))
+	fingerprint := shared.CertFingerprint(testCert)
+
 	// certificates
 	err = c.Transaction(context.TODO(), func(ctx context.Context, tx *db.ClusterTx) error {
 		certs, err := cluster.GetCertificatesLegacy(context.Background(), tx.Tx())
@@ -70,10 +78,10 @@ func TestImportPreClusteringData(t *testing.T) {
 		assert.Len(t, certs, 1)
 		cert := certs[0]
 		assert.Equal(t, int64(1), cert.ID)
-		assert.Equal(t, "abcd:efgh", cert.Fingerprint)
+		assert.Equal(t, fingerprint, cert.Fingerprint)
 		assert.Equal(t, certificate.TypeClient, cert.Type)
 		assert.Equal(t, "foo", cert.Name)
-		assert.Equal(t, "FOO", cert.Certificate)
+		assert.Equal(t, testCertString, cert.Certificate)
 		return nil
 	})
 	require.NoError(t, err)
@@ -241,9 +249,15 @@ func newPreClusteringTx(t *testing.T) *sql.Tx {
 	tx, err := db.Begin()
 	require.NoError(t, err)
 
+	testCertPair := shared.TestingKeyPair()
+	testCert, err := testCertPair.PublicKeyX509()
+	require.NoError(t, err)
+	testCertString := string(pem.EncodeToMemory(&pem.Block{Bytes: testCert.Raw, Type: "CERTIFICATE"}))
+	fingerprint := shared.CertFingerprint(testCert)
+
 	stmts := []string{
 		preClusteringNodeSchema,
-		"INSERT INTO certificates VALUES (1, 'abcd:efgh', 1, 'foo', 'FOO')",
+		fmt.Sprintf("INSERT INTO certificates VALUES (1, '%s', 1, 'foo', '%s')", fingerprint, testCertString),
 		"INSERT INTO config VALUES(1, 'core.https_address', '1.2.3.4:666')",
 		"INSERT INTO config VALUES(2, 'user.foo', 'bar')",
 		"INSERT INTO profiles VALUES(1, 'default', 'Default LXD profile')",
