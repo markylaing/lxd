@@ -1065,17 +1065,12 @@ func doCertificateUpdate(ctx context.Context, d *Daemon, certificateID int64, db
 
 	// Update the database record.
 	err = s.DB.Cluster.Transaction(ctx, func(ctx context.Context, tx *db.ClusterTx) error {
-		id, err := dbCluster.GetCertificateLegacyID(ctx, tx.Tx(), dbInfo.Fingerprint)
-		if err != nil {
-			return err
-		}
-
 		err = dbCluster.UpdateCertificateLegacy(ctx, tx.Tx(), dbCert)
 		if err != nil {
 			return err
 		}
 
-		return dbCluster.UpdateCertificateLegacyProjects(ctx, tx.Tx(), id, certProjects)
+		return dbCluster.UpdateCertificateLegacyProjects(ctx, tx.Tx(), dbCert.ID, certProjects)
 	})
 	if err != nil {
 		return response.SmartError(err)
