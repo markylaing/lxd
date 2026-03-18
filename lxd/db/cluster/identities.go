@@ -486,3 +486,83 @@ WHERE auth_groups.name IN %s
 func GetIdentityByID(ctx context.Context, tx *sql.Tx, id int64) (*Identity, error) {
 	return query.SelectOne[Identity](ctx, tx, "WHERE identities.id = ?", id)
 }
+
+// CreateTLSIdentity creates an Identity and a Certificate, and then adds a row to their association table.
+func CreateTLSIdentity(ctx context.Context, tx *sql.Tx, name string, idType string, cert x509.Certificate) (int64, error) {
+	// Create the identity.
+	fingerprint := shared.CertFingerprint(&cert)
+	id := Identity{
+		AuthMethod: AuthMethod(api.AuthenticationMethodTLS),
+		Type:       IdentityType(idType),
+		Identifier: fingerprint,
+		Name:       name,
+	}
+
+	identityID, err := query.Create(ctx, tx, id)
+	if err != nil {
+		if api.StatusErrorCheck(err, http.StatusConflict) {
+			// Check if we already have the certificate.
+			_, err := GetIdentityByAuthenticationMethodAndIdentifier(ctx, tx, api.AuthenticationMethodTLS, id.Identifier)
+			if err == nil {
+				return -1, api.NewStatusError(http.StatusConflict, "Identity already exists")
+			}
+
+			// If there are no identities with the same fingerprint, then there is a name conflict
+			return -1, api.StatusErrorf(http.StatusConflict, "An identity with name %q already exists", id.Name)
+		}
+
+		return -1, fmt.Errorf("Failed creating identity: %w", err)
+	}
+
+	certificate := Certificate{
+		Fingerprint: fingerprint,
+		Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})),
+	}
+
+	// Create the certificate
+	certificateID, err := query.Create(ctx, tx, certificate)
+	if err != nil {
+		return -1, fmt.Errorf("Failed creating certificate: %w", err)
+	}
+
+	// Associate identity with certificate.
+	_, err = tx.ExecContext(ctx, "INSERT INTO identities_certificates (identity_id, certificate_id) VALUES (?, ?)", identityID, certificateID)
+	if err != nil {
+		return -1, fmt.Errorf("Failed associating identity with certificate: %w", err)
+	}
+
+	return identityID, nil
+}
+
+// UpdateIdentityCertificate replaces an identities certificate with the given one.
+func UpdateIdentityCertificate(ctx context.Context, tx *sql.Tx, id Identity, cert x509.Certificate) error {
+	certificateID := id.CertificateID
+	if certificateID == 0 {
+		clause := `JOIN identities_certificates ON certificates.id = identities_certificates.certificate_id WHERE identities_certificates.identity_id = ?`
+		dbCert, err := query.SelectOne[Certificate](ctx, tx, clause, id.ID)
+		if err != nil {
+			return fmt.Errorf("Failed getting certificate associated with identity: %w", err)
+		}
+
+		certificateID = dbCert.ID
+	}
+
+	certToUpdate := Certificate{
+		ID:          certificateID,
+		Fingerprint: shared.CertFingerprint(&cert),
+		Certificate: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})),
+	}
+
+	err := query.Update(ctx, tx, certToUpdate)
+	if err != nil {
+		return fmt.Errorf("Failed updating certificate: %w", err)
+	}
+
+	id.Identifier = shared.CertFingerprint(&cert)
+	err = query.Update(ctx, tx, id)
+	if err != nil {
+		return fmt.Errorf("Failed updating identity identifier: %w", err)
+	}
+
+	return nil
+}
