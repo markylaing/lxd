@@ -484,5 +484,5 @@ WHERE auth_groups.name IN %s
 
 // GetIdentityByID gets a single identity with the given ID.
 func GetIdentityByID(ctx context.Context, tx *sql.Tx, id int64) (*Identity, error) {
-	return query.SelectOne[Identity](ctx, tx, "WHERE id = ?", id)
+	return query.SelectOne[Identity](ctx, tx, "WHERE identities.id = ?", id)
 }
