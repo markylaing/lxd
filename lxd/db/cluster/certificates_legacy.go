@@ -4,8 +4,10 @@ package cluster
 
 import (
 	"context"
+	"crypto/x509"
 	"database/sql"
-	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -103,18 +105,13 @@ func (cert CertificateLegacy) ToIdentity() (*Identity, error) {
 		return nil, fmt.Errorf("Failed converting certificate to identity: %w", err)
 	}
 
-	b, err := json.Marshal(CertificateMetadata{Certificate: cert.Certificate})
-	if err != nil {
-		return nil, fmt.Errorf("Failed converting certificate to identity: %w", err)
-	}
-
 	identity := &Identity{
-		ID:         cert.ID,
-		AuthMethod: AuthMethod(api.AuthenticationMethodTLS),
-		Type:       identityType,
-		Identifier: cert.Fingerprint,
-		Name:       cert.Name,
-		Metadata:   string(b),
+		ID:          cert.ID,
+		AuthMethod:  AuthMethod(api.AuthenticationMethodTLS),
+		Type:        identityType,
+		Identifier:  cert.Fingerprint,
+		Name:        cert.Name,
+		Certificate: cert.Certificate,
 	}
 
 	return identity, nil
@@ -235,10 +232,20 @@ func GetCertificateLegacyID(ctx context.Context, tx *sql.Tx, fingerprint string)
 func CreateCertificateLegacy(ctx context.Context, tx *sql.Tx, object CertificateLegacy) (int64, error) {
 	identity, err := object.ToIdentity()
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
-	return query.Create(ctx, tx, *identity)
+	certBlock, _ := pem.Decode([]byte(object.Certificate))
+	if certBlock == nil {
+		return -1, errors.New("Failed decoding certificate")
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return -1, fmt.Errorf("Failed parsing certificate: %w", err)
+	}
+
+	return CreateTLSIdentity(ctx, tx, object.Name, string(identity.Type), *cert)
 }
 
 // DeleteCertificateLegacy deletes the certificate matching the given key parameters.
@@ -253,5 +260,15 @@ func UpdateCertificateLegacy(ctx context.Context, tx *sql.Tx, object Certificate
 		return err
 	}
 
-	return query.Update(ctx, tx, identity)
+	certBlock, _ := pem.Decode([]byte(object.Certificate))
+	if certBlock == nil {
+		return errors.New("Failed decoding certificate")
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return fmt.Errorf("Failed parsing certificate: %w", err)
+	}
+
+	return UpdateIdentityCertificate(ctx, tx, *identity, *cert)
 }
