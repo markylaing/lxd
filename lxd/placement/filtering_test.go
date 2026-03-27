@@ -96,7 +96,7 @@ func (s *filteringSuite) TestFilter() {
 					})
 					s.Require().NoError(err)
 
-					err = cluster.CreatePlacementGroupConfig(ctx, tx.Tx(), pgID, map[string]string{
+					err = cluster.PlacementGroupConfig().Set(ctx, tx.Tx(), pgID, map[string]string{
 						"policy": api.PlacementPolicySpread,
 						"rigor":  api.PlacementRigorStrict,
 					})
@@ -215,7 +215,7 @@ func (s *filteringSuite) TestFilter() {
 					})
 					s.Require().NoError(err)
 
-					err = cluster.CreatePlacementGroupConfig(ctx, tx.Tx(), pgID, map[string]string{
+					err = cluster.PlacementGroupConfig().Set(ctx, tx.Tx(), pgID, map[string]string{
 						"policy": api.PlacementPolicySpread,
 						"rigor":  api.PlacementRigorPermissive,
 					})
@@ -309,7 +309,7 @@ func (s *filteringSuite) TestFilter() {
 					})
 					s.Require().NoError(err)
 
-					err = cluster.CreatePlacementGroupConfig(ctx, tx.Tx(), pgID, map[string]string{
+					err = cluster.PlacementGroupConfig().Set(ctx, tx.Tx(), pgID, map[string]string{
 						"policy": api.PlacementPolicyCompact,
 						"rigor":  api.PlacementRigorStrict,
 					})
@@ -463,7 +463,7 @@ func (s *filteringSuite) TestFilter() {
 					})
 					s.Require().NoError(err)
 
-					err = cluster.CreatePlacementGroupConfig(ctx, tx.Tx(), pgID, map[string]string{
+					err = cluster.PlacementGroupConfig().Set(ctx, tx.Tx(), pgID, map[string]string{
 						"policy": api.PlacementPolicyCompact,
 						"rigor":  api.PlacementRigorPermissive,
 					})
