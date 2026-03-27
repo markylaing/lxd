@@ -1659,7 +1659,12 @@ func instancesPostSelectClusterMember(ctx context.Context, tx *db.ClusterTx, pla
 		return nil, err
 	}
 
-	apiPlacementGroup, err := placementGroup.ToAPI(ctx, tx.Tx())
+	placementGroupConfig, err := dbCluster.PlacementGroupConfig().GetByEntityIDs(ctx, tx.Tx(), placementGroup.Row.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	apiPlacementGroup, err := placementGroup.ToAPI(placementGroupConfig)
 	if err != nil {
 		return nil, err
 	}
