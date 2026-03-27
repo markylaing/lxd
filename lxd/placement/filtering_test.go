@@ -615,12 +615,7 @@ func (s *filteringSuite) TestFilter() {
 				return err
 			}
 
-			apiPlacementGroup, err := placementGroup.ToAPI(ctx, tx.Tx())
-			if err != nil {
-				return err
-			}
-
-			got, err := Filter(ctx, tx, tt.args.candidates, *apiPlacementGroup, false)
+			got, err := Filter(ctx, tx, tt.args.candidates, *placementGroup, false)
 			if tt.wantErr {
 				s.Error(err)
 				return nil
