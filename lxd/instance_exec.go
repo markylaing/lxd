@@ -294,11 +294,11 @@ func (s *execWs) Do(ctx context.Context, op *operations.Operation) error {
 		return cmdErr
 	}
 
-	cmd, err := s.instance.Exec(ctx, s.req, stdin, stdout, stderr)
-	if err != nil {
-		return finisher(-1, err)
-	}
-
+	//	cmd, err := s.instance.Exec(ctx, s.req, stdin, stdout, stderr)
+	//	if err != nil {
+	//		return finisher(-1, err)
+	//	}
+	cmd := instance.NewMockCmd(stdin, stdout, stderr)
 	l := logger.AddContext(logger.Ctx{"project": s.instance.Project().Name, "instance": s.instance.Name(), "PID": cmd.PID(), "interactive": s.req.Interactive})
 	l.Debug("Instance process started")
 
