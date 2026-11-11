@@ -574,7 +574,7 @@ func GetIdentityAuthGroupNames(ctx context.Context, tx *sql.Tx, identityID *int6
 	g := AuthGroupsRow{}
 	var b strings.Builder
 	b.WriteString(`SELECT identities_auth_groups.identity_id, `)
-	authGroupSelectColumns := g.SelectColumns()
+	authGroupSelectColumns := g.DefaultSelectColumns()
 	b.WriteString(authGroupSelectColumns[0])
 	for _, col := range authGroupSelectColumns[1:] {
 		b.WriteString(", ")
@@ -596,7 +596,14 @@ JOIN identities_auth_groups ON auth_groups.id = identities_auth_groups.auth_grou
 	dest := func(scan func(dest ...any) error) error {
 		var identityID int64
 		g := AuthGroupsRow{}
-		err := scan(append([]any{&identityID}, g.ScanArgs()...)...)
+		args := []any{&identityID}
+		groupScanArgs, err := g.ScanArgs(g.DefaultSelectColumns()...)
+		if err != nil {
+			return err
+		}
+
+		args = append(args, groupScanArgs...)
+		err = scan(args...)
 		if err != nil {
 			return err
 		}

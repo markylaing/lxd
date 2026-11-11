@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,19 +28,17 @@ type TableNamer interface {
 	TableName() string
 }
 
-// CreateValuer defines the values used at create time for the implementing type.
+// Valuer defines the values used at create time for the implementing type.
 // The primary key should not be included, as it is expected that this is an auto-incrementing integer value to be
 // returned by the database.
-type CreateValuer interface {
-	CreateValues() []any
+type Valuer interface {
+	Values(columns ...string) ([]any, error)
 }
 
 // Creatable is a type that knows how to create itself.
 type Creatable interface {
-	APINamer
-	TableNamer
-	CreateValuer
-	CreateStmt() string
+	Referenceable
+	DefaultCreateColumns() []string
 }
 
 // Referenceable is a type that knows how to reference itself in the database.
@@ -47,15 +46,14 @@ type Creatable interface {
 type Referenceable interface {
 	APINamer
 	TableNamer
-	PKColumns() []string
-	PKValues() []any
+	Valuer
+	PrimaryKeyColumns() []string
 }
 
 // Updatable defines a type that knows how to update itself.
 type Updatable interface {
 	Referenceable
-	UpdateValues() []any
-	UpdateStmt() string
+	DefaultUpdateColumns() []string
 }
 
 // Selectable specifies how to query for all the basic data for a given type.
@@ -63,7 +61,7 @@ type Updatable interface {
 type Selectable interface {
 	APINamer
 	TableNamer
-	SelectColumns() []string
+	DefaultSelectColumns() []string
 	Joins() []string
 }
 
@@ -71,7 +69,7 @@ type Selectable interface {
 // It must be implemented on a pointer to a [Selectable], and the order of the arguments must
 // match the order of columns from [Selectable.SelectColumns].
 type ScanArger interface {
-	ScanArgs() []any
+	ScanArgs(columns ...string) ([]any, error)
 }
 
 // notFoundErr returns a 404 Not Found error for the given type.
@@ -94,13 +92,44 @@ func plural(t APINamer) string {
 	return t.APIName() + "s"
 }
 
-func create(ctx context.Context, tx *sql.Tx, c Creatable, replace bool) (int64, error) {
-	stmt := c.CreateStmt()
-	if replace {
-		stmt = strings.Replace(stmt, "INSERT", "INSERT OR REPLACE", 1)
+func createOneStmt(c Creatable, columns []string, replace bool) (string, []any, error) {
+	if len(columns) == 0 {
+		return "", nil, errors.New("No columns specified")
 	}
 
-	res, err := tx.ExecContext(ctx, stmt, c.CreateValues()...)
+	values, err := c.Values(columns...)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var b strings.Builder
+	b.WriteString("INSERT ")
+	if replace {
+		b.WriteString("OR REPLACE ")
+	}
+
+	b.WriteString("INTO ")
+	b.WriteString(c.TableName())
+	b.WriteString(" (")
+	b.WriteString(columns[0])
+	for _, column := range columns[1:] {
+		b.WriteString(",")
+		b.WriteString(column)
+	}
+
+	b.WriteString(") VALUES ")
+	b.WriteString(Params(len(values)))
+
+	return b.String(), values, nil
+}
+
+func create(ctx context.Context, tx *sql.Tx, c Creatable, columns []string, replace bool) (int64, error) {
+	stmt, values, err := createOneStmt(c, columns, replace)
+	if err != nil {
+		return -1, fmt.Errorf("Failed creating %s: %w", strings.ToLower(c.APIName()), err)
+	}
+
+	res, err := tx.ExecContext(ctx, stmt, values...)
 	if err != nil {
 		if IsConflictErr(err) {
 			return -1, conflictErr(c)
@@ -120,13 +149,21 @@ func create(ctx context.Context, tx *sql.Tx, c Creatable, replace bool) (int64, 
 // Create creates a [Creatable]. All columns are set except for the primary key.
 // This is because it is assumed that the primary key is auto-assigned at the database layer.
 func Create(ctx context.Context, tx *sql.Tx, c Creatable) (int64, error) {
-	return create(ctx, tx, c, false)
+	return create(ctx, tx, c, c.DefaultCreateColumns(), false)
 }
 
 // CreateOrReplace creates or replaces a [Creatable]. All columns are set except for the primary key.
 // This is because it is assumed that the primary key is auto-assigned at the database layer.
 func CreateOrReplace(ctx context.Context, tx *sql.Tx, c Creatable) (int64, error) {
-	return create(ctx, tx, c, true)
+	return create(ctx, tx, c, c.DefaultCreateColumns(), true)
+}
+
+func CreateWithColumns(ctx context.Context, tx *sql.Tx, c Creatable, columns []string) (int64, error) {
+	return create(ctx, tx, c, columns, false)
+}
+
+func CreateOrReplaceWithColumns(ctx context.Context, tx *sql.Tx, c Creatable, columns []string) (int64, error) {
+	return create(ctx, tx, c, columns, true)
 }
 
 // CreateMany creates multiple [Creatable] entities in a single multi-row INSERT statement.
@@ -146,17 +183,28 @@ func CreateMany[T Creatable, _ interface {
 		first = creatables[0]
 	}
 
-	var b strings.Builder
-	b.WriteString(first.CreateStmt())
-	args := first.CreateValues()
-	paramsStr := Params(len(args))
-	for _, c := range creatables[1:] {
-		b.WriteString(", ")
-		b.WriteString(paramsStr)
-		args = append(args, c.CreateValues()...)
+	columns := first.DefaultCreateColumns()
+	firstStmt, firstValues, err := createOneStmt(first, columns, false)
+	if err != nil {
+		return err
 	}
 
-	_, err := tx.ExecContext(ctx, b.String(), args...)
+	var b strings.Builder
+	b.WriteString(firstStmt)
+	args := firstValues
+	paramsStr := Params(len(args))
+	for _, c := range creatables[1:] {
+		values, err := c.Values(columns...)
+		if err != nil {
+			return fmt.Errorf("Failed creating %s: %w", strings.ToLower(plural(first)), err)
+		}
+
+		b.WriteString(", ")
+		b.WriteString(paramsStr)
+		args = append(args, values...)
+	}
+
+	_, err = tx.ExecContext(ctx, b.String(), args...)
 	if err != nil {
 		if IsConflictErr(err) {
 			return conflictErr(first)
@@ -168,31 +216,58 @@ func CreateMany[T Creatable, _ interface {
 	return nil
 }
 
+func updateManyStmt(u Updatable, columns []string) (string, []any, error) {
+	if len(columns) == 0 {
+		return "", nil, errors.New("No columns specified")
+	}
+
+	values, err := u.Values(columns...)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var b strings.Builder
+	b.WriteString("UPDATE ")
+	b.WriteString(u.TableName())
+	b.WriteString(" SET ")
+
+	b.WriteString(columns[0])
+	b.WriteString(" = ?")
+	for _, c := range columns[1:] {
+		b.WriteString(", ")
+		b.WriteString(c)
+		b.WriteString(" = ?")
+	}
+
+	return b.String(), values, nil
+}
+
 // UpdateByPrimaryKey updates an [Updatable] type by its primary key. It sets all fields except for the primary key.
 // The expected usage is to get an [Updatable] entry from the database (e.g. via [SelectOne]), change fields on it
 // directly, and then call Update. This pattern is encouraged so that we get an entity, perform an authorization check,
 // and then update the values.
 func UpdateByPrimaryKey(ctx context.Context, tx *sql.Tx, u Updatable) error {
-	var b strings.Builder
-	b.WriteString(u.UpdateStmt())
-	b.WriteString(" WHERE ")
-	cols := u.PKColumns()
-	lastColIdx := len(cols) - 1
-	for i, c := range cols {
-		b.WriteString(c)
-		b.WriteString(" = ?")
-		if i < lastColIdx {
-			b.WriteString(" AND ")
-		}
+	return UpdateColumnsByPrimaryKey(ctx, tx, u, u.DefaultUpdateColumns())
+}
+
+func UpdateColumnsByPrimaryKey(ctx context.Context, tx *sql.Tx, u Updatable, columns []string) error {
+	stmt, values, err := updateManyStmt(u, columns)
+	if err != nil {
+		return fmt.Errorf("Failed updating %s by primary key: %w", strings.ToLower(u.APIName()), err)
 	}
 
-	res, err := tx.ExecContext(ctx, b.String(), append(u.UpdateValues(), u.PKValues()...)...)
+	pkClause, pkValues, err := primaryKeyClause(u)
+	if err != nil {
+		return fmt.Errorf("Failed updating %s by primary key: %w", strings.ToLower(u.APIName()), err)
+	}
+
+	res, err := tx.ExecContext(ctx, stmt+pkClause, append(values, pkValues...)...)
 	if err != nil {
 		if IsConflictErr(err) {
 			return conflictErr(u)
 		}
 
-		return fmt.Errorf("Failed updating %s: %w", strings.ToLower(u.APIName()), err)
+		return fmt.Errorf("Failed updating %s by primary key: %w", strings.ToLower(u.APIName()), err)
 	}
 
 	n, err := res.RowsAffected()
@@ -203,6 +278,15 @@ func UpdateByPrimaryKey(ctx context.Context, tx *sql.Tx, u Updatable) error {
 	if n == 0 || n > 1 {
 		err = fmt.Errorf("Update by primary key affected %d rows", n)
 		if n == 0 {
+			if len(pkValues) == 1 {
+				switch i := pkValues[0].(type) {
+				case int, int64:
+					if i == 0 {
+						return fmt.Errorf("%w: Integer primary key is unset", err)
+					}
+				}
+			}
+
 			// Don't return a not found error here. If we try to update something by primary key and it is not present,
 			// there is an error in our business logic (e.g. we may need to prevent deletion of the resource until an
 			// operation/handler is finished).
@@ -219,12 +303,21 @@ func UpdateByPrimaryKey(ctx context.Context, tx *sql.Tx, u Updatable) error {
 // The args variadic should contain only the bind arguments for the given clause.
 // Remaining bind arguments are defined by the [Updatable] type.
 func UpdateOne(ctx context.Context, tx *sql.Tx, u Updatable, clause string, args ...any) error {
+	return UpdateOneWithColumns(ctx, tx, u, u.DefaultUpdateColumns(), clause, args...)
+}
+
+func UpdateOneWithColumns(ctx context.Context, tx *sql.Tx, u Updatable, columns []string, clause string, args ...any) error {
+	stmt, values, err := updateManyStmt(u, columns)
+	if err != nil {
+		return fmt.Errorf("Failed updating %s: %w", strings.ToLower(u.APIName()), err)
+	}
+
 	var b strings.Builder
-	b.WriteString(u.UpdateStmt())
+	b.WriteString(stmt)
 	b.WriteString(" ")
 	b.WriteString(clause)
 
-	res, err := tx.ExecContext(ctx, b.String(), append(u.UpdateValues(), args...)...)
+	res, err := tx.ExecContext(ctx, b.String(), append(values, args...)...)
 	if err != nil {
 		if IsConflictErr(err) {
 			return conflictErr(u)
@@ -249,16 +342,25 @@ func UpdateOne(ctx context.Context, tx *sql.Tx, u Updatable, clause string, args
 
 // Select is a wrapper for [SelectFunc] which passes a simple function to append each scanned row to a slice and returns it.
 func Select[T Selectable, PT interface {
-	ScanArgs() []any
+	ScanArgs(...string) ([]any, error)
 	*T
 }](ctx context.Context, tx *sql.Tx, clause string, args ...any) ([]T, error) {
+	t := *new(T)
+	return SelectColumns[T, PT](ctx, tx, clause, t.DefaultSelectColumns(), args...)
+}
+
+// SelectColumns is a wrapper for [SelectFunc] which passes a simple function to append each scanned row to a slice and returns it.
+func SelectColumns[T Selectable, PT interface {
+	ScanArgs(...string) ([]any, error)
+	*T
+}](ctx context.Context, tx *sql.Tx, clause string, columns []string, args ...any) ([]T, error) {
 	var ts []T
 	f := func(t T) error {
 		ts = append(ts, t)
 		return nil
 	}
 
-	err := SelectFunc[T, PT](ctx, tx, clause, f, args...)
+	err := SelectColumnsFunc[T, PT](ctx, tx, clause, columns, f, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -272,17 +374,30 @@ func Select[T Selectable, PT interface {
 // must implement [ScanArger]. This is important because it means that new(T), a pointer to T, is non-nil.
 // It also means that we call ScanArgs on the pointer to the type, so we scan a row directly into each fields' memory.
 func SelectFunc[T Selectable, PT interface {
-	ScanArgs() []any
+	ScanArgs(...string) ([]any, error)
 	*T
 }](ctx context.Context, tx *sql.Tx, clause string, rowFunc func(T) error, args ...any) error {
 	t := *new(T)
+	return SelectColumnsFunc[T, PT](ctx, tx, clause, t.DefaultSelectColumns(), rowFunc, args...)
+}
+
+func SelectColumnsFunc[T Selectable, PT interface {
+	ScanArgs(...string) ([]any, error)
+	*T
+}](ctx context.Context, tx *sql.Tx, clause string, columns []string, rowFunc func(T) error, args ...any) error {
+	if len(columns) == 0 {
+		return errors.New("No columns specified")
+	}
+
+	pt := PT(new(T))
+	t := *pt
+	_, err := pt.ScanArgs(columns...)
+	if err != nil {
+		return fmt.Errorf("Failed preparing %s query: %w", strings.ToLower(t.APIName()), err)
+	}
 
 	var b strings.Builder
 	b.WriteString("SELECT ")
-	columns := t.SelectColumns()
-	if len(columns) == 0 {
-		return fmt.Errorf("%T implements Selectable but SelectColumns has length 0", t)
-	}
 
 	b.WriteString(columns[0])
 	for _, column := range columns[1:] {
@@ -309,7 +424,12 @@ func SelectFunc[T Selectable, PT interface {
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		pt := PT(new(T))
-		err := rows.Scan(pt.ScanArgs()...)
+		scanArgs, err := pt.ScanArgs(columns...)
+		if err != nil {
+			return fmt.Errorf("Failed reading %s: %w", strings.ToLower(t.APIName()), err)
+		}
+
+		err = rows.Scan(scanArgs...)
 		if err != nil {
 			return fmt.Errorf("Failed reading %s: %w", strings.ToLower(t.APIName()), err)
 		}
@@ -333,7 +453,7 @@ func SelectFunc[T Selectable, PT interface {
 // The type constraint specifies that the non-pointer type must implement BaseQuerier, but a pointer to the same type
 // must implement [ScanArger].
 func SelectOne[T Selectable, PT interface {
-	ScanArgs() []any
+	ScanArgs(...string) ([]any, error)
 	*T
 }](ctx context.Context, tx *sql.Tx, clause string, args ...any) (PT, error) {
 	var pt PT
@@ -358,30 +478,49 @@ func SelectOne[T Selectable, PT interface {
 	return pt, nil
 }
 
+func primaryKeyClause(r Referenceable) (string, []any, error) {
+	pkColumns := r.PrimaryKeyColumns()
+	if len(pkColumns) == 0 {
+		return "", nil, errors.New("Failed getting primary key clause: No primary key columns specified")
+	}
+
+	pkValues, err := r.Values(pkColumns...)
+	if err != nil {
+		return "", nil, fmt.Errorf("Failed getting primary key clause: %w", err)
+	}
+
+	var b strings.Builder
+	b.WriteString(" WHERE ")
+	b.WriteString(pkColumns[0])
+	b.WriteString(" = ?")
+	for _, c := range pkColumns[1:] {
+		b.WriteString(" AND ")
+		b.WriteString(c)
+		b.WriteString(" = ?")
+	}
+
+	return b.String(), pkValues, nil
+}
+
 // DeleteByPrimaryKey deletes a [Referenceable] type by primary key.
 // The expected usage is to get a [Referenceable] (e.g. via [SelectOne]) and then call Delete on it.
 // Note that this function does not call DeleteOne. This is because the Referenceable argument might
 // not satisfy the type constraint.
 func DeleteByPrimaryKey[T Referenceable](ctx context.Context, tx *sql.Tx, t T) error {
 	tableName := t.TableName()
+	clause, pkValues, err := primaryKeyClause(t)
+	if err != nil {
+		return fmt.Errorf("Failed deleting %s: %w", strings.ToLower(t.APIName()), err)
+	}
 
 	var b strings.Builder
 	b.WriteString("DELETE FROM ")
 	b.WriteString(tableName)
-	b.WriteString(" WHERE ")
-	cols := t.PKColumns()
-	lastColIdx := len(cols) - 1
-	for i, c := range cols {
-		b.WriteString(c)
-		b.WriteString(" = ?")
-		if i < lastColIdx {
-			b.WriteString(" AND ")
-		}
-	}
+	b.WriteString(clause)
 
-	result, err := tx.ExecContext(ctx, b.String(), t.PKValues()...)
+	result, err := tx.ExecContext(ctx, b.String(), pkValues...)
 	if err != nil {
-		return fmt.Errorf("Failed deleting from table %q: %w", tableName, err)
+		return fmt.Errorf("Failed deleting %s: %w", strings.ToLower(t.APIName()), err)
 	}
 
 	deleted, err := result.RowsAffected()
@@ -410,17 +549,17 @@ func DeleteMany[T Referenceable, _ interface {
 	Referenceable
 	*T
 }](ctx context.Context, tx *sql.Tx, clause string, args ...any) (int64, error) {
-	tableName := (*new(T)).TableName()
+	r := *new(T)
 
 	var b strings.Builder
 	b.WriteString("DELETE FROM ")
-	b.WriteString(tableName)
+	b.WriteString(r.TableName())
 	b.WriteString(" ")
 	b.WriteString(clause)
 
 	result, err := tx.ExecContext(ctx, b.String(), args...)
 	if err != nil {
-		return -1, fmt.Errorf("Failed deleting from table %q: %w", tableName, err)
+		return -1, fmt.Errorf("Failed deleting %s: %w", strings.ToLower(r.APIName()), err)
 	}
 
 	n, err := result.RowsAffected()
@@ -444,12 +583,11 @@ func DeleteOne[T Referenceable, PT interface {
 		return err
 	}
 
-	t := *new(T)
-	tableName := t.TableName()
+	r := *new(T)
 	if n < 1 {
-		return notFoundErr(t)
+		return notFoundErr(r)
 	} else if n > 1 {
-		return NewMultipleMatchErr(fmt.Errorf("Expected to delete a single row from %q but deleted %d", tableName, n))
+		return NewMultipleMatchErr(fmt.Errorf("Expected to delete one %s but deleted %d", strings.ToLower(r.APIName()), n))
 	}
 
 	return nil

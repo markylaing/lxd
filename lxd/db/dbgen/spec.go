@@ -4,8 +4,6 @@ import (
 	"strings"
 	"text/template"
 	"unicode"
-
-	"github.com/canonical/lxd/lxd/db/query"
 )
 
 // Spec defines how an inspected struct maps to the database.
@@ -52,21 +50,19 @@ type FieldSpec struct {
 // templateContext returns the values used for rendering the template.
 func (s *Spec) templateContext() map[string]any {
 	return map[string]any{
-		"receiver":     string(s.receiver()),
-		"structName":   s.StructName,
-		"tableName":    s.TableName,
-		"backtick":     "`",
-		"scanColumns":  s.scanColumns(),
-		"joins":        s.joins(),
-		"scanArgs":     s.scanArgs(),
-		"createValues": s.createValues(),
-		"updateValues": s.updateValues(),
-		"pkColumns":    s.pkColumns(),
-		"pkValues":     s.pkValues(),
-		"createStmt":   s.createStmt(),
-		"updateStmt":   s.updateStmt(),
-		"genAPIName":   s.Reference != nil,
-		"apiName":      s.apiName(),
+		"receiver":             string(s.receiver()),
+		"structName":           s.StructName,
+		"tableName":            s.TableName,
+		"backtick":             "`",
+		"defaultSelectColumns": s.defaultSelectColumns(),
+		"joins":                s.joins(),
+		"scanArgs":             s.scanArgs(),
+		"defaultCreateColumns": s.defaultCreateColumns(),
+		"defaultUpdateColumns": s.defaultUpdateColumns(),
+		"primaryKeyColumns":    s.primaryKeyColumns(),
+		"values":               s.values(),
+		"genAPIName":           s.Reference != nil,
+		"apiName":              s.apiName(),
 	}
 }
 
@@ -81,9 +77,9 @@ func ({{ .receiver }} {{ .structName }}) APIName() string {
 	return {{ .apiName }}
 }
 {{ end }}
-// SelectColumns returns a slice of column names for [{{ .structName }}] entities.
-func ({{ .receiver }} {{ .structName }}) SelectColumns() []string {
-	return {{ .scanColumns }}
+// DefaultSelectColumns returns a slice of default column names for [{{ .structName }}] queries.
+func ({{ .receiver }} {{ .structName }}) DefaultSelectColumns() []string {
+	return {{ .defaultSelectColumns }}
 }
 
 // Joins returns a slice of join expressions for [{{ .structName }}].
@@ -93,42 +89,30 @@ func ({{ .receiver }} {{ .structName }}) Joins() []string {
 
 // ScanArgs implements [query.ScanArger] for [{{ .structName }}].
 // This returns references to struct fields in definition order.
-func ({{ .receiver }} *{{ .structName }}) ScanArgs() []any {
-	return {{ .scanArgs }}
+func ({{ .receiver }} *{{ .structName }}) ScanArgs(columns ...string) ([]any, error) {
+	{{ .scanArgs }}
 }
 `))
 
 var specExecTemplate = template.Must(template.New("exec").Parse(`
-// CreateValues returns a list of values from [{{ .structName }}] entities matching the bind arguments in [CreateStmt].
-func ({{ .receiver }} {{ .structName }}) CreateValues() []any {
-	return {{ .createValues }}
+// PrimaryKeyColumns returns the column names for the primary key of a [{{ .structName }}] entity used during an update.
+func ({{ .receiver }} {{ .structName }}) PrimaryKeyColumns() []string {
+	return {{ .primaryKeyColumns }}
 }
 
-// UpdateValues returns a list of values from [{{ .structName }}] entities matching the columns in [UpdateStmt].
-func ({{ .receiver }} {{ .structName }}) UpdateValues() []any {
-	return {{ .updateValues }}
+// DefaultCreateColumns returns a list of default column names used for [{{ .structName }}] creation.
+func ({{ .receiver }} {{ .structName }}) DefaultCreateColumns() []string {
+	return {{ .defaultCreateColumns }}
 }
 
-// PKColumns returns the column names for the primary key of a [{{ .structName }}] entity used during an update.
-// The returned slice must have the same number of elements as PKValues.
-func ({{ .receiver }} {{ .structName }}) PKColumns() []string {
-	return {{ .pkColumns }}
+// DefaultUpdateColumns returns a list of default column names used for [{{ .structName }}] mutation.
+func ({{ .receiver }} {{ .structName }}) DefaultUpdateColumns() []string {
+	return {{ .defaultUpdateColumns }}
 }
 
-// PKValues returns the values for the primary key of a [{{ .structName }}] entity used during an update.
-// The returned slice must have the same number of elements as PKColumns.
-func ({{ .receiver }} {{ .structName }}) PKValues() []any {
-	return {{ .pkValues }}
-}
-
-// CreateStmt returns a query that creates a [{{ .structName }}] entity.
-func ({{ .receiver }} {{ .structName }}) CreateStmt() string {
-	return "{{ .createStmt }}"
-}
-
-// UpdateStmt returns a query that updates a [{{ .structName }}] by primary key.
-func ({{ .receiver }} {{ .structName }}) UpdateStmt() string {
-	return "{{ .updateStmt }}"
+// Values returns the fields from [{{ .structName }}] in order of the specified columns.
+func ({{ .receiver }} {{ .structName }}) Values(columns ...string) ([]any, error) {
+	{{ .values }}
 }
 `))
 
@@ -144,39 +128,6 @@ func (s *Spec) receiver() rune {
 	return unicode.ToLower(rune(s.StructName[0]))
 }
 
-func (s *Spec) createStmt() string {
-	cols := make([]string, 0, len(s.Fields))
-	for _, f := range s.Fields {
-		unqualifiedColName, ok := s.unqualifiedColumnName(f)
-		if !ok || unqualifiedColName == columnID || f.SkipCreate {
-			continue
-		}
-
-		cols = append(cols, unqualifiedColName)
-	}
-
-	return "INSERT INTO " + s.TableName + " (" + strings.Join(cols, ", ") + ") VALUES " + query.Params(len(cols))
-}
-
-func (s *Spec) updateStmt() string {
-	cols := make([]string, 0, len(s.Fields))
-	for _, f := range s.Fields {
-		unqualifiedColName, ok := s.unqualifiedColumnName(f)
-		if !ok || unqualifiedColName == columnID || f.SkipUpdate {
-			continue
-		}
-
-		cols = append(cols, unqualifiedColName)
-	}
-
-	updates := make([]string, 0, len(cols))
-	for _, col := range cols {
-		updates = append(updates, col+" = ?")
-	}
-
-	return "UPDATE " + s.TableName + " SET " + strings.Join(updates, ", ") + " "
-}
-
 func (s *Spec) joins() string {
 	if len(s.Joins) == 0 {
 		return "[]string{}"
@@ -185,7 +136,7 @@ func (s *Spec) joins() string {
 	return "[]string{\n\t\t\"" + strings.Join(s.Joins, "\",\n\t\t\"") + "\",\n\t}"
 }
 
-func (s *Spec) scanColumns() string {
+func (s *Spec) defaultSelectColumns() string {
 	cols := make([]string, 0, len(s.Fields))
 	if s.Reference != nil {
 		cols = make([]string, 0, len(s.Fields)+len(s.Reference.Fields))
@@ -201,8 +152,8 @@ func (s *Spec) scanColumns() string {
 	return "[]string{\n\t\t\"" + strings.Join(cols, "\",\n\t\t\"") + "\",\n\t}"
 }
 
-func (s *Spec) createValues() string {
-	values := make([]string, 0, len(s.Fields))
+func (s *Spec) defaultCreateColumns() string {
+	cols := make([]string, 0, len(s.Fields))
 	for _, f := range s.Fields {
 		unqualifiedColName, ok := s.unqualifiedColumnName(f)
 		if !ok {
@@ -213,14 +164,14 @@ func (s *Spec) createValues() string {
 			continue
 		}
 
-		values = append(values, string(s.receiver())+"."+f.FieldName)
+		cols = append(cols, unqualifiedColName)
 	}
 
-	return "[]any{" + strings.Join(values, ", ") + "}"
+	return "[]string{\n\t\t\"" + strings.Join(cols, "\",\n\t\t\"") + "\",\n\t}"
 }
 
-func (s *Spec) updateValues() string {
-	values := make([]string, 0, len(s.Fields))
+func (s *Spec) defaultUpdateColumns() string {
+	cols := make([]string, 0, len(s.Fields))
 	for _, f := range s.Fields {
 		unqualifiedColName, ok := s.unqualifiedColumnName(f)
 		if !ok {
@@ -231,13 +182,13 @@ func (s *Spec) updateValues() string {
 			continue
 		}
 
-		values = append(values, string(s.receiver())+"."+f.FieldName)
+		cols = append(cols, unqualifiedColName)
 	}
 
-	return "[]any{" + strings.Join(values, ", ") + "}"
+	return "[]string{\n\t\t\"" + strings.Join(cols, "\",\n\t\t\"") + "\",\n\t}"
 }
 
-func (s *Spec) pkColumns() string {
+func (s *Spec) primaryKeyColumns() string {
 	cols := make([]string, 0, len(s.Fields))
 	for _, f := range s.Fields {
 		if f.Primary {
@@ -248,29 +199,78 @@ func (s *Spec) pkColumns() string {
 	return `[]string{"` + strings.Join(cols, `", "`) + `"}`
 }
 
-func (s *Spec) pkValues() string {
-	values := make([]string, 0, len(s.Fields))
-	for _, f := range s.Fields {
-		if f.Primary {
-			values = append(values, string(s.receiver())+"."+f.FieldName)
+func (s *Spec) scanArgs() string {
+	var b strings.Builder
+
+	b.WriteString(`args := make([]any, 0, len(columns))
+	for _, column := range columns {
+		switch column {`)
+
+	if s.Reference != nil {
+		for _, f := range s.Reference.Fields {
+			b.WriteString("\n\t\tcase\"")
+			b.WriteString(f.ColumnName)
+			b.WriteString("\":\n\t\t\t")
+			b.WriteString("args = append(args, &")
+			b.WriteString(string(s.receiver()))
+			b.WriteString(".")
+			b.WriteString(s.ReferenceFieldName)
+			b.WriteString(".")
+			b.WriteString(f.FieldName)
+			b.WriteString(")")
 		}
 	}
 
-	return `[]any{` + strings.Join(values, ", ") + `}`
+	for _, f := range s.Fields {
+		b.WriteString("\n\t\tcase \"")
+		b.WriteString(f.ColumnName)
+		b.WriteString("\":\n\t\t\t")
+		b.WriteString("args = append(args, &")
+		b.WriteString(string(s.receiver()))
+		b.WriteString(".")
+		b.WriteString(f.FieldName)
+		b.WriteString(")")
+
+		if s.Reference == nil {
+			b.WriteString("\n\t\tcase \"")
+			b.WriteString(strings.TrimPrefix(f.ColumnName, s.TableName+"."))
+			b.WriteString("\":\n\t\t\t")
+			b.WriteString("args = append(args, &")
+			b.WriteString(string(s.receiver()))
+			b.WriteString(".")
+			b.WriteString(f.FieldName)
+			b.WriteString(")")
+		}
+	}
+
+	b.WriteString("\n\t\tdefault:\n\t\t\treturn nil, fmt.Errorf(\"Unknown column %q for table %q\", column, ")
+	b.WriteString(string(s.receiver()))
+	b.WriteString(".TableName())\n\t\t}\n\t}\n\n\treturn args, nil")
+
+	return b.String()
 }
 
-func (s *Spec) scanArgs() string {
-	scanArgs := make([]string, 0, len(s.Fields))
-	if s.Reference != nil {
-		scanArgs = make([]string, 0, len(s.Reference.Fields)+len(s.Fields))
-		for _, f := range s.Reference.Fields {
-			scanArgs = append(scanArgs, "&"+string(s.receiver())+"."+s.ReferenceFieldName+"."+f.FieldName)
-		}
-	}
+func (s *Spec) values() string {
+	var b strings.Builder
+
+	b.WriteString(`values := make([]any, 0, len(columns))
+	for _, column := range columns {
+		switch column {`)
 
 	for _, f := range s.Fields {
-		scanArgs = append(scanArgs, "&"+string(s.receiver())+"."+f.FieldName)
+		b.WriteString("\n\t\tcase \"")
+		b.WriteString(strings.TrimPrefix(f.ColumnName, s.TableName+"."))
+		b.WriteString("\":\n\t\t\t")
+		b.WriteString("values = append(values, ")
+		b.WriteString(string(s.receiver()))
+		b.WriteString(".")
+		b.WriteString(f.FieldName)
+		b.WriteString(")")
 	}
 
-	return "[]any{" + strings.Join(scanArgs, ", ") + "}"
+	b.WriteString("\n\t\tdefault:\n\t\t\treturn nil, fmt.Errorf(\"Unknown column %q for table %q\", column, ")
+	b.WriteString(string(s.receiver()))
+	b.WriteString(".TableName())\n\t\t}\n\t}\n\n\treturn values, nil")
+
+	return b.String()
 }
